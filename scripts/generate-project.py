@@ -33,8 +33,8 @@ def files(folder):
             (builds if ext == '.swift' else resources).append(build)
     assets = root / folder / 'Assets.xcassets'
     if assets.exists():
-        ref = put(str(assets), f'{{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = {q(str(assets.relative_to(root)))}; sourceTree = SOURCE_ROOT;}}')
-        children.append(ref); resources.append(put(str(assets)+'build', f'{{isa = PBXBuildFile; fileRef = {ref};}}'))
+        ref = put(str(assets.relative_to(root)), f'{{isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = {q(str(assets.relative_to(root)))}; sourceTree = SOURCE_ROOT;}}')
+        children.append(ref); resources.append(put(str(assets.relative_to(root))+'build', f'{{isa = PBXBuildFile; fileRef = {ref};}}'))
     group = put(folder, f'{{isa = PBXGroup; children = ({",".join(children)},); name = {q(folder)}; sourceTree = "<group>";}}')
     return group, builds, resources
 
