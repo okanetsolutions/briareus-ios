@@ -147,6 +147,15 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(result.session.displayTitle, "New conversation")
         XCTAssertFalse(result.session.isActive); XCTAssertNil(result.events)
     }
+    func testSessionFindsItsPullRequest() throws {
+        func session(_ extra: String) throws -> Session {
+            try JSONDecoder().decode(Session.self, from: Data(#"{"id":"s","status":"idle"\#(extra)}"#.utf8))
+        }
+        XCTAssertNil(try session("").pullNumber)
+        XCTAssertNil(try session(#","prStatus":null,"startedOnPr":null"#).pullNumber)
+        XCTAssertEqual(try session(#","startedOnPr":4"#).pullNumber, 4)
+        XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open"},"startedOnPr":4"#).pullNumber, 9)
+    }
     func testRetryAfterHTTPDate() {
         let now = Date(timeIntervalSince1970: 0)
         XCTAssertEqual(APIClient.retryAfter("Thu, 01 Jan 1970 00:02:00 GMT", now: now), 120)
@@ -161,6 +170,47 @@ final class CoreTests: XCTestCase {
         ])
         XCTAssertEqual(MarkdownBlock.parse("```\nunterminated"), [.code(language: nil, text: "unterminated")])
         XCTAssertEqual(MarkdownBlock.parse("#hashtag"), [.paragraph("#hashtag")])
+    }
+    func testRuntimeCatalogResolvesChoicesPerModel() throws {
+        let json = #"{"default":{"providerId":2,"model":"opus","effort":"high"},"providers":[{"id":1,"label":"Codex","available":false,"models":[{"id":"gpt","label":"gpt","efforts":["low"],"defaultEffort":"low"}],"defaultModel":"gpt"},{"id":2,"label":"Claude","available":true,"models":[{"id":"sonnet","label":"Sonnet","efforts":["low","medium"],"defaultEffort":"medium"},{"id":"opus","label":"opus","efforts":["low","high"],"defaultEffort":"high"}],"defaultModel":"opus","future":1}]}"#
+        let catalog = try JSONDecoder().decode(RuntimeCatalog.self, from: Data(json.utf8))
+        XCTAssertEqual(catalog.default, RuntimeChoice(providerId: 2, model: "opus", effort: "high"))
+        XCTAssertEqual(catalog.choice(provider: 2), RuntimeChoice(providerId: 2, model: "opus", effort: "high"))
+        XCTAssertEqual(catalog.choice(provider: 2, model: "sonnet"), RuntimeChoice(providerId: 2, model: "sonnet", effort: "medium"))
+        XCTAssertEqual(catalog.choice(provider: 2, model: "gone")?.model, "opus")
+        XCTAssertNil(catalog.choice(provider: 9))
+        XCTAssertEqual(catalog.firstAvailable?.providerId, 2)
+        XCTAssertEqual(catalog.efforts(for: RuntimeChoice(providerId: 2, model: "sonnet")), ["low", "medium"])
+        XCTAssertEqual(catalog.label(for: catalog.default!), "Claude · opus")
+        XCTAssertEqual(RuntimeChoice(providerId: 2, model: "opus", effort: "high").arguments,
+                       ["providerId": .number(2), "model": .string("opus"), "effort": .string("high")])
+        XCTAssertEqual(RuntimeChoice(providerId: 3).arguments, ["providerId": .number(3)])
+        let empty = try JSONDecoder().decode(RuntimeCatalog.self, from: Data(#"{"default":null,"providers":[]}"#.utf8))
+        XCTAssertNil(empty.default); XCTAssertNil(empty.firstAvailable)
+    }
+    func testPullFilePagesPinLaterPagesToTheFirstRevision() throws {
+        let first = #"{"pr":{"number":7,"headSha":"h1","baseSha":"b1","body":"Why"},"files":[{"filename":"src/a.js","previousFilename":null,"status":"modified","additions":3,"deletions":1,"patch":"@@ -1 +1 @@","url":"https://github.com/o/r/blob/x/src/a.js"}],"nextPage":2,"truncated":false}"#
+        let second = #"{"pr":{"number":7,"headSha":"h1","baseSha":"b1"},"files":[{"filename":"src/a.js"},{"filename":"logo.png","status":"added","patch":null}],"nextPage":null}"#
+        var list = PullFileList()
+        XCTAssertEqual(list.arguments(repo: "o/r", number: 7), ["repo": .string("o/r"), "pr": .number(7)])
+        list.append(try JSONDecoder().decode(PullFilesPage.self, from: Data(first.utf8)))
+        XCTAssertEqual(list.arguments(repo: "o/r", number: 7),
+                       ["repo": .string("o/r"), "pr": .number(7), "page": .number(2), "headSha": .string("h1"), "baseSha": .string("b1")])
+        list.append(try JSONDecoder().decode(PullFilesPage.self, from: Data(second.utf8)))
+        XCTAssertEqual(list.files.map(\.filename), ["src/a.js", "logo.png"])
+        XCTAssertEqual(list.pr["body"].string, "Why")
+        XCTAssertNil(list.arguments(repo: "o/r", number: 7)); XCTAssertFalse(list.truncated)
+        XCTAssertEqual(list.files[0].name, "a.js"); XCTAssertEqual(list.files[0].directory, "src")
+        XCTAssertNil(list.files[1].patch); XCTAssertEqual(list.files[1].directory, "")
+    }
+    func testDiffLinesAreNumberedFromHunkHeaders() {
+        let lines = DiffLine.parse("@@ -10,3 +10,4 @@ func a()\n one\n-two\n+2\n+3\n\n\\ No newline at end of file\n@@ -40 +41 @@\n-x\r\n+y\n")
+        XCTAssertEqual(lines.map(\.kind), [.hunk, .context, .removed, .added, .added, .context, .note, .hunk, .removed, .added])
+        XCTAssertEqual(lines.map(\.old), [nil, 10, 11, nil, nil, 12, nil, nil, 40, nil])
+        XCTAssertEqual(lines.map(\.new), [nil, 10, nil, 11, 12, 13, nil, nil, nil, 41])
+        XCTAssertEqual(lines[2].text, "two"); XCTAssertEqual(lines[6].text, "No newline at end of file")
+        XCTAssertEqual(lines[8].text, "x")
+        XCTAssertEqual(DiffLine.parse(""), [])
     }
     private func body(of request: URLRequest) -> Data {
         if let data = request.httpBody { return data }

@@ -37,12 +37,9 @@ struct ProjectsView: View {
                 if let error { ErrorNotice(message: error) }
                 ForEach(projects) { project in
                     NavigationLink(value: project) {
-                        HStack(spacing: 12) {
-                            Monogram(text: project.title)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(project.title).font(.body.weight(.medium))
-                                if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
-                            }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(project.title).font(.body.weight(.medium))
+                            if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 4)
                     }
                     .listRowBackground(Theme.elevated)
@@ -158,8 +155,15 @@ struct NewConversationView: View {
     @State private var busy = false
     @State private var uncertain = false
     @State private var error: String?
+    @State private var catalog: RuntimeCatalog?
+    /// nil starts on the project's configured runtime.
+    @State private var runtime: RuntimeChoice?
     @FocusState private var promptFocused: Bool
-    private var canStart: Bool { !busy && !uncertain && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var effective: RuntimeChoice? { runtime ?? catalog?.default }
+    private var needsRuntime: Bool { catalog != nil && effective == nil }
+    private var canStart: Bool {
+        !busy && !uncertain && !needsRuntime && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -189,11 +193,13 @@ struct NewConversationView: View {
                                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                             }
                         }
+                        if let catalog, !catalog.providers.isEmpty { runtimeRows(catalog) }
                     }
                     .padding(14)
                     .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-                    Label("Starting a conversation runs a paid agent using this project’s configured provider and model.", systemImage: "sparkle")
+                    Label(catalog == nil ? "Starting a conversation runs a paid agent using this project’s configured provider and model."
+                          : "Starting a conversation runs a paid agent on the selected model.", systemImage: "sparkle")
                         .font(.footnote).foregroundStyle(.secondary)
                     if let error { ErrorNotice(message: error) }
                     if uncertain {
@@ -216,7 +222,70 @@ struct NewConversationView: View {
             }
             .interactiveDismissDisabled(busy)
             .onAppear { promptFocused = true }
+            .task {
+                guard store.supports("runtimes") else { return }
+                // Without the catalog the server still starts on the project's configured runtime.
+                guard let result: RuntimeCatalog = try? await store.call("runtimes", ["repo": .string(project.repo)]) else { return }
+                catalog = result
+                if result.default == nil && runtime == nil { runtime = result.firstAvailable }
+            }
         }
+    }
+    @ViewBuilder private func runtimeRows(_ catalog: RuntimeCatalog) -> some View {
+        Divider().overlay(Theme.border)
+        Menu {
+            if let standard = catalog.default {
+                Button { runtime = nil } label: {
+                    Label("Project default (\(catalog.label(for: standard)))", systemImage: runtime == nil ? "checkmark" : "gearshape")
+                }
+            }
+            ForEach(catalog.providers) { provider in
+                if !provider.isAvailable {
+                    Button("\(provider.label) (unavailable)") {}.disabled(true)
+                } else if provider.models.isEmpty {
+                    Button(provider.label) { runtime = catalog.choice(provider: provider.id) }
+                } else {
+                    Menu(provider.label) {
+                        ForEach(provider.models) { model in
+                            Button { runtime = catalog.choice(provider: provider.id, model: model.id) } label: {
+                                if effective?.providerId == provider.id && effective?.model == model.id {
+                                    Label(model.title, systemImage: "checkmark")
+                                } else { Text(model.title) }
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            pickerRow(icon: "cpu", text: effective.map { catalog.label(for: $0) } ?? "Choose a model",
+                      note: runtime == nil && effective != nil ? "Default" : nil, placeholder: effective == nil)
+        }
+        .accessibilityLabel("Model: \(effective.map { catalog.label(for: $0) } ?? "none")")
+        if let effective, !catalog.efforts(for: effective).isEmpty {
+            Divider().overlay(Theme.border)
+            Menu {
+                ForEach(catalog.efforts(for: effective), id: \.self) { effort in
+                    Button {
+                        runtime = RuntimeChoice(providerId: effective.providerId, model: effective.model, effort: effort)
+                    } label: {
+                        if effective.effort == effort { Label(effort.capitalized, systemImage: "checkmark") } else { Text(effort.capitalized) }
+                    }
+                }
+            } label: {
+                pickerRow(icon: "gauge.with.dots.needle.50percent", text: "\((effective.effort ?? "default").capitalized) effort",
+                          note: nil, placeholder: false)
+            }
+            .accessibilityLabel("Effort: \(effective.effort ?? "default")")
+        }
+    }
+    private func pickerRow(icon: String, text: String, note: String?, placeholder: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon).font(.caption).foregroundStyle(.secondary)
+            Text(text).font(.subheadline).foregroundStyle(placeholder ? .secondary : .primary).lineLimit(1)
+            if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
+            Spacer()
+            Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+        }.contentShape(Rectangle())
     }
     private func start() async {
         busy = true; error = nil
@@ -224,6 +293,7 @@ struct NewConversationView: View {
         var args: [String: JSONValue] = ["repo": .string(project.repo), "prompt": .string(prompt)]
         let branch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
         if !branch.isEmpty { args["branch"] = .string(branch) }
+        if let runtime { args.merge(runtime.arguments) { _, new in new } }
         do {
             let result: SessionResult = try await store.call("start_session", args)
             dismiss(); started(result.session)
