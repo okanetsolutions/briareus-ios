@@ -40,7 +40,7 @@ struct ConversationView: View {
                     }
                     if transcript.events.isEmpty && error == nil { Text("Waiting for the conversation…").foregroundStyle(.secondary) }
                     ForEach(transcript.events.filter(\.visible)) { event in
-                        EventView(event: event) { message = $0 }
+                        EventView(event: event, canAnswer: store.supports("message") && session.status != "closed") { message = $0 }
                     }
                     ForEach(Array((session.queued ?? []).enumerated()), id: \.offset) { index, queued in
                         HStack {
@@ -124,7 +124,7 @@ struct ConversationView: View {
         defer { busy = false }
         do {
             let _: JSONValue = try await store.call(name, ["sessionId": .string(initial.id)].merging(extra) { _, new in new })
-            if name == "message" { message = "" }
+            if name == "message", message == extra["text"]?.string { message = "" }
             if name == "delete" { dismiss(); return }
         } catch {
             writeError = error.localizedDescription; uncertain = true; return
@@ -135,6 +135,7 @@ struct ConversationView: View {
 
 struct EventView: View {
     let event: Event
+    let canAnswer: Bool
     let answer: (String) -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -150,10 +151,12 @@ struct EventView: View {
             case "ask":
                 Label("Your input is needed", systemImage: "questionmark.bubble").font(.caption.bold()).foregroundStyle(.indigo)
                 Text(event.question ?? event.text ?? "").textSelection(.enabled)
-                ForEach(Array((event.options ?? []).enumerated()), id: \.offset) { _, option in
-                    if let label = option["label"].string { Button(label) { answer(label) }.buttonStyle(.bordered) }
+                if canAnswer {
+                    ForEach(Array((event.options ?? []).enumerated()), id: \.offset) { _, option in
+                        if let label = option["label"].string { Button(label) { answer(label) }.buttonStyle(.bordered) }
+                    }
+                    Text("Choose an answer to put it in the composer, or write your own.").font(.caption).foregroundStyle(.secondary)
                 }
-                Text("Choose an answer to put it in the composer, or write your own.").font(.caption).foregroundStyle(.secondary)
             case "tool", "tool_error", "cmd", "git", "setup":
                 DisclosureGroup(event.name ?? event.kind.capitalized) {
                     Text(event.text ?? "No additional details").font(.caption.monospaced()).textSelection(.enabled)

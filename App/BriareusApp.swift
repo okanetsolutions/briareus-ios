@@ -30,6 +30,8 @@ struct BriareusApp: App {
 struct PairingView: View {
     @EnvironmentObject private var store: AppStore
     @State private var token = ""
+    private enum Field { case server, token }
+    @FocusState private var focusedField: Field?
     var body: some View {
         NavigationStack {
             Form {
@@ -45,23 +47,35 @@ struct PairingView: View {
                     TextField("https://briareus.example.com", text: $store.server)
                         .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never)
                         .autocorrectionDisabled().accessibilityIdentifier("serverAddress")
+                        .focused($focusedField, equals: .server)
+                        .submitLabel(.next).onSubmit { focusedField = .token }
                     SecureField("Device token", text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .privacySensitive().accessibilityIdentifier("deviceToken")
+                        .focused($focusedField, equals: .token)
+                        .submitLabel(.done).onSubmit { focusedField = nil }
                     Button {
+                        focusedField = nil
                         Task { await store.connect(server: store.server, token: token); if store.client != nil { token = "" } }
                     } label: {
                         HStack { Text("Connect"); Spacer(); if store.connecting { ProgressView() } }
                     }.disabled(store.connecting || store.server.isEmpty || token.isEmpty)
                         .accessibilityIdentifier("connectButton")
                 }
+                if let error = store.connectionError { Section { ErrorNotice(message: error) } }
                 Section {
                     Text("On the web dashboard, open Settings → Mobile devices and create a token for this iPhone. Choose the projects and permissions it needs, then paste the token above.")
                     Text("Tokens stay in this iPhone’s Keychain. Your server must allow the mobile API through Cloudflare Access.")
                         .foregroundStyle(.secondary)
                 }
-                if let error = store.connectionError { Section { ErrorNotice(message: error) } }
             }.navigationTitle("Briareus")
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Done") { focusedField = nil }
+                            .accessibilityIdentifier("dismissKeyboard")
+                    }
+                }
         }
     }
 }
