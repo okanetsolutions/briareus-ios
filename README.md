@@ -8,7 +8,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Lists permitted projects and conversations, with search and status updates.
 - Shows incremental transcripts, agent questions, tool activity, queued messages and costs.
 - Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, renames, stops, closes, reopens and deletes sessions when the token permits it.
-- Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, and starts review/QA sessions using the server-configured runtime.
+- Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, merges a pull request when the server offers `merge_pull`, and starts review/QA sessions using the server-configured runtime.
 - Revokes its token remotely or forgets the local connection.
 
 Read-only connections hide write controls. A capability catalog keeps unsupported operations unavailable. Text transcripts remain in memory only and start from event zero when reopening a screen; backgrounding pauses polling and covers the app switcher snapshot.

@@ -17,6 +17,7 @@ struct ConversationView: View {
     @State private var renaming = false
     @State private var title = ""
     @State private var atBottom = true
+    @State private var pull: PullRoute?
     @FocusState private var composerFocused: Bool
     var session: Session { snapshot ?? initial }
     private var canMessage: Bool { store.supports("message") && session.status != "closed" }
@@ -104,6 +105,14 @@ struct ConversationView: View {
                     if let cost = session.usage?["costUsd"].double {
                         Text("Spent \(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4))))")
                     }
+                    if let number = session.pullNumber, let repo = session.repo {
+                        if store.supports("pull_files") {
+                            Button("View changes", systemImage: "doc.text.magnifyingglass") { pull = PullRoute(repo: repo, number: number, changes: true) }
+                        }
+                        if store.supports("pull") {
+                            Button("Pull request #\(number)", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
+                        }
+                    }
                     if store.supports("rename") { Button("Rename", systemImage: "pencil") { title = session.displayTitle; renaming = true } }
                     if store.supports("cancel") && session.isActive { Button("Stop agent", systemImage: "stop.circle", role: .destructive) { pendingAction = "cancel" } }
                     if store.supports("close") && session.status != "closed" { Button("Close conversation", systemImage: "archivebox") { pendingAction = "close" } }
@@ -112,6 +121,10 @@ struct ConversationView: View {
                 } label: { Image(systemName: "ellipsis") }
                     .disabled(busy || uncertain).accessibilityLabel("Conversation actions")
             }
+        }
+        .navigationDestination(item: $pull) { route in
+            if route.changes { PullFilesView(project: Project(repo: route.repo), number: route.number) }
+            else { PullDetailView(project: Project(repo: route.repo), number: route.number) }
         }
         .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: refresh) { error = $0.localizedDescription; loaded = true }
         .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
@@ -483,4 +496,10 @@ private extension View {
                 .defaultScrollAnchor(.top, for: .alignment)
         } else { defaultScrollAnchor(.bottom) }
     }
+}
+
+struct PullRoute: Hashable {
+    let repo: String
+    let number: Int
+    let changes: Bool
 }

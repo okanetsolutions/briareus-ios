@@ -56,6 +56,7 @@ public struct OperationList: Decodable, Sendable { public let operations: [Opera
 public struct Project: Decodable, Identifiable, Hashable, Sendable {
     public let repo: String
     public let label: String?
+    public init(repo: String, label: String? = nil) { self.repo = repo; self.label = label }
     public var id: String { repo }
     public var title: String { label.flatMap { $0.isEmpty ? nil : $0 } ?? repo }
 }
@@ -70,6 +71,12 @@ public struct Session: Decodable, Identifiable, Hashable, Sendable {
     public let liveInput: Bool?
     public let queued: [JSONValue]?
     public let usage: JSONValue?
+    public let prStatus: JSONValue?
+    public let startedOnPr: JSONValue?
+    /// The pull request this conversation works on, once it has one.
+    public var pullNumber: Int? {
+        (prStatus?["number"].double ?? startedOnPr?.double).flatMap { $0 >= 1 ? Int($0) : nil }
+    }
     public var displayTitle: String { title.flatMap { $0.isEmpty ? nil : $0 } ?? "New conversation" }
     public var isActive: Bool { ["queued", "preparing", "running", "starting"].contains(status) }
     public static func == (lhs: Session, rhs: Session) -> Bool { lhs.id == rhs.id }

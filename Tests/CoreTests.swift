@@ -147,6 +147,15 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(result.session.displayTitle, "New conversation")
         XCTAssertFalse(result.session.isActive); XCTAssertNil(result.events)
     }
+    func testSessionFindsItsPullRequest() throws {
+        func session(_ extra: String) throws -> Session {
+            try JSONDecoder().decode(Session.self, from: Data(#"{"id":"s","status":"idle"\#(extra)}"#.utf8))
+        }
+        XCTAssertNil(try session("").pullNumber)
+        XCTAssertNil(try session(#","prStatus":null,"startedOnPr":null"#).pullNumber)
+        XCTAssertEqual(try session(#","startedOnPr":4"#).pullNumber, 4)
+        XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open"},"startedOnPr":4"#).pullNumber, 9)
+    }
     func testRetryAfterHTTPDate() {
         let now = Date(timeIntervalSince1970: 0)
         XCTAssertEqual(APIClient.retryAfter("Thu, 01 Jan 1970 00:02:00 GMT", now: now), 120)

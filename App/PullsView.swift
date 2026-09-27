@@ -62,6 +62,14 @@ struct PullDetailView: View {
     @State private var uncertain = false
     @State private var writeError: String?
     @State private var started: Session?
+    @State private var mergeMethods: [String]?
+    @State private var mergeNote: String?
+    @State private var mergeError: String?
+    @State private var merging = false
+    private var canMerge: Bool {
+        store.supports("merge_pull") && pr["state"].string == "open" && pr["draft"].bool != true
+            && pr["headSha"].string != nil && pr["baseRef"].string != nil
+    }
     var body: some View {
         List {
             if let error { ErrorNotice(message: error).listRowBackground(Theme.elevated) }
@@ -174,6 +182,21 @@ struct PullDetailView: View {
                     if findings.isEmpty && findingsError == nil { Text("No findings reported").foregroundStyle(.secondary) }
                 }.listRowBackground(Theme.elevated)
             }
+            if canMerge || mergeError != nil {
+                Section {
+                    if let mergeError { ErrorNotice(message: mergeError) }
+                    if canMerge {
+                        Button { Task { await prepareMerge() } } label: {
+                            HStack {
+                                Label("Merge pull request", systemImage: "arrow.triangle.merge").fontWeight(.semibold)
+                                if merging { Spacer(); ProgressView() }
+                            }
+                        }.disabled(merging || busy)
+                    }
+                } footer: {
+                    if canMerge { Text("Merges \(pr["headRef"].string ?? "this branch") into \(pr["baseRef"].string ?? "its base") on GitHub. This cannot be undone from the app.") }
+                }.listRowBackground(Theme.elevated)
+            }
             if store.canManage && pr["headRef"].string != nil {
                 Section {
                     if store.supports("review") { Button("Start code review") { pendingAction = "review" } }
@@ -186,11 +209,53 @@ struct PullDetailView: View {
         .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $started) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
-        .foregroundPoll(every: 30, enabled: !busy && pendingAction == nil, action: load) { error = $0.localizedDescription }
+        .foregroundPoll(every: 30, enabled: !busy && !merging && pendingAction == nil && mergeMethods == nil, action: load) { error = $0.localizedDescription }
         .confirmationDialog("Start a paid \(pendingAction == "qa" ? "QA" : "code review") session?",
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Start session") { if let action = pendingAction { Task { await start(action) } } }
         }
+        .confirmationDialog("Merge #\(number) into \(pr["baseRef"].string ?? "its base")?",
+                            isPresented: Binding(get: { mergeMethods != nil }, set: { if !$0 { mergeMethods = nil } }), titleVisibility: .visible) {
+            ForEach(mergeMethods ?? [], id: \.self) { method in
+                Button(Self.mergeTitles[method] ?? method.capitalized) { Task { await merge(method) } }
+            }
+        } message: { if let mergeNote { Text(mergeNote) } }
+    }
+    private static let mergeTitles = ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"]
+    /// Reads what GitHub allows before asking, so the dialog offers only methods the repository accepts.
+    private func prepareMerge() async {
+        guard !merging else { return }
+        merging = true; mergeError = nil; defer { merging = false }
+        var methods = ["squash", "merge", "rebase"]
+        var notes: [String] = []
+        if store.supports("pull_files"),
+           let page: PullFilesPage = try? await store.call("pull_files", ["repo": .string(project.repo), "pr": .number(Double(number))]) {
+            let allowed = page.pr["mergeMethods"].array.compactMap(\.string)
+            if !allowed.isEmpty { methods = methods.filter(allowed.contains) }
+            if page.pr["mergeable"].bool == false { notes.append("GitHub reports conflicts with the base branch.") }
+            if let head = page.pr["headSha"].string, head != pr["headSha"].string {
+                do { try await load() } catch { mergeError = error.localizedDescription; return }
+                notes.append("New commits were pushed; the checks below were refreshed.")
+            }
+        }
+        let failed = Int(pr["checks"]["failed"].double ?? 0), pending = Int(pr["checks"]["pending"].double ?? 0)
+        if failed > 0 { notes.append("\(failed) check\(failed == 1 ? " is" : "s are") failing.") }
+        if pending > 0 { notes.append("\(pending) check\(pending == 1 ? " is" : "s are") still running.") }
+        mergeNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+        mergeMethods = methods
+    }
+    private func merge(_ method: String) async {
+        guard !merging, let head = pr["headSha"].string, let base = pr["baseRef"].string else { return }
+        merging = true; mergeError = nil; defer { merging = false }
+        do {
+            let _: JSONValue = try await store.call("merge_pull", ["repo": .string(project.repo), "pr": .number(Double(number)),
+                                                                     "headSha": .string(head), "baseRef": .string(base), "method": .string(method)])
+        } catch {
+            // A 4xx is a definite refusal; anything else may have merged, which the reload below shows.
+            if case .http(400..<500, _, _)? = error as? APIError { mergeError = error.localizedDescription }
+            else { mergeError = "\(error.localizedDescription) The merge may still have completed; check the state above before trying again." }
+        }
+        do { try await load() } catch { self.error = error.localizedDescription }
     }
     private func checkIcon(_ result: String) -> some View {
         switch result.lowercased() {
