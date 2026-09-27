@@ -250,7 +250,7 @@ struct ConversationView: View {
 /// Consecutive tool activity collapses into one tight cluster, like a terminal log.
 enum TranscriptRow: Identifiable {
     case event(Event), tools([Event])
-    static let toolKinds: Set<String> = ["tool", "tool_error", "cmd", "git", "setup"]
+    static let toolKinds: Set<String> = ["tool", "tool_error", "cmd", "git"]
     var id: Int {
         switch self {
         case .event(let event): return event.seq
@@ -304,7 +304,7 @@ struct EventView: View {
                         .foregroundStyle(event.kind == "stderr" ? Theme.danger : Color.secondary)
                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    // Dashboard notices (review loops, setup, interruptions).
+                    // Dashboard notices (review loops, interruptions).
                     Label { Text(.init(text)).textSelection(.enabled) } icon: { Image(systemName: "info.circle") }
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -327,7 +327,6 @@ struct ToolRow: View {
         switch event.kind {
         case "cmd": return "Command"
         case "git": return "Git"
-        case "setup": return "Setup"
         case "tool_error": return "Tool error"
         default: return "Tool"
         }
@@ -337,7 +336,6 @@ struct ToolRow: View {
         switch event.kind {
         case "cmd": return "terminal"
         case "git": return "arrow.triangle.branch"
-        case "setup": return "gearshape"
         default: break
         }
         switch (event.name ?? "").lowercased() {

@@ -102,7 +102,8 @@ public struct Event: Decodable, Identifiable, Sendable {
     public var id: Int { seq }
     /// Tool events carry their detail in `summary`; other kinds use `text`.
     public var detail: String? { text ?? summary }
-    public var visible: Bool { kind != "status" && (text != nil || question != nil || ["tool", "tool_error", "result"].contains(kind)) }
+    /// Status and workspace setup output are dashboard plumbing, not part of the conversation.
+    public var visible: Bool { !["status", "setup"].contains(kind) && (text != nil || question != nil || ["tool", "tool_error", "result"].contains(kind)) }
 }
 
 // Cursor and transcript have one lifetime: a fresh screen always starts at zero.

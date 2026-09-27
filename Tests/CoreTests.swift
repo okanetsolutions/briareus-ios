@@ -142,6 +142,11 @@ final class CoreTests: XCTestCase {
         transcript.append([]); XCTAssertEqual(transcript.cursor, 3)
         XCTAssertEqual(Transcript().cursor, 0)
     }
+    func testSetupEventsAreHidden() throws {
+        let data = Data(#"[{"seq":1,"kind":"setup","text":"Installing dependencies"},{"seq":2,"kind":"text","text":"Done"}]"#.utf8)
+        let events = try JSONDecoder().decode([Event].self, from: data)
+        XCTAssertEqual(events.filter(\.visible).map(\.seq), [2])
+    }
     func testOptionalFieldsAndUnknownStatusesDoNotBreakDecoding() throws {
         let result = try JSONDecoder().decode(SessionResult.self, from: Data(#"{"session":{"id":"x","status":"future","title":null,"model":null,"unknown":true},"events":null}"#.utf8))
         XCTAssertEqual(result.session.displayTitle, "New conversation")
