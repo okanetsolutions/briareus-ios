@@ -7,7 +7,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Connects to your HTTPS dashboard with a per-device token stored in Keychain.
 - Lists permitted projects and conversations, with search and status updates.
 - Shows incremental transcripts, agent questions, tool activity, queued messages and costs.
-- Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, renames, stops, closes, reopens and deletes sessions when the token permits it.
+- Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, turns the review loop on or off, completes held findings triage, renames, stops, closes, reopens and deletes sessions when the token permits it.
 - Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, records fix, optional or dismiss decisions on findings, merges a pull request when the server offers `merge_pull`, and starts review/QA sessions using the server-configured runtime.
 - Revokes its token remotely or forgets the local connection.
 

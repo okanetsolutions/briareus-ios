@@ -32,6 +32,16 @@ public enum JSONValue: Codable, Equatable, Sendable {
     public var double: Double? { if case .number(let v) = self { return v }; return nil }
     public var bool: Bool? { if case .bool(let v) = self { return v }; return nil }
     public var array: [JSONValue] { if case .array(let v) = self { return v }; return [] }
+    /// JavaScript truthiness for flags the server sends as a value or leaves null.
+    public var isSet: Bool {
+        switch self {
+        case .null: return false
+        case .bool(let v): return v
+        case .string(let v): return !v.isEmpty
+        case .number(let v): return v != 0
+        default: return true
+        }
+    }
     public var pretty: String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return (try? String(decoding: encoder.encode(self), as: UTF8.self)) ?? ""
@@ -73,6 +83,19 @@ public struct Session: Decodable, Identifiable, Hashable, Sendable {
     public let usage: JSONValue?
     public let prStatus: JSONValue?
     public let startedOnPr: JSONValue?
+    public let reviewLoop: JSONValue?
+    public let reviewTriage: JSONValue?
+    private let reviewBranch: JSONValue?, qaBranch: JSONValue?, autoClose: JSONValue?
+    private let loopParentId: JSONValue?, local: JSONValue?, orchestrator: JSONValue?
+    public var reviewLoopOn: Bool { reviewLoop.map { $0 != .null } ?? false }
+    /// The server arms the review loop only on sessions started from scratch on a task.
+    public var canReviewLoop: Bool {
+        status != "closed" && ![reviewBranch, qaBranch, autoClose, loopParentId, local, orchestrator].contains { $0?.isSet == true }
+    }
+    /// A review round waiting for verdicts: a loop's round or a hand-started review.
+    public var heldTriage: JSONValue? {
+        [reviewTriage, reviewLoop?["triage"]].compactMap { $0 }.first { $0 != .null && !$0["findings"].array.isEmpty }
+    }
     /// The pull request this conversation works on, once it has one.
     public var pullNumber: Int? {
         (prStatus?["number"].double ?? startedOnPr?.double).flatMap { $0 >= 1 ? Int($0) : nil }
