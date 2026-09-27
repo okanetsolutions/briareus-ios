@@ -64,8 +64,8 @@ struct PairingView: View {
                 }
                 if let error = store.connectionError { Section { ErrorNotice(message: error) } }
                 Section {
-                    Text("On the web dashboard, open Settings → Mobile devices and create a token for this iPhone. Choose the projects and permissions it needs, then paste the token above.")
-                    Text("Tokens stay in this iPhone’s Keychain. Your server must allow the mobile API through Cloudflare Access.")
+                    Text("On the web dashboard, open Settings → Mobile devices and create a token for this device. Choose the projects and permissions it needs, then paste the token above.")
+                    Text("Tokens stay in this device’s Keychain. Your server must allow the mobile API through Cloudflare Access.")
                         .foregroundStyle(.secondary)
                 }
             }.navigationTitle("Briareus")
@@ -106,7 +106,7 @@ struct SettingsView: View {
                     Text("Revoking disables this token on the server. Forgetting removes it from this phone only; revoke it later in web Settings. Neither action stops running agents.")
                 }.disabled(busy)
                 if let error { Section { ErrorNotice(message: error) } }
-                Section { Text("Briareus for iPhone · 1.0").foregroundStyle(.secondary) }
+                Section { Text("Briareus for iOS · 1.0").foregroundStyle(.secondary) }
             }.navigationTitle("Connection")
                 .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
                                     isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {

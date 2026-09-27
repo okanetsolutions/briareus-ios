@@ -35,6 +35,6 @@ enum Keychain {
     }
     private static func failure(_ status: OSStatus) -> NSError {
         NSError(domain: "Keychain", code: Int(status), userInfo: [NSLocalizedDescriptionKey:
-            "Could not access the device token in Keychain (\(status)). Unlock the iPhone and try again."])
+            "Could not access the device token in Keychain (\(status)). Unlock the device and try again."])
     }
 }
