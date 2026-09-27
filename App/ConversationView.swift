@@ -51,6 +51,7 @@ struct ConversationView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
+            .startAtBottom()
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
             .refreshable { do { try await refresh() } catch { self.error = error.localizedDescription } }
@@ -58,10 +59,12 @@ struct ConversationView: View {
                 // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
                 if old == 0 {
                     Task { @MainActor in
-                        proxy.scrollTo("bottom", anchor: .bottom)
-                        // Row heights are estimated until laid out; settle once more after the first pass.
-                        try? await Task.sleep(for: .milliseconds(250))
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        // Row heights are estimated until laid out, so one jump can land short of the end.
+                        for _ in 0..<6 {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                            try? await Task.sleep(for: .milliseconds(120))
+                            if atBottom { break }
+                        }
                     }
                 }
                 else if atBottom { scrollToBottom(proxy) }
@@ -469,5 +472,15 @@ struct WorkingIndicator: View {
         case "preparing", "starting": return "Starting up"
         default: return Self.verbs[(tick / 25) % Self.verbs.count]
         }
+    }
+}
+
+private extension View {
+    /// Opens on the latest message; short transcripts still read from the top where the system allows it.
+    @ViewBuilder func startAtBottom() -> some View {
+        if #available(iOS 18.0, *) {
+            defaultScrollAnchor(.bottom, for: .initialOffset).defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .defaultScrollAnchor(.top, for: .alignment)
+        } else { defaultScrollAnchor(.bottom) }
     }
 }

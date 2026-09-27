@@ -290,10 +290,12 @@ struct StackPosition: Hashable {
 
 struct Badge: View {
     let text: String
-    let systemImage: String
+    var systemImage: String? = nil
     let color: Color
     var body: some View {
-        Label(text, systemImage: systemImage)
+        Group {
+            if let systemImage { Label(text, systemImage: systemImage) } else { Text(text) }
+        }
             .font(.caption2.weight(.semibold)).foregroundStyle(color)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(color.opacity(0.12), in: Capsule())
@@ -309,7 +311,7 @@ struct ReviewBadge: View {
 struct StackBadge: View {
     let stack: StackPosition
     var body: some View {
-        Badge(text: "Stack \(stack.label)", systemImage: "square.stack.3d.up.fill", color: Theme.accent)
+        Badge(text: "Stack \(stack.label)", color: Theme.accent)
             .accessibilityLabel("Stacked pull request \(stack.position) of \(stack.total)\(stack.partial ? " or more" : "")")
     }
 }
