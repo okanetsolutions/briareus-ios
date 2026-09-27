@@ -22,7 +22,7 @@ struct PullsView: View {
                     }
                 }
             }.listRowBackground(Theme.elevated)
-            if !loaded { ProgressView("Loading pull requests…") }
+            if !loaded { ProgressView("Loading pull requests…").frame(maxWidth: .infinity).padding(.vertical, 24).listRowBackground(Color.clear) }
             if loaded && pulls.isEmpty && error == nil {
                 ContentUnavailableView("No open pull requests", systemImage: "arrow.triangle.pull")
             }
@@ -66,7 +66,16 @@ struct PullDetailView: View {
                 if let additions = pr["additions"].double, let deletions = pr["deletions"].double {
                     HStack { Text("+\(Int(additions))").foregroundStyle(Theme.success); Text("−\(Int(deletions))").foregroundStyle(Theme.danger) }.font(.callout.monospaced())
                 }
-                if let url = safeWebURL(pr["url"].string) { Link("Open on GitHub", destination: url) }
+                if let url = safeWebURL(pr["url"].string) {
+                    Link(destination: url.appendingPathComponent("files")) {
+                        HStack {
+                            Label(pr["changedFiles"].double.map { "\(Int($0)) files changed" } ?? "Files changed", systemImage: "doc.on.doc")
+                            Spacer()
+                            Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Link("Open on GitHub", destination: url)
+                }
             }.listRowBackground(Theme.elevated)
             Section("Checks") {
                 HStack(spacing: 14) {
@@ -168,47 +177,4 @@ func safeWebURL(_ value: String?) -> URL? {
     guard let value, let url = URL(string: value), url.scheme == "https", url.host != nil,
           url.user == nil, url.password == nil else { return nil }
     return url
-}
-
-struct UsageView: View {
-    let project: Project
-    @EnvironmentObject private var store: AppStore
-    @State private var usage: JSONValue = .null
-    @State private var error: String?
-    var body: some View {
-        List {
-            if let error { ErrorNotice(message: error) }
-            Section("This month") {
-                if let cost = usage["costUsd"].double {
-                    Text(cost, format: .currency(code: "USD")).font(.system(.largeTitle, design: .serif).weight(.semibold))
-                } else { Text("Usage reported by your dashboard").foregroundStyle(.secondary) }
-            }.listRowBackground(Theme.elevated)
-            Section("Activity") {
-                LabeledContent("Conversations", value: count("sessions"))
-                LabeledContent("Turns", value: count("turns"))
-                LabeledContent("Tokens", value: count("totalTokens"))
-                LabeledContent("Unpriced turns", value: count("unpricedTurns"))
-            }.listRowBackground(Theme.elevated)
-            Section("Models") {
-                ForEach(Array(usage["models"].array.enumerated()), id: \.offset) { _, model in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(model["model"].string ?? "Unknown model").font(.headline)
-                        Text(model["provider"].string ?? "").font(.caption).foregroundStyle(.secondary)
-                        if let cost = model["costUsd"].double {
-                            Text(cost, format: .currency(code: "USD"))
-                        } else { Text("Cost unavailable").foregroundStyle(.secondary) }
-                    }
-                }
-            }.listRowBackground(Theme.elevated)
-        }.scrollContentBackground(.hidden).background(Theme.background)
-            .navigationTitle("Usage").navigationBarTitleDisplayMode(.inline)
-            .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
-            .foregroundPoll(every: 60, action: load) { error = $0.localizedDescription }
-    }
-    private func count(_ key: String) -> String { usage[key].double.map { $0.formatted(.number.precision(.fractionLength(0))) } ?? "—" }
-    private func load() async throws {
-        let result: JSONValue = try await store.call("usage", ["repo": .string(project.repo)])
-        try Task.checkCancellation()
-        usage = result; error = nil
-    }
 }

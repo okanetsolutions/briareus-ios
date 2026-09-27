@@ -8,12 +8,7 @@ struct BriareusApp: App {
         WindowGroup {
             ZStack {
                 Group {
-                    if store.client != nil {
-                        TabView {
-                            ProjectsView().tabItem { Label("Projects", systemImage: "square.stack.3d.up") }
-                            SettingsView().tabItem { Label("Connection", systemImage: "network") }
-                        }
-                    } else { PairingView() }
+                    if store.client != nil { ProjectsView() } else { PairingView() }
                 }
                 if phase != .active {
                     Theme.background.ignoresSafeArea()
@@ -101,6 +96,7 @@ struct PairingView: View {
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
     @State private var confirm: String?
     @State private var busy = false
     @State private var error: String?
@@ -129,7 +125,8 @@ struct SettingsView: View {
                 if let error { Section { ErrorNotice(message: error) } }
                 Section { Text("Briareus for iOS · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
             }.scrollContentBackground(.hidden).background(Theme.background)
-                .navigationTitle("Connection")
+                .navigationTitle("Connection").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
                 .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
                                     isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
                     Button("Continue", role: .destructive) {

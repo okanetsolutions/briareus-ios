@@ -85,6 +85,7 @@ public struct Event: Decodable, Identifiable, Sendable {
     public let kind: String
     public let text: String?
     public let name: String?
+    public let summary: String?
     public let question: String?
     public let options: [JSONValue]?
     public let costUsd: Double?
@@ -92,6 +93,8 @@ public struct Event: Decodable, Identifiable, Sendable {
     public let isError: Bool?
     public let attachments: [JSONValue]?
     public var id: Int { seq }
+    /// Tool events carry their detail in `summary`; other kinds use `text`.
+    public var detail: String? { text ?? summary }
     public var visible: Bool { kind != "status" && (text != nil || question != nil || ["tool", "tool_error", "result"].contains(kind)) }
 }
 

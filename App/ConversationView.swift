@@ -51,11 +51,21 @@ struct ConversationView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
-            .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
             .refreshable { do { try await refresh() } catch { self.error = error.localizedDescription } }
-            .onChange(of: transcript.events.count) { if atBottom { scrollToBottom(proxy) } }
+            .onChange(of: transcript.events.count) { old, _ in
+                // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
+                if old == 0 {
+                    Task { @MainActor in
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        // Row heights are estimated until laid out; settle once more after the first pass.
+                        try? await Task.sleep(for: .milliseconds(250))
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+                else if atBottom { scrollToBottom(proxy) }
+            }
             .onChange(of: session.isActive) { if atBottom { scrollToBottom(proxy) } }
             .overlay(alignment: .bottom) {
                 if !atBottom && !transcript.events.isEmpty {
@@ -273,9 +283,16 @@ struct EventView: View {
             TurnFooter(event: event)
         default:
             if let text = event.text {
-                Text(text).font(.caption.monospaced())
-                    .foregroundStyle(event.kind == "stderr" ? Theme.danger : Color.secondary)
-                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                if event.kind == "stderr" || event.kind == "claude" {
+                    Text(text).font(.caption.monospaced())
+                        .foregroundStyle(event.kind == "stderr" ? Theme.danger : Color.secondary)
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    // Dashboard notices (review loops, setup, interruptions).
+                    Label { Text(.init(text)).textSelection(.enabled) } icon: { Image(systemName: "info.circle") }
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
@@ -285,7 +302,7 @@ struct ToolRow: View {
     let event: Event
     @State private var expanded = false
     private var isError: Bool { event.kind == "tool_error" }
-    private var details: String? { event.text.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } }
+    private var details: String? { event.detail.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } }
     private var summary: String {
         details?.split(separator: "\n").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
     }

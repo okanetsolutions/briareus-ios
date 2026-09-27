@@ -27,6 +27,7 @@ struct ProjectsView: View {
     @State private var projects: [Project] = []
     @State private var loaded = false
     @State private var error: String?
+    @State private var showingConnection = false
     var body: some View {
         NavigationStack {
             List {
@@ -54,6 +55,11 @@ struct ProjectsView: View {
             }
             .scrollContentBackground(.hidden).background(Theme.background)
             .navigationTitle("Projects")
+            .toolbar {
+                Button { showingConnection = true } label: { Image(systemName: "network") }
+                    .accessibilityLabel("Connection")
+            }
+            .sheet(isPresented: $showingConnection) { SettingsView() }
             .navigationDestination(for: Project.self) { ProjectView(project: $0) }
             .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
             .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
@@ -81,14 +87,9 @@ struct ProjectView: View {
     }
     var body: some View {
         List {
-            if store.supports("pulls") || store.supports("usage") {
+            if store.supports("pulls") {
                 Section {
-                    if store.supports("pulls") {
-                        NavigationLink { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
-                    }
-                    if store.supports("usage") {
-                        NavigationLink { UsageView(project: project) } label: { Label("Usage", systemImage: "chart.bar") }
-                    }
+                    NavigationLink { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
                 }.listRowBackground(Theme.elevated)
             }
             if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.elevated) }
@@ -171,10 +172,22 @@ struct NewConversationView: View {
                         TextField("What would you like to work on?", text: $prompt, axis: .vertical)
                             .lineLimit(6...16).focused($promptFocused)
                         Divider().overlay(Theme.border)
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
-                            TextField("Branch (optional)", text: $branch).font(.subheadline.monospaced())
-                                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        if store.supports("branches") {
+                            NavigationLink { BranchPicker(project: project, selection: $branch) } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
+                                    Text(branch.isEmpty ? "Default branch" : branch).font(.subheadline.monospaced())
+                                        .foregroundStyle(branch.isEmpty ? .secondary : .primary).lineLimit(1)
+                                    Spacer()
+                                    Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                                }.contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("Branch: \(branch.isEmpty ? "default" : branch)")
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
+                                TextField("Branch (optional)", text: $branch).font(.subheadline.monospaced())
+                                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            }
                         }
                     }
                     .padding(14)
@@ -215,5 +228,62 @@ struct NewConversationView: View {
             let result: SessionResult = try await store.call("start_session", args)
             dismiss(); started(result.session)
         } catch { self.error = error.localizedDescription; uncertain = true }
+    }
+}
+
+struct BranchPicker: View {
+    let project: Project
+    @Binding var selection: String
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var branches: [String] = []
+    @State private var defaultBranch: String?
+    @State private var search = ""
+    @State private var loaded = false
+    @State private var error: String?
+    private var filtered: [String] {
+        search.isEmpty ? branches : branches.filter { $0.localizedCaseInsensitiveContains(search) }
+    }
+    var body: some View {
+        List {
+            if let error { ErrorNotice(message: error) }
+            Section {
+                row(nil, label: defaultBranch.map { "\($0) (default)" } ?? "Default branch")
+            }
+            Section {
+                ForEach(filtered.filter { $0 != defaultBranch }, id: \.self) { row($0, label: $0) }
+                let typed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !typed.isEmpty && !branches.contains(typed) {
+                    Button { selection = typed; dismiss() } label: {
+                        Label("Use “\(typed)”", systemImage: "plus")
+                    }
+                }
+                if !loaded { ProgressView().frame(maxWidth: .infinity) }
+            }
+        }
+        .listRowBackground(Theme.elevated)
+        .scrollContentBackground(.hidden).background(Theme.background)
+        .navigationTitle("Branch").navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find or type a branch")
+        .textInputAutocapitalization(.never).autocorrectionDisabled()
+        .task {
+            do {
+                let result: JSONValue = try await store.call("branches", ["repo": .string(project.repo)])
+                branches = result["branches"].array.compactMap(\.string)
+                defaultBranch = result["defaultBranch"].string
+            } catch { self.error = error.localizedDescription }
+            loaded = true
+        }
+    }
+    private func row(_ value: String?, label: String) -> some View {
+        Button { selection = value ?? ""; dismiss() } label: {
+            HStack {
+                Text(label).font(.subheadline.monospaced()).foregroundStyle(.primary).lineLimit(1)
+                Spacer()
+                if selection == (value ?? "") { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Theme.elevated)
     }
 }
