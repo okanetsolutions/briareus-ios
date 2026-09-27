@@ -4,6 +4,7 @@ struct PullsView: View {
     let project: Project
     @EnvironmentObject private var store: AppStore
     @State private var pulls: [JSONValue] = []
+    @State private var stacks: JSONValue = .null
     @State private var loaded = false
     @State private var error: String?
     var body: some View {
@@ -11,12 +12,21 @@ struct PullsView: View {
             if let error { ErrorNotice(message: error) }
             ForEach(Array(pulls.enumerated()), id: \.offset) { _, pr in
                 if let number = pr["number"].double {
-                    NavigationLink { PullDetailView(project: project, number: Int(number)) } label: {
+                    let stack = StackPosition(pr["stack"], chain: stacks)
+                    let review = ReviewStatus(decision: pr["reviewDecision"].string, reviews: pr["reviewers"].array)
+                    NavigationLink { PullDetailView(project: project, number: Int(number), stack: stack) } label: {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Image(systemName: "arrow.triangle.pull").font(.subheadline).foregroundStyle(Theme.success)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(pr["title"].string ?? "Pull request").font(.body.weight(.medium)).lineLimit(2)
                                 Text("#\(Int(number)) · \(pr["branch"].string ?? "")").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                                if review != nil || stack != nil || pr["draft"].bool == true {
+                                    HStack(spacing: 6) {
+                                        if let stack { StackBadge(stack: stack) }
+                                        if let review { ReviewBadge(status: review) }
+                                        if pr["draft"].bool == true { Badge(text: "Draft", systemImage: "pencil", color: .secondary) }
+                                    }
+                                }
                             }
                         }.padding(.vertical, 3)
                     }
@@ -34,13 +44,14 @@ struct PullsView: View {
     private func load() async throws {
         let result: JSONValue = try await store.call("pulls", ["repo": .string(project.repo)])
         try Task.checkCancellation()
-        pulls = result["pulls"].array; loaded = true; error = nil
+        pulls = result["pulls"].array; stacks = result["stacks"]; loaded = true; error = nil
     }
 }
 
 struct PullDetailView: View {
     let project: Project
     let number: Int
+    var stack: StackPosition? = nil
     @EnvironmentObject private var store: AppStore
     @State private var pr: JSONValue = .null
     @State private var findings: [JSONValue] = []
@@ -61,6 +72,12 @@ struct PullDetailView: View {
             Section {
                 Text(pr["title"].string ?? "Pull request #\(number)").font(.title3.bold())
                 LabeledContent("State", value: pr["state"].string ?? "Loading…")
+                if pr != .null {
+                    LabeledContent("Review") {
+                        if let review = ReviewStatus(decision: nil, reviews: pr["reviews"].array) { ReviewBadge(status: review) }
+                        else { Text("No reviews yet") }
+                    }
+                }
                 LabeledContent("Branch", value: pr["headRef"].string ?? "—")
                 LabeledContent("Target", value: pr["baseRef"].string ?? "—")
                 if let additions = pr["additions"].double, let deletions = pr["deletions"].double {
@@ -77,6 +94,26 @@ struct PullDetailView: View {
                     Link("Open on GitHub", destination: url)
                 }
             }.listRowBackground(Theme.elevated)
+            if let stack {
+                Section {
+                    ForEach(stack.chain, id: \.number) { item in
+                        let row = HStack(spacing: 8) {
+                            Text("\(item.depth)").font(.caption.monospacedDigit().weight(.semibold)).foregroundStyle(.secondary).frame(minWidth: 16)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title).lineLimit(2).fontWeight(item.number == number ? .semibold : .regular)
+                                Text("#\(item.number)\(item.draft ? " · draft" : "")").font(.caption.monospaced()).foregroundStyle(.secondary)
+                            }
+                            if item.number == number { Spacer(); Text("This PR").font(.caption).foregroundStyle(Theme.accent) }
+                        }.padding(.leading, CGFloat(max(0, item.depth - 1)) * 10)
+                        if item.number == number { row }
+                        else { NavigationLink { PullDetailView(project: project, number: item.number, stack: stack) } label: { row } }
+                    }
+                } header: {
+                    Text("Stack · \(stack.label)")
+                } footer: {
+                    Text(stack.partial ? "Bottom first. Only part of this stack is visible; it may be longer." : "Bottom first. Merge from the bottom up.")
+                }.listRowBackground(Theme.elevated)
+            }
             Section("Checks") {
                 HStack(spacing: 14) {
                     Label("\(Int(pr["checks"]["passed"].double ?? 0))", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.success)
@@ -97,7 +134,10 @@ struct PullDetailView: View {
             }.listRowBackground(Theme.elevated)
             Section("Reviews") {
                 ForEach(Array(pr["reviews"].array.enumerated()), id: \.offset) { _, review in
-                    LabeledContent(review["user"].string ?? "Reviewer", value: review["state"].string ?? "")
+                    LabeledContent(review["user"].string ?? "Reviewer") {
+                        if let status = ReviewStatus(decision: nil, reviews: [review]) { ReviewBadge(status: status) }
+                        else { Text(review["state"].string ?? "") }
+                    }
                 }
                 if pr["reviews"].array.isEmpty {
                     Text("No reviews reported").foregroundStyle(.secondary)
@@ -170,6 +210,95 @@ struct PullDetailView: View {
             let result: SessionResult = try await store.call(action, ["repo": .string(project.repo), "prNumber": .number(Double(number)), "branch": .string(branch)])
             started = result.session
         } catch { writeError = error.localizedDescription; uncertain = true }
+    }
+}
+
+/// The overall verdict a pull request carries, read from GitHub's review decision
+/// and, since that is null on repos without required reviews, the reviewers themselves.
+enum ReviewStatus: Equatable {
+    case approved, changesRequested, feedback, requested
+    init?(decision: String?, reviews: [JSONValue]) {
+        let states = Set(reviews.compactMap { $0["state"].string?.lowercased() })
+        switch decision?.lowercased() {
+        case "approved": self = .approved
+        case "changes_requested": self = .changesRequested
+        default:
+            if states.contains("changes_requested") { self = .changesRequested }
+            else if states.contains("approved") { self = .approved }
+            else if states.contains("commented") { self = .feedback }
+            else if decision?.lowercased() == "review_required" || states.contains("requested") { self = .requested }
+            else { return nil }
+        }
+    }
+    var text: String {
+        switch self {
+        case .approved: return "Approved"
+        case .changesRequested: return "Changes requested"
+        case .feedback: return "Feedback given"
+        case .requested: return "Review requested"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .approved: return "checkmark.seal.fill"
+        case .changesRequested: return "xmark.octagon.fill"
+        case .feedback: return "text.bubble.fill"
+        case .requested: return "clock"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .approved: return Theme.success
+        case .changesRequested: return Theme.danger
+        case .feedback: return Theme.warning
+        case .requested: return .secondary
+        }
+    }
+}
+
+/// Where a pull request sits in a stack of branches built on each other, 1 being the bottom.
+struct StackPosition: Hashable {
+    struct Item: Hashable { let number: Int; let title: String; let depth: Int; let draft: Bool }
+    let position: Int
+    let total: Int
+    let partial: Bool
+    let chain: [Item]
+    var label: String { "\(position)/\(total)\(partial ? "+" : "")" }
+    init?(_ value: JSONValue, chain stacks: JSONValue) {
+        guard let position = value["position"].double, let total = value["total"].double else { return nil }
+        self.position = Int(position); self.total = Int(total); partial = value["partial"].bool == true
+        let id = value["id"].double.map { String(Int($0)) } ?? value["id"].string ?? ""
+        chain = stacks[id].array.compactMap { item in
+            guard let number = item["number"].double else { return nil }
+            return Item(number: Int(number), title: item["title"].string ?? "Pull request #\(Int(number))",
+                        depth: Int(item["depth"].double ?? 1), draft: item["draft"].bool == true)
+        }
+    }
+}
+
+struct Badge: View {
+    let text: String
+    let systemImage: String
+    let color: Color
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.caption2.weight(.semibold)).foregroundStyle(color)
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(color.opacity(0.12), in: Capsule())
+            .fixedSize()
+    }
+}
+
+struct ReviewBadge: View {
+    let status: ReviewStatus
+    var body: some View { Badge(text: status.text, systemImage: status.systemImage, color: status.color) }
+}
+
+struct StackBadge: View {
+    let stack: StackPosition
+    var body: some View {
+        Badge(text: "Stack \(stack.label)", systemImage: "square.stack.3d.up.fill", color: Theme.accent)
+            .accessibilityLabel("Stacked pull request \(stack.position) of \(stack.total)\(stack.partial ? " or more" : "")")
     }
 }
 
