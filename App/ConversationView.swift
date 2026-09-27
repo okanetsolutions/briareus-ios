@@ -46,6 +46,14 @@ struct ConversationView: View {
                             Task { await mutate("drop_message", extra: ["index": .number(Double(index))]) }
                         }
                     }
+                    if let triage = session.heldTriage, store.supports("complete_findings") {
+                        FindingsTriageCard(triage: triage, disabled: busy || uncertain) { verdicts, note in
+                            var extra: [String: JSONValue] = [:]
+                            if !verdicts.isEmpty { extra["verdicts"] = .array(verdicts) }
+                            if !note.isEmpty { extra["note"] = .string(note) }
+                            Task { await mutate("complete_findings", extra: extra) }
+                        }
+                    }
                     if session.isActive { WorkingIndicator(status: session.status) }
                     Color.clear.frame(height: 1).id("bottom")
                         .onAppear { atBottom = true }.onDisappear { atBottom = false }
@@ -113,6 +121,10 @@ struct ConversationView: View {
                             Button("Pull request #\(number)", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
                         }
                     }
+                    if store.supports("review_loop") && session.canReviewLoop {
+                        if session.reviewLoopOn { Button("Turn off review loop", systemImage: "repeat") { Task { await mutate("review_loop", extra: ["on": .bool(false)]) } } }
+                        else { Button("Turn on review loop", systemImage: "repeat") { pendingAction = "review_loop" } }
+                    }
                     if store.supports("rename") { Button("Rename", systemImage: "pencil") { title = session.displayTitle; renaming = true } }
                     if store.supports("cancel") && session.isActive { Button("Stop agent", systemImage: "stop.circle", role: .destructive) { pendingAction = "cancel" } }
                     if store.supports("close") && session.status != "closed" { Button("Close conversation", systemImage: "archivebox") { pendingAction = "close" } }
@@ -129,7 +141,7 @@ struct ConversationView: View {
         .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: refresh) { error = $0.localizedDescription; loaded = true }
         .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Confirm", role: pendingAction == "delete" || pendingAction == "cancel" ? .destructive : nil) {
-                if let action = pendingAction { Task { await mutate(action) } }
+                if let action = pendingAction { Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) } }
             }
         }
         .alert("Rename conversation", isPresented: $renaming) {
@@ -142,6 +154,7 @@ struct ConversationView: View {
     private var subtitle: String {
         var parts = [session.status.capitalized]
         if let model = session.model, !model.isEmpty { parts.append(model) }
+        if session.reviewLoopOn { parts.append("Review loop") }
         if let cost = session.usage?["costUsd"].double { parts.append(cost.formatted(.currency(code: "USD").precision(.fractionLength(2)))) }
         return parts.joined(separator: " · ")
     }
@@ -150,6 +163,7 @@ struct ConversationView: View {
         case "delete": return "Permanently delete this conversation and its transcript?"
         case "cancel": return "Stop the running agent?"
         case "close": return "Close this conversation?"
+        case "review_loop": return "Turn on the review loop? Each push gets a paid review round, and may start one now."
         default: return "Reopen this conversation?"
         }
     }

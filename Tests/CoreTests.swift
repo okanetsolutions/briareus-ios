@@ -142,6 +142,13 @@ final class CoreTests: XCTestCase {
         transcript.append([]); XCTAssertEqual(transcript.cursor, 3)
         XCTAssertEqual(Transcript().cursor, 0)
     }
+    func testSessionReadsReviewLoopAndHeldTriage() throws {
+        let data = Data(#"[{"id":"a","status":"idle","reviewLoop":{"triage":{"round":2,"findings":[{"key":"k1"}]}}},{"id":"b","status":"idle","reviewBranch":"feature","reviewTriage":{"mine":false,"findings":[{"key":"k2"}]},"reviewLoop":null},{"id":"c","status":"closed","local":false}]"#.utf8)
+        let sessions = try JSONDecoder().decode([Session].self, from: data)
+        XCTAssertEqual(sessions.map(\.reviewLoopOn), [true, false, false])
+        XCTAssertEqual(sessions.map(\.canReviewLoop), [true, false, false])
+        XCTAssertEqual(sessions.map { $0.heldTriage?["findings"].array.first?["key"].string }, ["k1", "k2", nil])
+    }
     func testSetupEventsAreHidden() throws {
         let data = Data(#"[{"seq":1,"kind":"setup","text":"Installing dependencies"},{"seq":2,"kind":"text","text":"Done"}]"#.utf8)
         let events = try JSONDecoder().decode([Event].self, from: data)
