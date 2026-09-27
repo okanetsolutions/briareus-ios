@@ -27,29 +27,39 @@ struct ProjectsView: View {
     @State private var projects: [Project] = []
     @State private var loaded = false
     @State private var error: String?
+    @State private var showingConnection = false
     var body: some View {
         NavigationStack {
             List {
                 if !store.canManage {
-                    Label("Read-only access", systemImage: "eye").foregroundStyle(.secondary)
+                    Label("Read-only access", systemImage: "eye").font(.subheadline).foregroundStyle(.secondary)
                 }
                 if let error { ErrorNotice(message: error) }
                 ForEach(projects) { project in
                     NavigationLink(value: project) {
-                        Label {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(project.title).font(.headline)
+                        HStack(spacing: 12) {
+                            Monogram(text: project.title)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(project.title).font(.body.weight(.medium))
                                 if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
-                            }.padding(.vertical, 6)
-                        } icon: { Image(systemName: "folder.fill").foregroundStyle(.indigo) }
+                            }
+                        }.padding(.vertical, 4)
                     }
+                    .listRowBackground(Theme.elevated)
                 }
                 if loaded && projects.isEmpty && error == nil {
                     ContentUnavailableView("No projects", systemImage: "folder", description: Text("Grant this device access to a project in web Settings."))
+                        .listRowBackground(Color.clear)
                 }
-                if !loaded { ProgressView("Loading projects…") }
+                if !loaded { ProgressView("Loading projects…").frame(maxWidth: .infinity).listRowBackground(Color.clear) }
             }
+            .scrollContentBackground(.hidden).background(Theme.background)
             .navigationTitle("Projects")
+            .toolbar {
+                Button { showingConnection = true } label: { Image(systemName: "network") }
+                    .accessibilityLabel("Connection")
+            }
+            .sheet(isPresented: $showingConnection) { SettingsView() }
             .navigationDestination(for: Project.self) { ProjectView(project: $0) }
             .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
             .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
@@ -77,29 +87,32 @@ struct ProjectView: View {
     }
     var body: some View {
         List {
-            Section {
-                if store.supports("pulls") {
+            if store.supports("pulls") {
+                Section {
                     NavigationLink { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
-                }
-                if store.supports("usage") {
-                    NavigationLink { UsageView(project: project) } label: { Label("Usage", systemImage: "chart.bar") }
-                }
+                }.listRowBackground(Theme.elevated)
             }
-            Section("Conversations") {
-                Toggle("Show closed", isOn: $showClosed)
-                if let error { ErrorNotice(message: error) }
-                ForEach(filtered) { session in
-                    NavigationLink { ConversationView(initial: session) } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(session.displayTitle).font(.headline).lineLimit(2)
-                            HStack { StatusLabel(status: session.status); Spacer(); Text(session.model ?? "").font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                        }.padding(.vertical, 4)
-                    }
-                }
-                if loaded && filtered.isEmpty { Text("No conversations here yet.").foregroundStyle(.secondary) }
-                if !loaded { ProgressView() }
+            if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.elevated) }
+            let active = filtered.filter(\.isActive)
+            if !active.isEmpty {
+                Section("Active") { ForEach(active) { row($0) } }.listRowBackground(Theme.elevated)
             }
+            Section {
+                ForEach(filtered.filter { !$0.isActive }) { row($0) }
+                if loaded && filtered.isEmpty {
+                    Text(search.isEmpty ? "No conversations here yet." : "No matching conversations.").foregroundStyle(.secondary)
+                }
+                if !loaded { ProgressView().frame(maxWidth: .infinity) }
+            } header: {
+                HStack {
+                    Text(active.isEmpty ? "Conversations" : "Recent")
+                    Spacer()
+                    Toggle("Show closed", isOn: $showClosed).toggleStyle(.button).buttonStyle(.borderless).controlSize(.mini)
+                        .font(.caption.weight(.medium)).textCase(nil)
+                }
+            }.listRowBackground(Theme.elevated)
         }
+        .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(project.title).navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Find a conversation")
         .toolbar {
@@ -113,6 +126,20 @@ struct ProjectView: View {
         .navigationDestination(item: $created) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
+    }
+    private func row(_ session: Session) -> some View {
+        NavigationLink { ConversationView(initial: session) } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                StatusDot(status: session.status).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.displayTitle).font(.body.weight(.medium)).lineLimit(2)
+                        .foregroundStyle(session.status == "closed" ? .secondary : .primary)
+                    Text([session.status.capitalized, session.model].compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }.joined(separator: " · "))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }.padding(.vertical, 3)
+        }
+        .accessibilityElement(children: .combine)
     }
     private func load() async throws {
         let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
@@ -131,32 +158,64 @@ struct NewConversationView: View {
     @State private var busy = false
     @State private var uncertain = false
     @State private var error: String?
+    @FocusState private var promptFocused: Bool
+    private var canStart: Bool { !busy && !uncertain && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Task for \(project.title)") {
-                    TextField("What would you like to work on?", text: $prompt, axis: .vertical).lineLimit(5...15)
-                    TextField("Branch (optional)", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled()
-                }
-                Section {
-                    Text("Starting a conversation runs a paid agent using this project’s configured provider and model.")
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Monogram(text: project.title, size: 28)
+                        Text(project.title).font(.subheadline.weight(.medium))
+                    }
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("What would you like to work on?", text: $prompt, axis: .vertical)
+                            .lineLimit(6...16).focused($promptFocused)
+                        Divider().overlay(Theme.border)
+                        if store.supports("branches") {
+                            NavigationLink { BranchPicker(project: project, selection: $branch) } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
+                                    Text(branch.isEmpty ? "Default branch" : branch).font(.subheadline.monospaced())
+                                        .foregroundStyle(branch.isEmpty ? .secondary : .primary).lineLimit(1)
+                                    Spacer()
+                                    Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                                }.contentShape(Rectangle())
+                            }.buttonStyle(.plain).accessibilityLabel("Branch: \(branch.isEmpty ? "default" : branch)")
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.triangle.branch").font(.caption).foregroundStyle(.secondary)
+                                TextField("Branch (optional)", text: $branch).font(.subheadline.monospaced())
+                                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                            }
+                        }
+                    }
+                    .padding(14)
+                    .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+                    Label("Starting a conversation runs a paid agent using this project’s configured provider and model.", systemImage: "sparkle")
                         .font(.footnote).foregroundStyle(.secondary)
-                }
-                if let error { Section { ErrorNotice(message: error) } }
-                if uncertain {
-                    Section {
-                        Text("The request may have completed. Close this sheet and refresh the conversations before starting again.")
-                        Button("Return to conversations") { dismiss() }
+                    if let error { ErrorNotice(message: error) }
+                    if uncertain {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("The request may have completed. Close this sheet and refresh the conversations before starting again.").font(.footnote)
+                            Button("Return to conversations") { dismiss() }.buttonStyle(.bordered)
+                        }
                     }
+                }.padding(16)
+            }
+            .background(Theme.background)
+            .navigationTitle("New conversation").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await start() } } label: {
+                        if busy { ProgressView() } else { Text("Start").bold() }
+                    }.disabled(!canStart)
                 }
-            }.navigationTitle("New conversation").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(busy ? "Starting…" : "Start") { Task { await start() } }
-                            .disabled(busy || uncertain || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }.interactiveDismissDisabled(busy)
+            }
+            .interactiveDismissDisabled(busy)
+            .onAppear { promptFocused = true }
         }
     }
     private func start() async {
@@ -169,5 +228,62 @@ struct NewConversationView: View {
             let result: SessionResult = try await store.call("start_session", args)
             dismiss(); started(result.session)
         } catch { self.error = error.localizedDescription; uncertain = true }
+    }
+}
+
+struct BranchPicker: View {
+    let project: Project
+    @Binding var selection: String
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var branches: [String] = []
+    @State private var defaultBranch: String?
+    @State private var search = ""
+    @State private var loaded = false
+    @State private var error: String?
+    private var filtered: [String] {
+        search.isEmpty ? branches : branches.filter { $0.localizedCaseInsensitiveContains(search) }
+    }
+    var body: some View {
+        List {
+            if let error { ErrorNotice(message: error) }
+            Section {
+                row(nil, label: defaultBranch.map { "\($0) (default)" } ?? "Default branch")
+            }
+            Section {
+                ForEach(filtered.filter { $0 != defaultBranch }, id: \.self) { row($0, label: $0) }
+                let typed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !typed.isEmpty && !branches.contains(typed) {
+                    Button { selection = typed; dismiss() } label: {
+                        Label("Use “\(typed)”", systemImage: "plus")
+                    }
+                }
+                if !loaded { ProgressView().frame(maxWidth: .infinity) }
+            }
+        }
+        .listRowBackground(Theme.elevated)
+        .scrollContentBackground(.hidden).background(Theme.background)
+        .navigationTitle("Branch").navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find or type a branch")
+        .textInputAutocapitalization(.never).autocorrectionDisabled()
+        .task {
+            do {
+                let result: JSONValue = try await store.call("branches", ["repo": .string(project.repo)])
+                branches = result["branches"].array.compactMap(\.string)
+                defaultBranch = result["defaultBranch"].string
+            } catch { self.error = error.localizedDescription }
+            loaded = true
+        }
+    }
+    private func row(_ value: String?, label: String) -> some View {
+        Button { selection = value ?? ""; dismiss() } label: {
+            HStack {
+                Text(label).font(.subheadline.monospaced()).foregroundStyle(.primary).lineLimit(1)
+                Spacer()
+                if selection == (value ?? "") { Image(systemName: "checkmark").foregroundStyle(Theme.accent) }
+            }.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Theme.elevated)
     }
 }

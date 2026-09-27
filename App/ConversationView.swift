@@ -6,6 +6,7 @@ struct ConversationView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var snapshot: Session?
     @State private var transcript = Transcript()
+    @State private var loaded = false
     @State private var message = ""
     @State private var busy = false
     @State private var loading = false
@@ -15,65 +16,101 @@ struct ConversationView: View {
     @State private var pendingAction: String?
     @State private var renaming = false
     @State private var title = ""
+    @State private var atBottom = true
+    @FocusState private var composerFocused: Bool
     var session: Session { snapshot ?? initial }
+    private var canMessage: Bool { store.supports("message") && session.status != "closed" }
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        StatusLabel(status: session.status)
-                        Spacer()
-                        if let cost = session.usage?["costUsd"].double {
-                            Text(cost, format: .currency(code: "USD").precision(.fractionLength(2...4))).font(.caption).foregroundStyle(.secondary)
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    if let error { ErrorNotice(message: error).padding(12).background(Theme.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12)) }
+                    if let writeError { uncertainNotice(writeError) }
+                    if transcript.events.isEmpty && error == nil {
+                        VStack(spacing: 12) {
+                            if loaded { Image(systemName: "text.bubble").font(.title).foregroundStyle(.tertiary) } else { ProgressView() }
+                            Text(loaded ? "No messages yet" : "Waiting for the conversation…").font(.callout).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity).padding(.top, 80)
+                    }
+                    ForEach(TranscriptRow.group(transcript.events.filter(\.visible))) { row in
+                        switch row {
+                        case .event(let event):
+                            EventView(event: event, canAnswer: canMessage) { message = $0; composerFocused = true }
+                        case .tools(let events):
+                            VStack(alignment: .leading, spacing: 2) { ForEach(events) { ToolRow(event: $0) } }
                         }
                     }
-                    if let error { ErrorNotice(message: error) }
-                    if let writeError {
-                        ErrorNotice(message: writeError)
-                        Text("The action may have completed. Check the latest conversation before trying again.").font(.caption)
-                        Button("Refresh and check outcome") {
-                            Task {
-                                do { try await refresh(); uncertain = false; self.writeError = nil }
-                                catch { self.error = error.localizedDescription }
-                            }
-                        }.disabled(loading || busy)
-                    }
-                    if transcript.events.isEmpty && error == nil { Text("Waiting for the conversation…").foregroundStyle(.secondary) }
-                    ForEach(transcript.events.filter(\.visible)) { event in
-                        EventView(event: event, canAnswer: store.supports("message") && session.status != "closed") { message = $0 }
-                    }
                     ForEach(Array((session.queued ?? []).enumerated()), id: \.offset) { index, queued in
-                        HStack {
-                            Label(queued["text"].string ?? "Message", systemImage: "clock").font(.callout)
-                            Spacer()
-                            if store.supports("drop_message") {
-                                Button("Remove", role: .destructive) {
-                                    Task { await mutate("drop_message", extra: ["index": .number(Double(index))]) }
-                                }.disabled(busy || uncertain)
-                            }
-                        }.padding().background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                        QueuedBubble(text: queued["text"].string ?? "Message", removable: store.supports("drop_message") && !busy && !uncertain) {
+                            Task { await mutate("drop_message", extra: ["index": .number(Double(index))]) }
+                        }
                     }
+                    if session.isActive { WorkingIndicator(status: session.status) }
                     Color.clear.frame(height: 1).id("bottom")
-                }.padding()
+                        .onAppear { atBottom = true }.onDisappear { atBottom = false }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.background)
             .refreshable { do { try await refresh() } catch { self.error = error.localizedDescription } }
-            .safeAreaInset(edge: .bottom) { composer }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } } label: { Image(systemName: "arrow.down.to.line") }
-                        .accessibilityLabel("Latest message")
-                    Menu {
-                        if store.supports("rename") { Button("Rename", systemImage: "pencil") { title = session.displayTitle; renaming = true } }
-                        if store.supports("cancel") && session.isActive { Button("Stop agent", systemImage: "stop.circle", role: .destructive) { pendingAction = "cancel" } }
-                        if store.supports("close") && session.status != "closed" { Button("Close conversation", systemImage: "archivebox") { pendingAction = "close" } }
-                        if store.supports("reopen") && session.status == "closed" { Button("Reopen", systemImage: "arrow.uturn.backward") { pendingAction = "reopen" } }
-                        if store.supports("delete") { Button("Delete conversation", systemImage: "trash", role: .destructive) { pendingAction = "delete" } }
-                    } label: { Image(systemName: "ellipsis.circle") }.disabled(busy || uncertain)
+            .onChange(of: transcript.events.count) { old, _ in
+                // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
+                if old == 0 {
+                    Task { @MainActor in
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                        // Row heights are estimated until laid out; settle once more after the first pass.
+                        try? await Task.sleep(for: .milliseconds(250))
+                        proxy.scrollTo("bottom", anchor: .bottom)
+                    }
+                }
+                else if atBottom { scrollToBottom(proxy) }
+            }
+            .onChange(of: session.isActive) { if atBottom { scrollToBottom(proxy) } }
+            .overlay(alignment: .bottom) {
+                if !atBottom && !transcript.events.isEmpty {
+                    Button { scrollToBottom(proxy) } label: {
+                        Image(systemName: "arrow.down").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                            .frame(width: 36, height: 36)
+                            .background(Theme.elevated, in: Circle())
+                            .overlay(Circle().stroke(Theme.border, lineWidth: 0.5))
+                            .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+                    }
+                    .accessibilityLabel("Latest message")
+                    .padding(.bottom, 10).transition(.scale.combined(with: .opacity))
                 }
             }
+            .animation(.snappy, value: atBottom)
+            .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         }
         .navigationTitle(session.displayTitle).navigationBarTitleDisplayMode(.inline)
-        .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: refresh) { error = $0.localizedDescription }
+        .toolbarBackground(Theme.background, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(session.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    HStack(spacing: 5) {
+                        StatusDot(status: session.status)
+                        Text(subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    if let cost = session.usage?["costUsd"].double {
+                        Text("Spent \(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4))))")
+                    }
+                    if store.supports("rename") { Button("Rename", systemImage: "pencil") { title = session.displayTitle; renaming = true } }
+                    if store.supports("cancel") && session.isActive { Button("Stop agent", systemImage: "stop.circle", role: .destructive) { pendingAction = "cancel" } }
+                    if store.supports("close") && session.status != "closed" { Button("Close conversation", systemImage: "archivebox") { pendingAction = "close" } }
+                    if store.supports("reopen") && session.status == "closed" { Button("Reopen", systemImage: "arrow.uturn.backward") { pendingAction = "reopen" } }
+                    if store.supports("delete") { Button("Delete conversation", systemImage: "trash", role: .destructive) { pendingAction = "delete" } }
+                } label: { Image(systemName: "ellipsis") }
+                    .disabled(busy || uncertain).accessibilityLabel("Conversation actions")
+            }
+        }
+        .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: refresh) { error = $0.localizedDescription; loaded = true }
         .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Confirm", role: pendingAction == "delete" || pendingAction == "cancel" ? .destructive : nil) {
                 if let action = pendingAction { Task { await mutate(action) } }
@@ -86,6 +123,12 @@ struct ConversationView: View {
             Button("Cancel", role: .cancel) {}
         }
     }
+    private var subtitle: String {
+        var parts = [session.status.capitalized]
+        if let model = session.model, !model.isEmpty { parts.append(model) }
+        if let cost = session.usage?["costUsd"].double { parts.append(cost.formatted(.currency(code: "USD").precision(.fractionLength(2)))) }
+        return parts.joined(separator: " · ")
+    }
     private var actionTitle: String {
         switch pendingAction {
         case "delete": return "Permanently delete this conversation and its transcript?"
@@ -94,29 +137,84 @@ struct ConversationView: View {
         default: return "Reopen this conversation?"
         }
     }
-    @ViewBuilder private var composer: some View {
-        VStack(spacing: 8) {
-            if store.supports("message") && session.status != "closed" {
-                HStack(alignment: .bottom) {
-                    TextField(session.isActive ? "Send a follow-up…" : "Message your agent…", text: $message, axis: .vertical)
-                        .lineLimit(1...6).textFieldStyle(.roundedBorder).accessibilityIdentifier("messageInput")
-                    Button {
-                        Task { await mutate("message", extra: ["text": .string(message)]) }
-                    } label: { Image(systemName: busy ? "hourglass" : "arrow.up.circle.fill").font(.title) }
-                        .disabled(busy || uncertain || message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityLabel("Send message")
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
+    }
+    private func uncertainNotice(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ErrorNotice(message: message)
+            Text("The action may have completed. Check the latest conversation before trying again.").font(.caption).foregroundStyle(.secondary)
+            Button("Refresh and check outcome") {
+                Task {
+                    do { try await refresh(); uncertain = false; self.writeError = nil }
+                    catch { self.error = error.localizedDescription }
                 }
-                Text(session.isActive ? (session.liveInput == true ? "Sent into the running turn" : "Queued for the next turn") : "Sending starts a paid agent turn")
-                    .font(.caption2).foregroundStyle(.secondary)
-            } else { Text(store.canManage ? "This conversation is closed" : "Read-only access").font(.caption).foregroundStyle(.secondary) }
-        }.padding().background(.bar)
+            }.buttonStyle(.bordered).controlSize(.small).disabled(loading || busy)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+    }
+    private var trimmedMessage: String { message.trimmingCharacters(in: .whitespacesAndNewlines) }
+    @ViewBuilder private var composer: some View {
+        VStack(spacing: 0) {
+            if canMessage {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField(session.isActive ? "Send a follow-up…" : "Reply to your agent…", text: $message, axis: .vertical)
+                        .lineLimit(1...8).focused($composerFocused).accessibilityIdentifier("messageInput")
+                    HStack(spacing: 10) {
+                        Label(composerHint.text, systemImage: composerHint.icon)
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                        if session.isActive && store.supports("cancel") && trimmedMessage.isEmpty {
+                            Button { pendingAction = "cancel" } label: {
+                                Image(systemName: "stop.fill").font(.footnote).foregroundStyle(.primary)
+                                    .frame(width: 32, height: 32).background(Theme.bubble, in: Circle())
+                            }.disabled(busy || uncertain).accessibilityLabel("Stop agent")
+                        } else {
+                            let enabled = !busy && !uncertain && !trimmedMessage.isEmpty
+                            Button {
+                                Task { await mutate("message", extra: ["text": .string(message)]) }
+                            } label: {
+                                Group {
+                                    if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.up").font(.subheadline.weight(.bold)) }
+                                }
+                                .foregroundStyle(.white).frame(width: 32, height: 32)
+                                .background(enabled || busy ? Theme.accent : Color.secondary.opacity(0.35), in: Circle())
+                            }.disabled(!enabled).accessibilityLabel("Send message")
+                        }
+                    }
+                }
+                .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
+                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.06), radius: 10, y: 2)
+                .onTapGesture { composerFocused = true }
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: store.canManage ? "archivebox" : "eye").foregroundStyle(.secondary)
+                    Text(store.canManage ? "This conversation is closed" : "Read-only access").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer()
+                    if store.supports("reopen") && session.status == "closed" {
+                        Button("Reopen") { pendingAction = "reopen" }.buttonStyle(.borderedProminent).controlSize(.small).disabled(busy || uncertain)
+                    }
+                }
+                .padding(14)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+        .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+        .background(Theme.background)
+    }
+    private var composerHint: (text: String, icon: String) {
+        guard session.isActive else { return ("Sending starts a paid agent turn", "sparkle") }
+        return session.liveInput == true ? ("Sent into the running turn", "bolt.fill") : ("Queued for the next turn", "clock")
     }
     private func refresh() async throws {
         guard !loading else { return }
         loading = true; defer { loading = false }
         let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(transcript.cursor))])
         try Task.checkCancellation()
-        snapshot = result.session; transcript.append(result.events ?? []); error = nil
+        snapshot = result.session; transcript.append(result.events ?? []); error = nil; loaded = true
     }
     private func mutate(_ name: String, extra: [String: JSONValue] = [:]) async {
         guard !busy && !uncertain else { return }
@@ -124,7 +222,7 @@ struct ConversationView: View {
         defer { busy = false }
         do {
             let _: JSONValue = try await store.call(name, ["sessionId": .string(initial.id)].merging(extra) { _, new in new })
-            if name == "message", message == extra["text"]?.string { message = "" }
+            if name == "message", message == extra["text"]?.string { message = ""; atBottom = true }
             if name == "delete" { dismiss(); return }
         } catch {
             writeError = error.localizedDescription; uncertain = true; return
@@ -133,46 +231,243 @@ struct ConversationView: View {
     }
 }
 
+/// Consecutive tool activity collapses into one tight cluster, like a terminal log.
+enum TranscriptRow: Identifiable {
+    case event(Event), tools([Event])
+    static let toolKinds: Set<String> = ["tool", "tool_error", "cmd", "git", "setup"]
+    var id: Int {
+        switch self {
+        case .event(let event): return event.seq
+        case .tools(let events): return events.first?.seq ?? 0
+        }
+    }
+    static func group(_ events: [Event]) -> [TranscriptRow] {
+        var rows: [TranscriptRow] = []
+        for event in events {
+            if toolKinds.contains(event.kind) {
+                if case .tools(let existing)? = rows.last { rows[rows.count - 1] = .tools(existing + [event]) }
+                else { rows.append(.tools([event])) }
+            } else { rows.append(.event(event)) }
+        }
+        return rows
+    }
+}
+
 struct EventView: View {
     let event: Event
     let canAnswer: Bool
     let answer: (String) -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            switch event.kind {
-            case "user":
-                Label("You", systemImage: "person.fill").font(.caption.bold()).foregroundStyle(.secondary)
-                Text(event.text ?? "").textSelection(.enabled)
-                ForEach(Array((event.attachments ?? []).enumerated()), id: \.offset) { _, attachment in
-                    Label(attachment["name"].string ?? "Attachment", systemImage: "paperclip").font(.caption)
-                }
-            case "text":
-                Text(.init(event.text ?? "")).textSelection(.enabled)
-            case "ask":
-                Label("Your input is needed", systemImage: "questionmark.bubble").font(.caption.bold()).foregroundStyle(.indigo)
-                Text(event.question ?? event.text ?? "").textSelection(.enabled)
-                if canAnswer {
-                    ForEach(Array((event.options ?? []).enumerated()), id: \.offset) { _, option in
-                        if let label = option["label"].string { Button(label) { answer(label) }.buttonStyle(.bordered) }
+        switch event.kind {
+        case "user":
+            HStack {
+                Spacer(minLength: 48)
+                VStack(alignment: .trailing, spacing: 6) {
+                    Text(event.text ?? "").textSelection(.enabled)
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    ForEach(Array((event.attachments ?? []).enumerated()), id: \.offset) { _, attachment in
+                        Label(attachment["name"].string ?? "Attachment", systemImage: "paperclip")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Theme.surface, in: Capsule())
                     }
-                    Text("Choose an answer to put it in the composer, or write your own.").font(.caption).foregroundStyle(.secondary)
                 }
-            case "tool", "tool_error", "cmd", "git", "setup":
-                DisclosureGroup(event.name ?? event.kind.capitalized) {
-                    Text(event.text ?? "No additional details").font(.caption.monospaced()).textSelection(.enabled)
-                }.foregroundStyle(event.kind == "tool_error" ? Color.red : Color.secondary)
-            case "result":
-                HStack {
-                    Label(event.isError == true ? "Turn failed" : "Turn complete", systemImage: event.isError == true ? "exclamationmark.circle" : "checkmark.circle")
-                    Spacer()
-                    if let cost = event.costUsd { Text(cost, format: .currency(code: "USD").precision(.fractionLength(4))) }
-                }.font(.caption).foregroundStyle(.secondary)
-            default:
-                if let text = event.text { Text(text).font(.callout).foregroundStyle(event.kind == "stderr" ? Color.red : Color.secondary).textSelection(.enabled) }
+            }
+            .accessibilityElement(children: .combine).accessibilityLabel("You: \(event.text ?? "")")
+        case "text":
+            MarkdownText(event.text ?? "")
+        case "ask":
+            AskCard(event: event, canAnswer: canAnswer, answer: answer)
+        case "result":
+            TurnFooter(event: event)
+        default:
+            if let text = event.text {
+                if event.kind == "stderr" || event.kind == "claude" {
+                    Text(text).font(.caption.monospaced())
+                        .foregroundStyle(event.kind == "stderr" ? Theme.danger : Color.secondary)
+                        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    // Dashboard notices (review loops, setup, interruptions).
+                    Label { Text(.init(text)).textSelection(.enabled) } icon: { Image(systemName: "info.circle") }
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
+    }
+}
+
+struct ToolRow: View {
+    let event: Event
+    @State private var expanded = false
+    private var isError: Bool { event.kind == "tool_error" }
+    private var details: String? { event.detail.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } }
+    private var summary: String {
+        details?.split(separator: "\n").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+    }
+    private var title: String {
+        if let name = event.name, !name.isEmpty { return name }
+        switch event.kind {
+        case "cmd": return "Command"
+        case "git": return "Git"
+        case "setup": return "Setup"
+        case "tool_error": return "Tool error"
+        default: return "Tool"
+        }
+    }
+    private var icon: String {
+        if isError { return "exclamationmark.triangle.fill" }
+        switch event.kind {
+        case "cmd": return "terminal"
+        case "git": return "arrow.triangle.branch"
+        case "setup": return "gearshape"
+        default: break
+        }
+        switch (event.name ?? "").lowercased() {
+        case let n where n.contains("bash") || n.contains("shell") || n.contains("exec"): return "terminal"
+        case let n where n.contains("read") || n.contains("view"): return "doc.text"
+        case let n where n.contains("edit") || n.contains("write") || n.contains("patch"): return "pencil"
+        case let n where n.contains("grep") || n.contains("glob") || n.contains("search") || n.contains("find"): return "magnifyingglass"
+        case let n where n.contains("web") || n.contains("fetch"): return "globe"
+        case let n where n.contains("todo") || n.contains("plan"): return "checklist"
+        case let n where n.contains("task") || n.contains("agent"): return "person.2"
+        default: return "wrench.and.screwdriver"
+        }
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                if details != nil { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon).font(.caption2.weight(.semibold))
+                        .foregroundStyle(isError ? Theme.danger : .secondary)
+                        .frame(width: 22, height: 22)
+                        .background((isError ? Theme.danger : Color.secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(isError ? Theme.danger : .primary)
+                    Text(summary).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    if details != nil {
+                        Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(expanded ? 90 : 0))
+                    }
+                }
+                .padding(.vertical, 5).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(title): \(summary)").accessibilityHint(details == nil ? "" : expanded ? "Collapse details" : "Show details")
+            if expanded, let details {
+                ScrollView {
+                    Text(details).font(.caption.monospaced()).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                }
+                .frame(maxHeight: 280).fixedSize(horizontal: false, vertical: true)
+                .background(Theme.code, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+                .padding(.leading, 30)
+            }
+        }
+    }
+}
+
+struct AskCard: View {
+    let event: Event
+    let canAnswer: Bool
+    let answer: (String) -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Your input is needed", systemImage: "questionmark.bubble.fill")
+                .font(.caption.weight(.semibold)).foregroundStyle(Theme.accent)
+            MarkdownText(event.question ?? event.text ?? "")
+            if canAnswer {
+                let options = (event.options ?? []).compactMap { $0["label"].string }
+                if !options.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(options, id: \.self) { label in
+                            Button { answer(label) } label: {
+                                HStack {
+                                    Text(label).multilineTextAlignment(.leading)
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "arrow.turn.down.left").font(.caption).foregroundStyle(.secondary)
+                                }
+                                .padding(.horizontal, 12).padding(.vertical, 10)
+                                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                Text("Choose an answer to put it in the composer, or write your own.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.accent.opacity(0.4), lineWidth: 1))
+    }
+}
+
+struct TurnFooter: View {
+    let event: Event
+    var body: some View {
+        let failed = event.isError == true
+        HStack(spacing: 6) {
+            Image(systemName: failed ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(failed ? Theme.danger : Theme.success)
+            Text(failed ? "Turn failed" : "Turn complete")
+            if let ms = event.durationMs { Text("·"); Text(Duration.milliseconds(ms).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))) }
+            if let cost = event.costUsd { Text("·"); Text(cost, format: .currency(code: "USD").precision(.fractionLength(2...4))) }
+        }
+        .font(.caption).foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(event.kind == "user" || event.kind == "ask" ? 14 : 0)
-        .background(event.kind == "user" || event.kind == "ask" ? Color.indigo.opacity(0.08) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct QueuedBubble: View {
+    let text: String
+    let removable: Bool
+    let remove: () -> Void
+    var body: some View {
+        HStack {
+            Spacer(minLength: 48)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(text).foregroundStyle(.secondary)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                HStack(spacing: 8) {
+                    Label("Queued", systemImage: "clock").font(.caption2).foregroundStyle(.secondary)
+                    if removable {
+                        Button("Remove", role: .destructive, action: remove).font(.caption2.weight(.semibold))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Claude-style spinner: a cycling asterisk glyph and a rotating verb while the agent works.
+struct WorkingIndicator: View {
+    let status: String
+    private static let glyphs = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"]
+    private static let verbs = ["Working", "Thinking", "Reasoning", "Tinkering", "Crafting", "Pondering"]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: reduceMotion ? 3 : 0.12)) { context in
+            let tick = Int(context.date.timeIntervalSinceReferenceDate / 0.12)
+            HStack(spacing: 8) {
+                Text(reduceMotion ? "✻" : Self.glyphs[tick % Self.glyphs.count])
+                    .font(.body.weight(.semibold)).foregroundStyle(Theme.accent).frame(width: 16)
+                Text(label(tick: tick) + "…").font(.subheadline).foregroundStyle(Theme.accent)
+            }
+        }
+        .accessibilityElement().accessibilityLabel(status == "running" ? "Agent is working" : "Agent is \(status)")
+    }
+    private func label(tick: Int) -> String {
+        switch status {
+        case "queued": return "Queued"
+        case "preparing", "starting": return "Starting up"
+        default: return Self.verbs[(tick / 25) % Self.verbs.count]
+        }
     }
 }

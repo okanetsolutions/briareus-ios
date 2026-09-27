@@ -152,6 +152,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(APIClient.retryAfter("Thu, 01 Jan 1970 00:02:00 GMT", now: now), 120)
         XCTAssertNil(APIClient.retryAfter("nonsense")); XCTAssertEqual(APIClient.retryAfter("-10"), 0)
     }
+    func testMarkdownBlocks() {
+        let source = "## Plan\nFirst **line**\nsame paragraph\n\n- one\n  wrapped\n2. two\n\n```swift\nlet x = 1\n\n```\n> quoted\n---\ntail"
+        XCTAssertEqual(MarkdownBlock.parse(source), [
+            .heading(level: 2, text: "Plan"), .paragraph("First **line**\nsame paragraph"),
+            .bullet(indent: 0, marker: "•", text: "one\nwrapped"), .bullet(indent: 0, marker: "2.", text: "two"),
+            .code(language: "swift", text: "let x = 1\n"), .quote("quoted"), .rule, .paragraph("tail")
+        ])
+        XCTAssertEqual(MarkdownBlock.parse("```\nunterminated"), [.code(language: nil, text: "unterminated")])
+        XCTAssertEqual(MarkdownBlock.parse("#hashtag"), [.paragraph("#hashtag")])
+    }
     private func body(of request: URLRequest) -> Data {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return Data() }
