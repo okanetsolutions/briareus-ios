@@ -83,12 +83,24 @@ struct PullDetailView: View {
                 if let additions = pr["additions"].double, let deletions = pr["deletions"].double {
                     HStack { Text("+\(Int(additions))").foregroundStyle(Theme.success); Text("−\(Int(deletions))").foregroundStyle(Theme.danger) }.font(.callout.monospaced())
                 }
-                if let url = safeWebURL(pr["url"].string) {
-                    Link(destination: url.appendingPathComponent("files")) {
-                        HStack {
-                            Label(pr["changedFiles"].double.map { "\(Int($0)) files changed" } ?? "Files changed", systemImage: "doc.on.doc")
+                let filesLabel = Label(pr["changedFiles"].double.map { "\(Int($0)) files changed" } ?? "Files changed", systemImage: "doc.on.doc")
+                if store.supports("pull_files") {
+                    NavigationLink { PullFilesView(project: project, number: number) } label: {
+                        Label("Description and changes", systemImage: "doc.text.magnifyingglass")
+                        if let count = pr["changedFiles"].double {
                             Spacer()
-                            Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.secondary)
+                            Text("\(Int(count)) files").font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if let url = safeWebURL(pr["url"].string) {
+                    if !store.supports("pull_files") {
+                        Link(destination: url.appendingPathComponent("files")) {
+                            HStack {
+                                filesLabel
+                                Spacer()
+                                Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.secondary)
+                            }
                         }
                     }
                     Link("Open on GitHub", destination: url)

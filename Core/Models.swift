@@ -110,3 +110,107 @@ public struct Transcript: Sendable {
         cursor = max(cursor, events.last?.seq ?? 0)
     }
 }
+
+// MARK: - Runtimes
+
+public struct RuntimeModel: Decodable, Identifiable, Equatable, Sendable {
+    public let id: String
+    public let label: String?
+    public let efforts: [String]?
+    public let defaultEffort: String?
+    public var title: String { label.flatMap { $0.isEmpty ? nil : $0 } ?? id }
+}
+public struct RuntimeProvider: Decodable, Identifiable, Equatable, Sendable {
+    public let id: Int
+    public let label: String
+    public let available: Bool?
+    public let models: [RuntimeModel]
+    public let defaultModel: String?
+    /// Only an explicit false greys a provider out; older servers omit the field.
+    public var isAvailable: Bool { available != false }
+}
+/// What `start_session` is asked to run on. The server may still fall back to a default model or effort.
+public struct RuntimeChoice: Decodable, Equatable, Sendable {
+    public let providerId: Int
+    public let model: String?
+    public let effort: String?
+    public init(providerId: Int, model: String? = nil, effort: String? = nil) {
+        self.providerId = providerId; self.model = model; self.effort = effort
+    }
+    public var arguments: [String: JSONValue] {
+        var args: [String: JSONValue] = ["providerId": .number(Double(providerId))]
+        if let model, !model.isEmpty { args["model"] = .string(model) }
+        if let effort, !effort.isEmpty { args["effort"] = .string(effort) }
+        return args
+    }
+}
+public struct RuntimeCatalog: Decodable, Equatable, Sendable {
+    public let `default`: RuntimeChoice?
+    public let providers: [RuntimeProvider]
+    public func provider(_ id: Int) -> RuntimeProvider? { providers.first { $0.id == id } }
+    public func model(of choice: RuntimeChoice) -> RuntimeModel? {
+        provider(choice.providerId)?.models.first { $0.id == choice.model }
+    }
+    public func efforts(for choice: RuntimeChoice) -> [String] { model(of: choice)?.efforts ?? [] }
+    /// A provider's model with that model's own default effort, since efforts differ between models.
+    public func choice(provider id: Int, model: String? = nil) -> RuntimeChoice? {
+        guard let provider = provider(id) else { return nil }
+        let picked = provider.models.first { $0.id == model }
+            ?? provider.models.first { $0.id == provider.defaultModel } ?? provider.models.first
+        return RuntimeChoice(providerId: id, model: picked?.id, effort: picked?.defaultEffort ?? picked?.efforts?.first)
+    }
+    /// Used when the project has no default runtime and `start_session` therefore needs a provider.
+    public var firstAvailable: RuntimeChoice? {
+        providers.first(where: \.isAvailable).flatMap { choice(provider: $0.id) }
+    }
+    public func label(for choice: RuntimeChoice) -> String {
+        [provider(choice.providerId)?.label, model(of: choice)?.title ?? choice.model]
+            .compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }.joined(separator: " · ")
+    }
+}
+
+// MARK: - Pull request files
+
+public struct PullFile: Decodable, Identifiable, Sendable {
+    public let filename: String
+    public let previousFilename: String?
+    public let status: String?
+    public let additions: Int?
+    public let deletions: Int?
+    public let patch: String?
+    public let url: String?
+    public var id: String { filename }
+    public var name: String { filename.split(separator: "/").last.map(String.init) ?? filename }
+    public var directory: String { filename.split(separator: "/").dropLast().joined(separator: "/") }
+}
+public struct PullFilesPage: Decodable, Sendable {
+    public let pr: JSONValue
+    public let files: [PullFile]
+    public let nextPage: Int?
+    public let truncated: Bool?
+}
+
+/// Pages of one pull request revision. Later pages are pinned to page 1's commits.
+public struct PullFileList: Sendable {
+    public private(set) var pr: JSONValue = .null
+    public private(set) var files: [PullFile] = []
+    public private(set) var nextPage: Int? = 1
+    public private(set) var truncated = false
+    public init() {}
+    public func arguments(repo: String, number: Int) -> [String: JSONValue]? {
+        guard let page = nextPage else { return nil }
+        var args: [String: JSONValue] = ["repo": .string(repo), "pr": .number(Double(number))]
+        if page > 1 {
+            args["page"] = .number(Double(page))
+            if let sha = pr["headSha"].string { args["headSha"] = .string(sha) }
+            if let sha = pr["baseSha"].string { args["baseSha"] = .string(sha) }
+        }
+        return args
+    }
+    public mutating func append(_ page: PullFilesPage) {
+        if files.isEmpty { pr = page.pr }
+        var seen = Set(files.map(\.filename))
+        files.append(contentsOf: page.files.filter { seen.insert($0.filename).inserted })
+        nextPage = page.nextPage; truncated = page.truncated == true
+    }
+}

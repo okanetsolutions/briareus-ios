@@ -1,15 +1,14 @@
 # Briareus for iPhone
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), using the versioned mobile API introduced in [PR #59](https://github.com/nadinyamaui/briareus/pull/59). Requires iOS 17 or later. No third-party app dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), using the versioned mobile API introduced in [PR #59](https://github.com/nadinyamaui/briareus/pull/59) and extended in [PR #62](https://github.com/nadinyamaui/briareus/pull/62). Requires iOS 17 or later. No third-party app dependencies.
 
 ## What it does
 
 - Connects to your HTTPS dashboard with a per-device token stored in Keychain.
 - Lists permitted projects and conversations, with search and status updates.
 - Shows incremental transcripts, agent questions, tool activity, queued messages and costs.
-- Starts conversations, sends follow-ups, renames, stops, closes, reopens and deletes sessions when the token permits it.
-- Lists pull requests, checks, reviews and findings, and starts review/QA sessions using the server-configured runtime.
-- Shows monthly project usage and model costs.
+- Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, renames, stops, closes, reopens and deletes sessions when the token permits it.
+- Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, and starts review/QA sessions using the server-configured runtime.
 - Revokes its token remotely or forgets the local connection.
 
 Read-only connections hide write controls. A capability catalog keeps unsupported operations unavailable. Text transcripts remain in memory only and start from event zero when reopening a screen; backgrounding pauses polling and covers the app switcher snapshot.
@@ -26,7 +25,7 @@ The checked-in project works without a generator installation. After adding sour
 
 ## Connect to your server
 
-Deploy Briareus PR #59 or later, enable dashboard password login, then create a device token in **Settings → Mobile devices**. Choose permitted projects and Read only or Manage. Paste the public HTTPS server address (or its `/api/mobile/v1` URL) and one-time token into the app.
+Deploy Briareus PR #62 or later (PR #59 works without the model picker and in-app diffs), enable dashboard password login, then create a device token in **Settings → Mobile devices**. Choose permitted projects and Read only or Manage. Paste the public HTTPS server address (or its `/api/mobile/v1` URL) and one-time token into the app.
 
 If Cloudflare Access protects the dashboard, follow the server's [mobile deployment guide](https://github.com/nadinyamaui/briareus/blob/main/docs/mobile-api.md). Only `/api/mobile/v1` and `/api/mobile/v1/*` receive the mobile exception. A redirect or HTML page in the app means the mobile endpoint is still intercepted or misconfigured. The app does not change server deployment or Cloudflare settings.
 
@@ -44,7 +43,7 @@ xcodebuild -project Briareus.xcodeproj -scheme Briareus \
 
 Choose an installed simulator for the last command (`xcrun simctl list devices available`). The GitHub Actions workflow selects one automatically, runs the core tests, builds both simulator and physical-iPhone targets, runs the pairing UI test, and uploads a simulator `.app` zip and test results. The simulator artifact is not an installable iPhone IPA. Core tests run on macOS or Linux with Swift 5.9+; SwiftUI and signing require Xcode on macOS.
 
-Tests exercise origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility and transcript cursor/deduplication. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
+Tests exercise origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor/deduplication, runtime selection, pull request file paging and diff line numbering. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
 
 Manual acceptance with a deployed test project:
 
@@ -59,6 +58,6 @@ Manual acceptance with a deployed test project:
 
 ## Boundaries
 
-This first client covers the native mobile API's core workflow. The API does not expose voice transcription, attachment upload/download, APNs push notifications, workspace previews, provider management or full web composer modes. PR descriptions and file diffs are also outside the current mobile `pull` response. Use **Open on GitHub** for those. Findings are readable here; triage and custom dashboard actions remain in the web dashboard.
+This first client covers the native mobile API's core workflow. The API does not expose voice transcription, attachment upload/download, APNs push notifications, workspace previews, provider management or full web composer modes. Diffs GitHub does not return (binary or very large files) open on GitHub instead. Review and QA always use the runtime configured on the server. Findings are readable here; triage and custom dashboard actions remain in the web dashboard.
 
 HTTPS is required. The native transport has no cookies/cache, refuses all redirects, never embeds a shared token, and never automatically retries a write. Credentials use [Keychain's device-only, when-unlocked protection](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly), scoped by canonical server origin. The app follows Apple's [URLSession redirect delegate](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:)) behavior. Only the server origin is saved in UserDefaults; the privacy manifest declares that use. No analytics or third-party tracking SDK is included. Your configured server processes conversations under its own policies.
