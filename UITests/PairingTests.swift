@@ -1,6 +1,10 @@
 import XCTest
 
 final class PairingTests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        executionTimeAllowance = 120
+    }
     func testPairingFormRejectsHTTPWithoutSendingCredentials() {
         let app = XCUIApplication(); app.launch()
         let server = app.textFields["serverAddress"]
