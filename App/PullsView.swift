@@ -355,16 +355,20 @@ struct StackPosition: Hashable {
 
 struct Badge: View {
     let text: String
-    var systemImage: String? = nil
+    let systemImage: String
     let color: Color
+    @ScaledMetric(relativeTo: .caption2) private var iconSize: CGFloat = 9
     var body: some View {
-        Group {
-            if let systemImage { Label(text, systemImage: systemImage) } else { Text(text) }
+        // A Label sizes and spaces its icon for a list row, which is too loose inside a capsule.
+        HStack(spacing: 3) {
+            Image(systemName: systemImage).font(.system(size: iconSize, weight: .semibold))
+            Text(text).font(.caption2.weight(.semibold)).monospacedDigit()
         }
-            .font(.caption2.weight(.semibold)).foregroundStyle(color)
-            .padding(.horizontal, 6).padding(.vertical, 2)
-            .background(color.opacity(0.12), in: Capsule())
-            .fixedSize()
+        .foregroundStyle(color)
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(color.opacity(0.12), in: Capsule())
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -376,7 +380,7 @@ struct ReviewBadge: View {
 struct StackBadge: View {
     let stack: StackPosition
     var body: some View {
-        Badge(text: "Stack \(stack.label)", color: Theme.accent)
+        Badge(text: "Stack \(stack.label)", systemImage: "square.stack.3d.up.fill", color: Theme.accent)
             .accessibilityLabel("Stacked pull request \(stack.position) of \(stack.total)\(stack.partial ? " or more" : "")")
     }
 }
