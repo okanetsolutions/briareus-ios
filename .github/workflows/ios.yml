@@ -10,9 +10,10 @@ concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  ios:
+  core:
+    name: Core tests
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Verify generated Xcode project
@@ -21,16 +22,34 @@ jobs:
           git diff --exit-code -- Briareus.xcodeproj
       - name: Test networking and transcript core
         run: swift test
+  simulator:
+    name: Simulator build
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
       - name: Build for iPhone Simulator
         run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath DerivedData CODE_SIGNING_ALLOWED=NO build
-      - name: Build for physical iPhone (unsigned)
-        run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DeviceBuild CODE_SIGNING_ALLOWED=NO build
       - name: Package simulator app
         run: ditto -c -k --sequesterRsrc --keepParent DerivedData/Build/Products/Debug-iphonesimulator/Briareus.app Briareus-Simulator.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Briareus-Simulator
           path: Briareus-Simulator.zip
+  device:
+    name: iPhone build
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for physical iPhone (unsigned)
+        run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DeviceBuild CODE_SIGNING_ALLOWED=NO build
+  pairing:
+    name: Pairing UI test
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
       - name: Choose an installed iPhone simulator
         run: |
           DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if d["name"].startswith("iPhone")))')
@@ -41,7 +60,8 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
       - name: Test pairing on iPhone Simulator
-        timeout-minutes: 8
+        # Launching the test runner alone can take over five minutes on a slow hosted runner.
+        timeout-minutes: 15
         run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -derivedDataPath DerivedData -resultBundlePath TestResults.xcresult -parallel-testing-enabled NO -test-timeouts-enabled YES -maximum-test-execution-time-allowance 180 CODE_SIGNING_ALLOWED=NO test
       - uses: actions/upload-artifact@v4
         if: always()
@@ -49,3 +69,15 @@ jobs:
           name: iPhone-test-results
           path: TestResults.xcresult
           if-no-files-found: ignore
+  # Branch protection requires a check named "ios"; it passes only when every job above did.
+  ios:
+    name: ios
+    if: always()
+    needs: [core, simulator, device, pairing]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every check
+        run: |
+          echo '${{ toJSON(needs) }}'
+          test "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "false"
