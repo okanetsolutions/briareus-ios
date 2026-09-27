@@ -16,11 +16,11 @@ struct BriareusApp: App {
                     } else { PairingView() }
                 }
                 if phase != .active {
-                    Color(.systemBackground).ignoresSafeArea()
-                    Label("Briareus", systemImage: "square.stack.3d.up.fill").font(.largeTitle.bold())
+                    Theme.background.ignoresSafeArea()
+                    Label("Briareus", systemImage: "square.stack.3d.up.fill").font(.largeTitle.bold()).foregroundStyle(Theme.accent)
                 }
             }
-            .tint(.indigo)
+            .tint(Theme.accent)
             .environmentObject(store)
             .task { await store.restore() }
         }
@@ -89,7 +89,7 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Connected dashboard") {
-                    Text(store.server).textSelection(.enabled)
+                    Label { Text(store.server).textSelection(.enabled) } icon: { Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.success) }
                     if let device = store.device {
                         LabeledContent("Device", value: device.label)
                         LabeledContent("Access", value: device.canManage ? "Manage" : "Read only")
@@ -97,7 +97,9 @@ struct SettingsView: View {
                     }
                 }
                 Section("Permitted projects") {
-                    ForEach(store.device?.repos ?? [], id: \.self) { Text($0) }
+                    ForEach(store.device?.repos ?? [], id: \.self) { repo in
+                        HStack(spacing: 10) { Monogram(text: repo, size: 26); Text(repo) }
+                    }
                 }
                 Section {
                     Button("Revoke token and disconnect", role: .destructive) { confirm = "revoke" }
@@ -106,8 +108,9 @@ struct SettingsView: View {
                     Text("Revoking disables this token on the server. Forgetting removes it from this phone only; revoke it later in web Settings. Neither action stops running agents.")
                 }.disabled(busy)
                 if let error { Section { ErrorNotice(message: error) } }
-                Section { Text("Briareus for iOS · 1.0").foregroundStyle(.secondary) }
-            }.navigationTitle("Connection")
+                Section { Text("Briareus for iOS · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
+            }.scrollContentBackground(.hidden).background(Theme.background)
+                .navigationTitle("Connection")
                 .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
                                     isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
                     Button("Continue", role: .destructive) {
@@ -120,21 +123,5 @@ struct SettingsView: View {
                     }
                 }
         }
-    }
-}
-
-struct ErrorNotice: View {
-    let message: String
-    var body: some View {
-        Label(message, systemImage: "exclamationmark.triangle")
-            .font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            .accessibilityIdentifier("errorNotice")
-    }
-}
-struct StatusLabel: View {
-    let status: String
-    var body: some View {
-        Label(status.capitalized, systemImage: ["running", "preparing"].contains(status) ? "circle.fill" : "circle")
-            .font(.caption).foregroundStyle(status == "running" ? .green : .secondary)
     }
 }

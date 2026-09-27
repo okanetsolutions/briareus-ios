@@ -12,18 +12,22 @@ struct PullsView: View {
             ForEach(Array(pulls.enumerated()), id: \.offset) { _, pr in
                 if let number = pr["number"].double {
                     NavigationLink { PullDetailView(project: project, number: Int(number)) } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(pr["title"].string ?? "Pull request").font(.headline)
-                            Text("#\(Int(number)) · \(pr["branch"].string ?? "")").font(.caption).foregroundStyle(.secondary)
-                        }.padding(.vertical, 4)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: "arrow.triangle.pull").font(.subheadline).foregroundStyle(Theme.success)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(pr["title"].string ?? "Pull request").font(.body.weight(.medium)).lineLimit(2)
+                                Text("#\(Int(number)) · \(pr["branch"].string ?? "")").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }.padding(.vertical, 3)
                     }
                 }
-            }
+            }.listRowBackground(Theme.elevated)
             if !loaded { ProgressView("Loading pull requests…") }
             if loaded && pulls.isEmpty && error == nil {
                 ContentUnavailableView("No open pull requests", systemImage: "arrow.triangle.pull")
             }
-        }.navigationTitle("Pull requests").navigationBarTitleDisplayMode(.inline)
+        }.scrollContentBackground(.hidden).background(Theme.background)
+            .navigationTitle("Pull requests").navigationBarTitleDisplayMode(.inline)
             .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
             .foregroundPoll(every: 45, action: load) { error = $0.localizedDescription; loaded = true }
     }
@@ -49,27 +53,39 @@ struct PullDetailView: View {
     @State private var started: Session?
     var body: some View {
         List {
-            if let error { ErrorNotice(message: error) }
+            if let error { ErrorNotice(message: error).listRowBackground(Theme.elevated) }
             if let writeError {
                 ErrorNotice(message: writeError)
                 Text("The request may have completed. Check the project’s conversations before starting another agent.").font(.caption)
             }
             Section {
-                Text(pr["title"].string ?? "Pull request #\(number)").font(.title2.bold())
+                Text(pr["title"].string ?? "Pull request #\(number)").font(.title3.bold())
                 LabeledContent("State", value: pr["state"].string ?? "Loading…")
                 LabeledContent("Branch", value: pr["headRef"].string ?? "—")
                 LabeledContent("Target", value: pr["baseRef"].string ?? "—")
                 if let additions = pr["additions"].double, let deletions = pr["deletions"].double {
-                    HStack { Text("+\(Int(additions))").foregroundStyle(.green); Text("−\(Int(deletions))").foregroundStyle(.red) }.font(.callout.monospaced())
+                    HStack { Text("+\(Int(additions))").foregroundStyle(Theme.success); Text("−\(Int(deletions))").foregroundStyle(Theme.danger) }.font(.callout.monospaced())
                 }
                 if let url = safeWebURL(pr["url"].string) { Link("Open on GitHub", destination: url) }
-            }
+            }.listRowBackground(Theme.elevated)
             Section("Checks") {
-                Text("\(Int(pr["checks"]["passed"].double ?? 0)) passed · \(Int(pr["checks"]["failed"].double ?? 0)) failed · \(Int(pr["checks"]["pending"].double ?? 0)) pending").font(.headline)
-                ForEach(Array(pr["checks"]["runs"].array.enumerated()), id: \.offset) { _, check in
-                    LabeledContent(check["name"].string ?? "Check", value: check["conclusion"].string ?? check["status"].string ?? "Pending")
+                HStack(spacing: 14) {
+                    Label("\(Int(pr["checks"]["passed"].double ?? 0))", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.success)
+                    Label("\(Int(pr["checks"]["failed"].double ?? 0))", systemImage: "xmark.circle.fill").foregroundStyle(Theme.danger)
+                    Label("\(Int(pr["checks"]["pending"].double ?? 0))", systemImage: "clock.fill").foregroundStyle(Theme.warning)
                 }
-            }
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(Int(pr["checks"]["passed"].double ?? 0)) passed, \(Int(pr["checks"]["failed"].double ?? 0)) failed, \(Int(pr["checks"]["pending"].double ?? 0)) pending")
+                ForEach(Array(pr["checks"]["runs"].array.enumerated()), id: \.offset) { _, check in
+                    let result = check["conclusion"].string ?? check["status"].string ?? "Pending"
+                    LabeledContent {
+                        Text(result.capitalized)
+                    } label: {
+                        Label { Text(check["name"].string ?? "Check") } icon: { checkIcon(result) }
+                    }
+                }
+            }.listRowBackground(Theme.elevated)
             Section("Reviews") {
                 ForEach(Array(pr["reviews"].array.enumerated()), id: \.offset) { _, review in
                     LabeledContent(review["user"].string ?? "Reviewer", value: review["state"].string ?? "")
@@ -77,7 +93,7 @@ struct PullDetailView: View {
                 if pr["reviews"].array.isEmpty {
                     Text("No reviews reported").foregroundStyle(.secondary)
                 }
-            }
+            }.listRowBackground(Theme.elevated)
             if store.supports("findings") {
                 Section("Findings") {
                     if let findingsError { ErrorNotice(message: findingsError) }
@@ -95,16 +111,17 @@ struct PullDetailView: View {
                         }
                     }
                     if findings.isEmpty && findingsError == nil { Text("No findings reported").foregroundStyle(.secondary) }
-                }
+                }.listRowBackground(Theme.elevated)
             }
             if store.canManage && pr["headRef"].string != nil {
                 Section {
                     if store.supports("review") { Button("Start code review") { pendingAction = "review" } }
                     if store.supports("qa") { Button("Start QA") { pendingAction = "qa" } }
                 } footer: { Text("Uses the provider and model configured for this project. These actions run paid agents and may write to GitHub.") }
-                    .disabled(busy || uncertain)
+                    .disabled(busy || uncertain).listRowBackground(Theme.elevated)
             }
         }
+        .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $started) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
@@ -112,6 +129,13 @@ struct PullDetailView: View {
         .confirmationDialog("Start a paid \(pendingAction == "qa" ? "QA" : "code review") session?",
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Start session") { if let action = pendingAction { Task { await start(action) } } }
+        }
+    }
+    private func checkIcon(_ result: String) -> some View {
+        switch result.lowercased() {
+        case "success", "passed", "neutral", "skipped": return Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
+        case "failure", "failed", "cancelled", "timed_out", "action_required", "error": return Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.danger)
+        default: return Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
         }
     }
     private func load() async throws {
@@ -156,15 +180,15 @@ struct UsageView: View {
             if let error { ErrorNotice(message: error) }
             Section("This month") {
                 if let cost = usage["costUsd"].double {
-                    Text(cost, format: .currency(code: "USD")).font(.largeTitle.bold())
+                    Text(cost, format: .currency(code: "USD")).font(.system(.largeTitle, design: .serif).weight(.semibold))
                 } else { Text("Usage reported by your dashboard").foregroundStyle(.secondary) }
-            }
+            }.listRowBackground(Theme.elevated)
             Section("Activity") {
                 LabeledContent("Conversations", value: count("sessions"))
                 LabeledContent("Turns", value: count("turns"))
                 LabeledContent("Tokens", value: count("totalTokens"))
                 LabeledContent("Unpriced turns", value: count("unpricedTurns"))
-            }
+            }.listRowBackground(Theme.elevated)
             Section("Models") {
                 ForEach(Array(usage["models"].array.enumerated()), id: \.offset) { _, model in
                     VStack(alignment: .leading, spacing: 4) {
@@ -175,8 +199,9 @@ struct UsageView: View {
                         } else { Text("Cost unavailable").foregroundStyle(.secondary) }
                     }
                 }
-            }
-        }.navigationTitle("Usage").navigationBarTitleDisplayMode(.inline)
+            }.listRowBackground(Theme.elevated)
+        }.scrollContentBackground(.hidden).background(Theme.background)
+            .navigationTitle("Usage").navigationBarTitleDisplayMode(.inline)
             .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
             .foregroundPoll(every: 60, action: load) { error = $0.localizedDescription }
     }
