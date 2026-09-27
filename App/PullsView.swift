@@ -66,6 +66,9 @@ struct PullDetailView: View {
     @State private var mergeNote: String?
     @State private var mergeError: String?
     @State private var merging = false
+    @State private var deciding: String?
+    private var canDecide: Bool { store.supports("finding_decision") }
+    private static let decisions = [(id: "fix", title: "Fix"), (id: "optional", title: "Optional"), (id: "dismissed", title: "Dismiss")]
     private var canMerge: Bool {
         store.supports("merge_pull") && pr["state"].string == "open" && pr["draft"].bool != true
             && pr["headSha"].string != nil && pr["baseRef"].string != nil
@@ -164,22 +167,44 @@ struct PullDetailView: View {
                 }
             }.listRowBackground(Theme.elevated)
             if store.supports("findings") {
-                Section("Findings") {
+                Section {
                     if let findingsError { ErrorNotice(message: findingsError) }
                     ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
                         DisclosureGroup {
                             Text(.init(finding["body"].string ?? finding["title"].string ?? "")).textSelection(.enabled)
                             if let file = finding["file"].string { Text(file).font(.caption.monospaced()) }
                             if let url = safeWebURL(finding["url"].string) { Link("Open finding on GitHub", destination: url) }
+                            if canDecide, let key = finding["key"].string, finding["fixed"].bool != true {
+                                Picker("Decision", selection: Binding(
+                                    get: { finding["decision"].string ?? "" },
+                                    set: { decision in Task { await decide(key, decision.isEmpty ? nil : decision) } })) {
+                                    Text("Undecided").tag("")
+                                    ForEach(Self.decisions, id: \.id) { Text($0.title).tag($0.id) }
+                                }
+                                .pickerStyle(.segmented)
+                                .disabled(deciding != nil)
+                            }
                         } label: {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(finding["title"].string ?? "Finding")
-                                Text([finding["severity"].string, finding["fixed"].bool == true ? "Fixed" : finding["decision"].string].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption).foregroundStyle(.secondary)
+                                HStack(spacing: 6) {
+                                    if let severity = finding["severity"].string { Text(severity) }
+                                    if finding["fixed"].bool == true { Text("Fixed").foregroundStyle(Theme.success) }
+                                    else if let decision = finding["decision"].string {
+                                        Text(Self.decisions.first { $0.id == decision }?.title ?? decision.capitalized)
+                                            .foregroundStyle(decision == "fix" ? Theme.warning : Color.secondary)
+                                    }
+                                    if deciding == finding["key"].string { ProgressView().controlSize(.mini) }
+                                }
+                                .font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
                     if findings.isEmpty && findingsError == nil { Text("No findings reported").foregroundStyle(.secondary) }
+                } header: {
+                    Text("Findings")
+                } footer: {
+                    if canDecide && !findings.isEmpty { Text("Decisions are saved on the dashboard and mirrored to the pull request’s checklist on GitHub.") }
                 }.listRowBackground(Theme.elevated)
             }
             if canMerge || mergeError != nil {
@@ -209,7 +234,7 @@ struct PullDetailView: View {
         .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $started) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
-        .foregroundPoll(every: 30, enabled: !busy && !merging && pendingAction == nil && mergeMethods == nil, action: load) { error = $0.localizedDescription }
+        .foregroundPoll(every: 30, enabled: !busy && !merging && deciding == nil && pendingAction == nil && mergeMethods == nil, action: load) { error = $0.localizedDescription }
         .confirmationDialog("Start a paid \(pendingAction == "qa" ? "QA" : "code review") session?",
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Start session") { if let action = pendingAction { Task { await start(action) } } }
@@ -279,6 +304,16 @@ struct PullDetailView: View {
                 findingsError = error.localizedDescription
             }
         }
+    }
+    /// Records a verdict on one finding (nil clears it) and shows the list the server returns.
+    private func decide(_ key: String, _ decision: String?) async {
+        guard deciding == nil else { return }
+        deciding = key; defer { deciding = nil }
+        do {
+            let result: JSONValue = try await store.call("finding_decision", ["repo": .string(project.repo), "pr": .number(Double(number)),
+                                                                                "key": .string(key), "decision": decision.map(JSONValue.string) ?? .null])
+            findings = result["findings"].array; findingsError = nil
+        } catch { findingsError = error.localizedDescription }
     }
     private func start(_ action: String) async {
         guard !busy, !uncertain, let branch = pr["headRef"].string else { return }
