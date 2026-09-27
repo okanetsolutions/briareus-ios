@@ -36,14 +36,6 @@ struct PairingView: View {
         NavigationStack {
             Form {
                 Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "square.stack.3d.up.fill").font(.system(size: 44)).foregroundStyle(.indigo)
-                        Text("Your agents, with you.").font(.largeTitle.bold())
-                        Text("Connect to your Briareus dashboard to follow work and keep conversations moving.")
-                            .foregroundStyle(.secondary)
-                    }.padding(.vertical)
-                }
-                Section("Connect your dashboard") {
                     TextField("https://briareus.example.com", text: $store.server)
                         .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never)
                         .autocorrectionDisabled().accessibilityIdentifier("serverAddress")
@@ -54,6 +46,10 @@ struct PairingView: View {
                         .privacySensitive().accessibilityIdentifier("deviceToken")
                         .focused($focusedField, equals: .token)
                         .submitLabel(.done).onSubmit { focusedField = nil }
+                } footer: {
+                    Text("Create a token on the web dashboard under Settings → Mobile devices.")
+                }
+                Section {
                     Button {
                         focusedField = nil
                         Task { await store.connect(server: store.server, token: token); if store.client != nil { token = "" } }
@@ -61,21 +57,9 @@ struct PairingView: View {
                         HStack { Text("Connect"); Spacer(); if store.connecting { ProgressView() } }
                     }.disabled(store.connecting || store.server.isEmpty || token.isEmpty)
                         .accessibilityIdentifier("connectButton")
+                    if let error = store.connectionError { ErrorNotice(message: error) }
                 }
-                if let error = store.connectionError { Section { ErrorNotice(message: error) } }
-                Section {
-                    Text("On the web dashboard, open Settings → Mobile devices and create a token for this device. Choose the projects and permissions it needs, then paste the token above.")
-                    Text("Tokens stay in this device’s Keychain. Your server must allow the mobile API through Cloudflare Access.")
-                        .foregroundStyle(.secondary)
-                }
-            }.navigationTitle("Briareus")
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") { focusedField = nil }
-                            .accessibilityIdentifier("dismissKeyboard")
-                    }
-                }
+            }.navigationTitle("Connect to Briareus")
         }
     }
 }
