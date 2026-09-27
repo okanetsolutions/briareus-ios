@@ -37,12 +37,9 @@ struct ProjectsView: View {
                 if let error { ErrorNotice(message: error) }
                 ForEach(projects) { project in
                     NavigationLink(value: project) {
-                        HStack(spacing: 12) {
-                            Monogram(text: project.title)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(project.title).font(.body.weight(.medium))
-                                if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
-                            }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(project.title).font(.body.weight(.medium))
+                            if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
                         }.padding(.vertical, 4)
                     }
                     .listRowBackground(Theme.elevated)
