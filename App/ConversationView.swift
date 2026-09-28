@@ -200,6 +200,7 @@ struct ConversationView: View {
                         Label(composerHint.text, systemImage: composerHint.icon)
                             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 0)
+                        if store.canTranscribe { VoiceNoteButton(text: $message) }
                         if session.isActive && store.supports("cancel") && trimmedMessage.isEmpty {
                             Button { pendingAction = "cancel" } label: {
                                 Image(systemName: "stop.fill").font(.footnote).foregroundStyle(.primary)

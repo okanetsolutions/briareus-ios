@@ -57,7 +57,12 @@ public struct Device: Codable, Sendable {
     public var canManage: Bool { permission == "manage" }
     public var expiry: Date { Date(timeIntervalSince1970: expiresAt / 1000) }
 }
-public struct Discovery: Decodable, Sendable { public let version: Int; public let device: Device }
+public struct Discovery: Decodable, Sendable {
+    public let version: Int
+    public let device: Device
+    /// Whether the server can transcribe voice notes; older servers leave it out.
+    public let transcribe: Bool?
+}
 public struct Operation: Codable, Sendable {
     public let name: String
     public let readOnly: Bool
@@ -67,7 +72,10 @@ public struct OperationList: Decodable, Sendable { public let operations: [Opera
 public struct Connection: Codable, Sendable {
     public let device: Device
     public let operations: [Operation]
-    public init(device: Device, operations: [Operation]) { self.device = device; self.operations = operations }
+    public let transcribe: Bool?
+    public init(device: Device, operations: [Operation], transcribe: Bool? = nil) {
+        self.device = device; self.operations = operations; self.transcribe = transcribe
+    }
 }
 public struct Project: Codable, Identifiable, Hashable, Sendable {
     public let repo: String

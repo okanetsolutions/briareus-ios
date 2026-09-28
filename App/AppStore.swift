@@ -5,6 +5,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var client: APIClient?
     @Published private(set) var device: Device?
     @Published private(set) var operations: [Operation] = []
+    @Published private(set) var transcribes = false
     @Published var connecting = false
     @Published var connectionError: String?
     @Published var server = UserDefaults.standard.string(forKey: "serverOrigin") ?? ""
@@ -13,6 +14,8 @@ final class AppStore: ObservableObject {
         .appendingPathComponent("Responses", isDirectory: true))
 
     var canManage: Bool { device?.canManage == true }
+    /// Voice notes need a server that transcribes and a device allowed to write the message they become.
+    var canTranscribe: Bool { transcribes && canManage }
     func supports(_ name: String) -> Bool {
         operations.contains { $0.name == name && ($0.readOnly || canManage) }
     }
@@ -25,7 +28,7 @@ final class AppStore: ObservableObject {
             // A device that paired before opens on what it saved; the server confirms the token meanwhile.
             if let saved: Connection = await cache.value("connection"), client == nil, !connecting {
                 let api = try APIClient(address: address, token: token)
-                device = saved.device; operations = saved.operations; client = api
+                device = saved.device; operations = saved.operations; transcribes = saved.transcribe == true; client = api
                 await verify(api, saved: saved)
             } else { await connect(server: server, token: token) }
         } catch { connectionError = error.localizedDescription }
@@ -37,13 +40,13 @@ final class AppStore: ObservableObject {
             guard client === api else { return }
             // Saved screens may hold projects this device can no longer read.
             if discovery.device.id != saved.device.id || Set(discovery.device.repos) != Set(saved.device.repos) { await cache.removeAll() }
-            device = discovery.device; operations = catalog.operations
-            await cache.store(Connection(device: discovery.device, operations: catalog.operations), for: "connection")
+            device = discovery.device; operations = catalog.operations; transcribes = discovery.transcribe == true
+            await cache.store(Connection(device: discovery.device, operations: catalog.operations, transcribe: discovery.transcribe), for: "connection")
         } catch {
             guard client === api, let error = error as? APIError else { return }
             if error.isUnauthorized { await invalidateCredentials(error) }
             else if error == .incompatibleVersion {
-                client?.invalidate(); client = nil; device = nil; operations = []
+                client?.invalidate(); client = nil; device = nil; operations = []; transcribes = false
                 connectionError = error.localizedDescription
             }
             // Anything else is a server out of reach: saved screens stay readable and report their own errors.
@@ -64,8 +67,8 @@ final class AppStore: ObservableObject {
             UserDefaults.standard.set(address.origin, forKey: "serverOrigin")
             let saved: Connection? = await cache.value("connection")
             if saved?.device.id != discovery.device.id { await cache.removeAll() }
-            await cache.store(Connection(device: discovery.device, operations: catalog.operations), for: "connection")
-            device = discovery.device; operations = catalog.operations; client = api
+            await cache.store(Connection(device: discovery.device, operations: catalog.operations, transcribe: discovery.transcribe), for: "connection")
+            device = discovery.device; operations = catalog.operations; transcribes = discovery.transcribe == true; client = api
         } catch { connectionError = error.localizedDescription }
     }
     func call<T: Decodable>(_ name: String, _ args: [String: JSONValue] = [:]) async throws -> T {
@@ -78,8 +81,18 @@ final class AppStore: ObservableObject {
             throw error
         }
     }
+    func transcribe(_ audio: Data, language: String) async throws -> String {
+        guard let api = client, canTranscribe else {
+            throw APIError.http(403, "This device cannot transcribe voice notes.", retryAfter: nil)
+        }
+        do { return try await api.transcribe(audio, language: language) }
+        catch {
+            if (error as? APIError)?.isUnauthorized == true { await invalidateCredentials(error) }
+            throw error
+        }
+    }
     private func invalidateCredentials(_ error: Error) async {
-        client?.invalidate(); client = nil; device = nil; operations = []
+        client?.invalidate(); client = nil; device = nil; operations = []; transcribes = false
         await cache.removeAll()
         // Keep the origin so a replacement token is easy to enter. A failed deletion is reported.
         do {
@@ -89,7 +102,7 @@ final class AppStore: ObservableObject {
     }
     func forget() async throws {
         try Keychain.remove(try ServerAddress(server).origin)
-        client?.invalidate(); client = nil; device = nil; operations = []; connectionError = nil
+        client?.invalidate(); client = nil; device = nil; operations = []; transcribes = false; connectionError = nil
         await cache.removeAll()
         UserDefaults.standard.removeObject(forKey: "serverOrigin")
         server = ""

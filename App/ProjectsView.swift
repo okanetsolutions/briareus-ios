@@ -182,6 +182,9 @@ struct NewConversationView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         TextField("What would you like to work on?", text: $prompt, axis: .vertical)
                             .lineLimit(6...16).focused($promptFocused)
+                        if store.canTranscribe {
+                            HStack { Spacer(); VoiceNoteButton(text: $prompt) }
+                        }
                         Divider().overlay(Theme.border)
                         if store.supports("branches") {
                             NavigationLink { BranchPicker(project: project, selection: $branch) } label: {

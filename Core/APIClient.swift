@@ -66,7 +66,8 @@ public final class APIClient: @unchecked Sendable {
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
+        // Long enough for a voice note's transcription; every other request still gives up after 30 idle seconds.
+        configuration.timeoutIntervalForResource = 180
         session = URLSession(configuration: configuration, delegate: RejectRedirects(), delegateQueue: nil)
     }
     deinit { session.invalidateAndCancel() }
@@ -88,18 +89,37 @@ public final class APIClient: @unchecked Sendable {
         }
         return try await request(path: "operations/\(name)", method: "POST", body: .object(arguments))
     }
+    /// The text of a recorded voice note. `language` is the spoken one as a BCP 47 tag; empty lets the server detect it.
+    public func transcribe(_ audio: Data, type: String = "audio/mp4", language: String = "") async throws -> String {
+        var components = URLComponents(url: address.baseURL.appendingPathComponent("transcribe"), resolvingAgainstBaseURL: false)
+        if !language.isEmpty { components?.queryItems = [URLQueryItem(name: "lang", value: language)] }
+        guard let url = components?.url else { throw APIError.invalidAddress }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = audio
+        request.setValue(type, forHTTPHeaderField: "Content-Type")
+        // The server allows the transcription two minutes.
+        request.timeoutInterval = 150
+        let result: JSONValue = try await send(request)
+        guard let text = result["text"].string else { throw APIError.nonJSON }
+        return text
+    }
     private func request<T: Decodable>(path: String, method: String, body: JSONValue?) async throws -> T {
         let url = path.isEmpty ? address.baseURL : address.baseURL.appendingPathComponent(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             let data = try JSONEncoder().encode(body)
             guard data.count <= 1_048_576 else { throw APIError.oversizedRequest }
             request.httpBody = data
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        return try await send(request)
+    }
+    private func send<T: Decodable>(_ request: URLRequest) async throws -> T {
+        var request = request
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         // No automatic application-level retries, including for POST reads: the view owns read backoff.
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw APIError.nonJSON }
