@@ -114,6 +114,34 @@ final class CoreTests: XCTestCase {
         catch { XCTAssertEqual((error as? URLError)?.code, .timedOut) }
         XCTAssertEqual(calls, 1)
     }
+    func testVoiceNoteIsPostedAsRecordedAndAnsweredWithItsText() async throws {
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://example.com/api/mobile/v1/transcribe?lang=es-ES")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer " + self.token)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "audio/mp4")
+            XCTAssertEqual(self.body(of: request), Data([0, 1, 2, 255]))
+            return (200, ["Content-Type": "application/json"], Data(#"{"text":"hola mundo"}"#.utf8))
+        }
+        let text = try await client().transcribe(Data([0, 1, 2, 255]), language: "es-ES")
+        XCTAssertEqual(text, "hola mundo")
+        StubProtocol.handler = { request in
+            XCTAssertNil(request.url?.query)
+            return (502, ["Content-Type": "application/json"], Data(#"{"error":"OpenAI answered 400"}"#.utf8))
+        }
+        do { _ = try await client().transcribe(Data([1])); XCTFail("Accepted a failed transcription") }
+        catch { XCTAssertEqual(error as? APIError, .http(502, "OpenAI answered 400", retryAfter: nil)) }
+        StubProtocol.handler = { _ in (200, ["Content-Type": "application/json"], Data(#"{"ok":true}"#.utf8)) }
+        do { _ = try await client().transcribe(Data([1])); XCTFail("Accepted an answer without text") }
+        catch { XCTAssertEqual(error as? APIError, .nonJSON) }
+    }
+    func testDiscoverySaysWhetherTheServerTranscribes() throws {
+        let device = #""device":{"id":"d","label":"iPhone","repos":[],"permission":"manage","expiresAt":0}"#
+        XCTAssertNil(try JSONDecoder().decode(Discovery.self, from: Data("{\"version\":1,\(device)}".utf8)).transcribe)
+        XCTAssertEqual(try JSONDecoder().decode(Discovery.self, from: Data("{\"version\":1,\(device),\"transcribe\":true}".utf8)).transcribe, true)
+        let saved = try JSONDecoder().decode(Connection.self, from: Data("{\(device),\"operations\":[]}".utf8))
+        XCTAssertNil(saved.transcribe)
+    }
     func testRevokeUsesDeleteToken() async throws {
         StubProtocol.handler = { request in
             XCTAssertEqual(request.httpMethod, "DELETE")

@@ -10,6 +10,7 @@
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>LSRequiresIPhoneOS</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Briareus records the voice notes you dictate and sends them to your server to be written out as text.</string>
     <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
