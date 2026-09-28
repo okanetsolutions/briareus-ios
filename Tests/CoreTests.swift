@@ -141,6 +141,9 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(Discovery.self, from: Data("{\"version\":1,\(device),\"transcribe\":true}".utf8)).transcribe, true)
         let saved = try JSONDecoder().decode(Connection.self, from: Data("{\(device),\"operations\":[]}".utf8))
         XCTAssertNil(saved.transcribe)
+        XCTAssertNil(Discovery.voiceNotesOff(true))
+        XCTAssertTrue(Discovery.voiceNotesOff(false)?.contains("OPENAI_TRANSCRIBE_API_KEY") == true)
+        XCTAssertTrue(Discovery.voiceNotesOff(nil)?.contains("Update Briareus") == true)
     }
     func testRevokeUsesDeleteToken() async throws {
         StubProtocol.handler = { request in

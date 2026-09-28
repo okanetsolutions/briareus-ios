@@ -62,6 +62,14 @@ public struct Discovery: Decodable, Sendable {
     public let device: Device
     /// Whether the server can transcribe voice notes; older servers leave it out.
     public let transcribe: Bool?
+    /// What the server's owner has to do before voice notes work, or nil when they do.
+    public static func voiceNotesOff(_ transcribe: Bool?) -> String? {
+        switch transcribe {
+        case true?: return nil
+        case false?: return "Voice notes are off: the server needs OPENAI_TRANSCRIBE_API_KEY and OPENAI_TRANSCRIBE_MODEL, and a restart once they are set."
+        case nil: return "This server cannot transcribe voice notes yet. Update Briareus on the server to a version with the mobile transcribe endpoint."
+        }
+    }
 }
 public struct Operation: Codable, Sendable {
     public let name: String
