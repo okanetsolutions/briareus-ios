@@ -96,16 +96,10 @@ struct VoiceNoteButton: View {
     @EnvironmentObject private var store: AppStore
     @Environment(\.scenePhase) private var phase
     @StateObject private var note = VoiceNote()
-    /// The spoken language as a BCP 47 tag, remembered between notes.
-    @AppStorage("voiceLanguage") private var language = ""
-    private var languages: [String] {
-        var seen = Set<String>()
-        return ([language] + Locale.preferredLanguages + ["es-ES", "en-US"]).filter { !$0.isEmpty && seen.insert($0).inserted }
-    }
-    private var spoken: String { language.isEmpty ? languages[0] : language }
     var body: some View {
         HStack(spacing: 8) {
             switch note.state {
+            case .idle, .starting: EmptyView()
             case .recording:
                 TimelineView(.periodic(from: note.started, by: 1)) { context in
                     let elapsed = Duration.seconds(max(0, context.date.timeIntervalSince(note.started)))
@@ -121,18 +115,6 @@ struct VoiceNoteButton: View {
                     .labelStyle(.iconOnly).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
                     .accessibilityLabel("Discard the voice note")
-            default:
-                Menu {
-                    Picker("Spoken language", selection: Binding(get: { spoken }, set: { language = $0 })) {
-                        ForEach(languages, id: \.self) { tag in
-                            Text(Locale.current.localizedString(forIdentifier: tag) ?? tag).tag(tag)
-                        }
-                    }
-                } label: {
-                    Text(spoken.prefix(2).uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                        .frame(minWidth: 24, minHeight: 32)
-                }
-                .accessibilityLabel("Voice note language: \(Locale.current.localizedString(forIdentifier: spoken) ?? spoken)")
             }
             Button {
                 if note.state == .recording { note.stop() } else { record() }
@@ -160,11 +142,11 @@ struct VoiceNoteButton: View {
         } message: { Text(note.error ?? "") }
     }
     private func record() {
-        let spoken = spoken
         Task {
             if let reason = await store.voiceNotesOff() { note.refuse(reason); return }
             guard store.canTranscribe else { return }
-            await note.start(transcribe: { try await store.transcribe($0, language: spoken) }) { transcript in
+            // No language is named: the server detects the spoken one, as for the dashboard's notes.
+            await note.start(transcribe: { try await store.transcribe($0) }) { transcript in
                 // It lands at the end of the box, to correct before sending.
                 let gap = text.isEmpty || text.last?.isWhitespace == true ? "" : " "
                 text += gap + transcript
