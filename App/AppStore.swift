@@ -97,11 +97,11 @@ final class AppStore: ObservableObject {
             throw error
         }
     }
-    func transcribe(_ audio: Data, language: String) async throws -> String {
+    func transcribe(_ audio: Data) async throws -> String {
         guard let api = client, canTranscribe else {
             throw APIError.http(403, "This device cannot transcribe voice notes.", retryAfter: nil)
         }
-        do { return try await api.transcribe(audio, language: language) }
+        do { return try await api.transcribe(audio) }
         catch {
             if (error as? APIError)?.isUnauthorized == true { await invalidateCredentials(error) }
             throw error
