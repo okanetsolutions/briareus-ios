@@ -9,7 +9,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Shows incremental transcripts, agent questions, tool activity, queued messages and costs.
 - Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, turns the review loop on or off, completes held findings triage, renames, stops, closes, reopens and deletes sessions when the token permits it.
 - Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, records fix, optional or dismiss decisions on findings, merges a pull request when the server offers `merge_pull`, and starts review/QA sessions using the server-configured runtime.
-- Records voice notes and has the server transcribe them into the message box, in a chosen language, when the server offers transcription.
+- Records voice notes and has the server transcribe them into the message box, in a chosen language. On a server that cannot transcribe, the microphone says what the server is missing.
 - Revokes its token remotely or forgets the local connection.
 
 Read-only connections hide write controls. A capability catalog keeps unsupported operations unavailable. Projects, conversations, transcripts and pull requests are saved on the phone, so a screen opens on what it last showed and then asks the server only for what changed; a saved transcript resumes from its last event, and pulling down reads it again in full. Backgrounding pauses polling and covers the app switcher snapshot.
@@ -55,7 +55,7 @@ Manual acceptance with a deployed test project:
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open a PR and compare checks/reviews/findings against the dashboard; review and QA starts may spend money and write to GitHub.
 - Revoke the token in web Settings during polling and verify pairing appears; also test self-revocation and local-only forgetting.
-- Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, and that a Read-only token or a server without transcription shows no microphone.
+- Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh/check the outcome before submitting it again.
 - Test Dynamic Type, VoiceOver, landscape, dark mode and a physical iPhone.
 

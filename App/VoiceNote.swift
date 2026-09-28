@@ -8,6 +8,7 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var state: State = .idle
     @Published private(set) var started = Date()
     @Published var error: String?
+    func refuse(_ reason: String) { if state == .idle { error = reason } }
     /// Past this a note stops by itself and is transcribed, as on the dashboard: a forgotten microphone would record on.
     static let limit: TimeInterval = 5 * 60
     private var recorder: AVAudioRecorder?
@@ -161,6 +162,8 @@ struct VoiceNoteButton: View {
     private func record() {
         let spoken = spoken
         Task {
+            if let reason = await store.voiceNotesOff() { note.refuse(reason); return }
+            guard store.canTranscribe else { return }
             await note.start(transcribe: { try await store.transcribe($0, language: spoken) }) { transcript in
                 // It lands at the end of the box, to correct before sending.
                 let gap = text.isEmpty || text.last?.isWhitespace == true ? "" : " "
