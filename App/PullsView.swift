@@ -42,9 +42,14 @@ struct PullsView: View {
             .foregroundPoll(every: 45, action: load) { error = $0.localizedDescription; loaded = true }
     }
     private func load() async throws {
+        let key = "pulls:\(project.repo)"
+        if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded {
+            pulls = saved["pulls"].array; stacks = saved["stacks"]; loaded = true
+        }
         let result: JSONValue = try await store.call("pulls", ["repo": .string(project.repo)])
         try Task.checkCancellation()
         pulls = result["pulls"].array; stacks = result["stacks"]; loaded = true; error = nil
+        await store.cache.store(result, for: key)
     }
 }
 
@@ -291,6 +296,11 @@ struct PullDetailView: View {
     }
     private func load() async throws {
         let args: [String: JSONValue] = ["repo": .string(project.repo), "pr": .number(Double(number))]
+        let key = "pull:\(project.repo)#\(number)"
+        if pr == .null, let saved: JSONValue = await store.cache.value(key), pr == .null {
+            pr = saved["pr"]; findings = saved["findings"].array
+        }
+        defer { if pr != .null { Task { await store.cache.store(JSONValue.object(["pr": pr, "findings": .array(findings)]), for: key) } } }
         let result: JSONValue = try await store.call("pull", args)
         try Task.checkCancellation()
         pr = result["pr"]; error = nil

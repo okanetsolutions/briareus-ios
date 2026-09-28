@@ -48,7 +48,7 @@ public enum JSONValue: Codable, Equatable, Sendable {
     }
 }
 
-public struct Device: Decodable, Sendable {
+public struct Device: Codable, Sendable {
     public let id: String
     public let label: String
     public let repos: [String]
@@ -58,12 +58,18 @@ public struct Device: Decodable, Sendable {
     public var expiry: Date { Date(timeIntervalSince1970: expiresAt / 1000) }
 }
 public struct Discovery: Decodable, Sendable { public let version: Int; public let device: Device }
-public struct Operation: Decodable, Sendable {
+public struct Operation: Codable, Sendable {
     public let name: String
     public let readOnly: Bool
 }
 public struct OperationList: Decodable, Sendable { public let operations: [Operation] }
-public struct Project: Decodable, Identifiable, Hashable, Sendable {
+/// What pairing learned about this device, saved so the next launch opens without asking again first.
+public struct Connection: Codable, Sendable {
+    public let device: Device
+    public let operations: [Operation]
+    public init(device: Device, operations: [Operation]) { self.device = device; self.operations = operations }
+}
+public struct Project: Codable, Identifiable, Hashable, Sendable {
     public let repo: String
     public let label: String?
     public init(repo: String, label: String? = nil) { self.repo = repo; self.label = label }
@@ -71,7 +77,7 @@ public struct Project: Decodable, Identifiable, Hashable, Sendable {
     public var title: String { label.flatMap { $0.isEmpty ? nil : $0 } ?? repo }
 }
 public struct ProjectList: Decodable, Sendable { public let projects: [Project] }
-public struct Session: Decodable, Identifiable, Hashable, Sendable {
+public struct Session: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let repo: String?
     public let title: String?
@@ -110,7 +116,7 @@ public struct SessionResult: Decodable, Sendable {
     public let session: Session
     public let events: [Event]?
 }
-public struct Event: Decodable, Identifiable, Sendable {
+public struct Event: Codable, Identifiable, Sendable {
     public let seq: Int
     public let kind: String
     public let text: String?
@@ -129,7 +135,7 @@ public struct Event: Decodable, Identifiable, Sendable {
     public var visible: Bool { !["status", "setup"].contains(kind) && (text != nil || question != nil || ["tool", "tool_error", "result"].contains(kind)) }
 }
 
-// Cursor and transcript have one lifetime: a fresh screen always starts at zero.
+// Cursor and transcript have one lifetime: saved events restore both, and an empty transcript starts at zero.
 public struct Transcript: Sendable {
     public private(set) var events: [Event] = []
     public private(set) var cursor = 0
@@ -144,14 +150,14 @@ public struct Transcript: Sendable {
 
 // MARK: - Runtimes
 
-public struct RuntimeModel: Decodable, Identifiable, Equatable, Sendable {
+public struct RuntimeModel: Codable, Identifiable, Equatable, Sendable {
     public let id: String
     public let label: String?
     public let efforts: [String]?
     public let defaultEffort: String?
     public var title: String { label.flatMap { $0.isEmpty ? nil : $0 } ?? id }
 }
-public struct RuntimeProvider: Decodable, Identifiable, Equatable, Sendable {
+public struct RuntimeProvider: Codable, Identifiable, Equatable, Sendable {
     public let id: Int
     public let label: String
     public let available: Bool?
@@ -161,7 +167,7 @@ public struct RuntimeProvider: Decodable, Identifiable, Equatable, Sendable {
     public var isAvailable: Bool { available != false }
 }
 /// What `start_session` is asked to run on. The server may still fall back to a default model or effort.
-public struct RuntimeChoice: Decodable, Equatable, Sendable {
+public struct RuntimeChoice: Codable, Equatable, Sendable {
     public let providerId: Int
     public let model: String?
     public let effort: String?
@@ -175,7 +181,7 @@ public struct RuntimeChoice: Decodable, Equatable, Sendable {
         return args
     }
 }
-public struct RuntimeCatalog: Decodable, Equatable, Sendable {
+public struct RuntimeCatalog: Codable, Equatable, Sendable {
     public let `default`: RuntimeChoice?
     public let providers: [RuntimeProvider]
     public func provider(_ id: Int) -> RuntimeProvider? { providers.first { $0.id == id } }
@@ -202,7 +208,7 @@ public struct RuntimeCatalog: Decodable, Equatable, Sendable {
 
 // MARK: - Pull request files
 
-public struct PullFile: Decodable, Identifiable, Sendable {
+public struct PullFile: Codable, Identifiable, Sendable {
     public let filename: String
     public let previousFilename: String?
     public let status: String?
@@ -222,7 +228,7 @@ public struct PullFilesPage: Decodable, Sendable {
 }
 
 /// Pages of one pull request revision. Later pages are pinned to page 1's commits.
-public struct PullFileList: Sendable {
+public struct PullFileList: Codable, Sendable {
     public private(set) var pr: JSONValue = .null
     public private(set) var files: [PullFile] = []
     public private(set) var nextPage: Int? = 1
@@ -243,5 +249,12 @@ public struct PullFileList: Sendable {
         var seen = Set(files.map(\.filename))
         files.append(contentsOf: page.files.filter { seen.insert($0.filename).inserted })
         nextPage = page.nextPage; truncated = page.truncated == true
+    }
+    /// A saved list of the revision this first page belongs to keeps its files and takes the page's details.
+    public mutating func confirm(_ page: PullFilesPage) -> Bool {
+        guard let head = page.pr["headSha"].string, head == pr["headSha"].string,
+              page.pr["baseSha"] == pr["baseSha"] else { return false }
+        pr = page.pr
+        return true
     }
 }

@@ -7,6 +7,9 @@ struct ConversationView: View {
     @State private var snapshot: Session?
     @State private var transcript = Transcript()
     @State private var loaded = false
+    @State private var restored = false
+    /// Set when a write to the saved transcript failed, so the next one rewrites it whole and leaves no gap.
+    @State private var unsaved = false
     @State private var message = ""
     @State private var busy = false
     @State private var loading = false
@@ -20,6 +23,7 @@ struct ConversationView: View {
     @State private var pull: PullRoute?
     @FocusState private var composerFocused: Bool
     var session: Session { snapshot ?? initial }
+    private var cacheKey: String { "transcript:\(initial.id)" }
     private var canMessage: Bool { store.supports("message") && session.status != "closed" }
     var body: some View {
         ScrollViewReader { proxy in
@@ -63,7 +67,8 @@ struct ConversationView: View {
             .startAtBottom()
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
-            .refreshable { do { try await refresh() } catch { self.error = error.localizedDescription } }
+            // Pulling down reads the whole transcript again, in case the saved one drifted from the server's.
+            .refreshable { do { try await refresh(full: true) } catch { self.error = error.localizedDescription } }
             .onChange(of: transcript.events.count) { old, _ in
                 // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
                 if old == 0 {
@@ -138,7 +143,7 @@ struct ConversationView: View {
             if route.changes { PullFilesView(project: Project(repo: route.repo), number: route.number) }
             else { PullDetailView(project: Project(repo: route.repo), number: route.number) }
         }
-        .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: refresh) { error = $0.localizedDescription; loaded = true }
+        .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: { try await refresh() }) { error = $0.localizedDescription; loaded = true }
         .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
             Button("Confirm", role: pendingAction == "delete" || pendingAction == "cancel" ? .destructive : nil) {
                 if let action = pendingAction { Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) } }
@@ -239,12 +244,22 @@ struct ConversationView: View {
         guard session.isActive else { return ("Sending starts a paid agent turn", "sparkle") }
         return session.liveInput == true ? ("Sent into the running turn", "bolt.fill") : ("Queued for the next turn", "clock")
     }
-    private func refresh() async throws {
+    private func refresh(full: Bool = false) async throws {
         guard !loading else { return }
         loading = true; defer { loading = false }
-        let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(transcript.cursor))])
+        if !restored {
+            // Saved events show at once and move the cursor, so only what happened since is downloaded.
+            let saved: [Event] = await store.cache.lines(cacheKey)
+            if !restored { restored = true; transcript.append(saved) }
+        }
+        let since = full ? 0 : transcript.cursor
+        let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(since))])
         try Task.checkCancellation()
-        snapshot = result.session; transcript.append(result.events ?? []); error = nil; loaded = true
+        let events = result.events ?? []
+        if full { transcript = Transcript() }
+        snapshot = result.session; transcript.append(events); error = nil; loaded = true
+        if full || unsaved { unsaved = !(await store.cache.replace(transcript.events, in: cacheKey)) }
+        else if !events.isEmpty { unsaved = !(await store.cache.append(events, to: cacheKey)) }
     }
     private func mutate(_ name: String, extra: [String: JSONValue] = [:]) async {
         guard !busy && !uncertain else { return }
@@ -253,7 +268,7 @@ struct ConversationView: View {
         do {
             let _: JSONValue = try await store.call(name, ["sessionId": .string(initial.id)].merging(extra) { _, new in new })
             if name == "message", message == extra["text"]?.string { message = ""; atBottom = true }
-            if name == "delete" { dismiss(); return }
+            if name == "delete" { await store.cache.remove(cacheKey); dismiss(); return }
         } catch {
             writeError = error.localizedDescription; uncertain = true; return
         }
