@@ -120,7 +120,7 @@ struct SettingsView: View {
                     Button("Revoke token and disconnect", role: .destructive) { confirm = "revoke" }
                     Button("Forget this connection", role: .destructive) { confirm = "forget" }
                 } footer: {
-                    Text("Revoking disables this token on the server. Forgetting removes it from this phone only; revoke it later in web Settings. Neither action stops running agents.")
+                    Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this phone only; revoke it later in web Settings. Neither action stops running agents.")
                 }.disabled(busy)
                 if let error { Section { ErrorNotice(message: error) } }
                 Section { Text("Briareus for iOS · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
@@ -133,7 +133,7 @@ struct SettingsView: View {
                         let action = confirm; busy = true
                         Task {
                             defer { busy = false }
-                            do { if action == "revoke" { try await store.revoke() } else { try store.forget() } }
+                            do { if action == "revoke" { try await store.revoke() } else { try await store.forget() } }
                             catch { self.error = error.localizedDescription }
                         }
                     }

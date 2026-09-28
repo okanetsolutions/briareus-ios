@@ -224,6 +224,74 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(lines[8].text, "x")
         XCTAssertEqual(DiffLine.parse(""), [])
     }
+    func testCacheRestoresTranscriptSoOnlyNewEventsAreRequested() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = DiskCache(directory: directory)
+        let saved: [Event] = await cache.lines("transcript:s/1")
+        XCTAssertTrue(saved.isEmpty)
+        let first = try JSONDecoder().decode([Event].self, from: Data(#"[{"seq":1,"kind":"user","text":"Hi\nthere"},{"seq":2,"kind":"tool","name":"Bash","summary":"ls","options":[{"label":"a"}]}]"#.utf8))
+        let second = try JSONDecoder().decode([Event].self, from: Data(#"[{"seq":2,"kind":"tool"},{"seq":3,"kind":"result","costUsd":0.5,"isError":false}]"#.utf8))
+        let wrote = await cache.append(first, to: "transcript:s/1")
+        XCTAssertTrue(wrote)
+        // A write cut short must cost only its own line.
+        let handle = try FileHandle(forWritingTo: try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil).first))
+        try handle.seekToEnd(); try handle.write(contentsOf: Data("\n{\"seq\":9,\"kin".utf8)); try handle.close()
+        await cache.append(second, to: "transcript:s/1")
+        var transcript = Transcript()
+        transcript.append(await cache.lines("transcript:s/1"))
+        XCTAssertEqual(transcript.events.map(\.seq), [1, 2, 3]); XCTAssertEqual(transcript.cursor, 3)
+        XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].detail, "ls")
+        XCTAssertEqual(transcript.events[2].costUsd, 0.5)
+        await cache.replace(second, in: "transcript:s/1")
+        let replaced: [Event] = await cache.lines("transcript:s/1")
+        XCTAssertEqual(replaced.map(\.seq), [2, 3])
+        await cache.remove("transcript:s/1")
+        let removed: [Event] = await cache.lines("transcript:s/1")
+        XCTAssertTrue(removed.isEmpty)
+    }
+    func testCacheKeepsValuesPerKeyInsideItsDirectory() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = DiskCache(directory: directory)
+        let sessions = try JSONDecoder().decode([Session].self, from: Data(#"[{"id":"a","status":"running","title":"One","reviewLoop":{"triage":{"findings":[{"key":"k"}]}},"prStatus":{"number":4},"local":false,"queued":[{"text":"next"}]}]"#.utf8))
+        await cache.store(sessions, for: "sessions:o/r")
+        await cache.store([Project(repo: "o/r", label: "Repo")], for: "../../projects")
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        XCTAssertEqual(names.count, 2); XCTAssertFalse(names.contains { $0.contains("/") || $0.hasPrefix(".") })
+        let found: [Session]? = await cache.value("sessions:o/r")
+        let restored = try XCTUnwrap(found)
+        XCTAssertEqual(restored[0].title, "One"); XCTAssertTrue(restored[0].reviewLoopOn); XCTAssertTrue(restored[0].canReviewLoop)
+        XCTAssertEqual(restored[0].pullNumber, 4); XCTAssertEqual(restored[0].queued?.first?["text"].string, "next")
+        XCTAssertEqual(restored[0].heldTriage?["findings"].array.count, 1)
+        let other: [Session]? = await cache.value("sessions:o/other")
+        XCTAssertNil(other)
+        let mistyped: [Session]? = await cache.value("../../projects")
+        XCTAssertNil(mistyped)
+        await cache.prune(olderThan: 60)
+        let kept: [Project]? = await cache.value("../../projects")
+        XCTAssertEqual(kept?.first?.title, "Repo")
+        await cache.prune(olderThan: 60, now: Date().addingTimeInterval(3600))
+        let pruned: [Project]? = await cache.value("../../projects")
+        XCTAssertNil(pruned)
+        await cache.store(sessions, for: "sessions:o/r")
+        await cache.removeAll()
+        let cleared: [Session]? = await cache.value("sessions:o/r")
+        XCTAssertNil(cleared)
+    }
+    func testSavedPullFilesAreKeptOnlyForTheSameRevision() throws {
+        func page(_ json: String) throws -> PullFilesPage { try JSONDecoder().decode(PullFilesPage.self, from: Data(json.utf8)) }
+        var list = PullFileList()
+        list.append(try page(#"{"pr":{"headSha":"h1","baseSha":"b1","body":"Old"},"files":[{"filename":"a"},{"filename":"b"}],"nextPage":null}"#))
+        var saved = try JSONDecoder().decode(PullFileList.self, from: JSONEncoder().encode(list))
+        XCTAssertEqual(saved.files.map(\.filename), ["a", "b"]); XCTAssertNil(saved.nextPage)
+        XCTAssertTrue(saved.confirm(try page(#"{"pr":{"headSha":"h1","baseSha":"b1","body":"New"},"files":[{"filename":"a"}],"nextPage":2}"#)))
+        XCTAssertEqual(saved.pr["body"].string, "New"); XCTAssertEqual(saved.files.count, 2); XCTAssertNil(saved.nextPage)
+        XCTAssertFalse(saved.confirm(try page(#"{"pr":{"headSha":"h2","baseSha":"b1"},"files":[],"nextPage":null}"#)))
+        XCTAssertFalse(saved.confirm(try page(#"{"pr":{"headSha":"h1","baseSha":"b2"},"files":[],"nextPage":null}"#)))
+        var empty = PullFileList()
+        XCTAssertFalse(empty.confirm(try page(#"{"pr":{},"files":[],"nextPage":null}"#)))
+    }
     private func body(of request: URLRequest) -> Data {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return Data() }

@@ -9,6 +9,9 @@ struct PullFilesView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var changed = false
+    /// False while the list on screen is a saved one the server has not confirmed yet.
+    @State private var confirmed = false
+    private var key: String { "files:\(project.repo)#\(number)" }
     var body: some View {
         List {
             if changed {
@@ -57,21 +60,32 @@ struct PullFilesView: View {
         }
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
-        .refreshable { list = PullFileList(); changed = false; await load() }
-        .task { if list.pr == .null { await load() } }
+        .refreshable { list = PullFileList(); changed = false; confirmed = true; await load() }
+        .task { if !confirmed { await load() } }
     }
     private func load(retried: Bool = false) async {
-        guard !loading, let args = list.arguments(repo: project.repo, number: number) else { return }
+        guard !loading else { return }
         loading = true; defer { loading = false }
+        if !confirmed, list.pr == .null, let saved: PullFileList = await store.cache.value(key), !confirmed, list.pr == .null { list = saved }
+        guard let args = (confirmed ? list : PullFileList()).arguments(repo: project.repo, number: number) else { return }
         do {
             let page: PullFilesPage = try await store.call("pull_files", args)
             try Task.checkCancellation()
-            list.append(page); error = nil
+            error = nil
+            if !confirmed {
+                confirmed = true
+                // The same revision has the same files; only a push or rebase makes them worth reading again.
+                if list.confirm(page) { return }
+                list = PullFileList()
+            }
+            list.append(page)
+            // Only whole lists are saved, so a saved one never waits on a page.
+            if list.nextPage == nil { await store.cache.store(list, for: key) }
         } catch {
             if Task.isCancelled || error is CancellationError { return }
             // A push or rebase invalidates the pages already read; never mix two revisions.
             if case .http(409, _, _)? = error as? APIError, !retried {
-                list = PullFileList(); changed = true; loading = false
+                list = PullFileList(); changed = true; confirmed = true; loading = false
                 await load(retried: true)
             } else { self.error = error.localizedDescription }
         }

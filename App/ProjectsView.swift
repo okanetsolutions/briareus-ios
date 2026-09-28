@@ -63,9 +63,11 @@ struct ProjectsView: View {
         }
     }
     private func load() async throws {
+        if !loaded, let saved: [Project] = await store.cache.value("projects"), !loaded { projects = saved; loaded = true }
         let result: ProjectList = try await store.call("projects")
         try Task.checkCancellation()
         projects = result.projects; loaded = true; error = nil
+        await store.cache.store(result.projects, for: "projects")
     }
 }
 
@@ -139,9 +141,14 @@ struct ProjectView: View {
         .accessibilityElement(children: .combine)
     }
     private func load() async throws {
+        let key = "sessions:\(project.repo)"
+        if !loaded, let saved: [Session] = await store.cache.value(key), !loaded { sessions = saved; loaded = true }
         let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
         try Task.checkCancellation()
+        let gone = Set(sessions.map(\.id)).subtracting(result.sessions.map(\.id))
         sessions = result.sessions; loaded = true; error = nil
+        await store.cache.store(result.sessions, for: key)
+        for id in gone { await store.cache.remove("transcript:\(id)") }
     }
 }
 
@@ -225,11 +232,17 @@ struct NewConversationView: View {
             .task {
                 guard store.supports("runtimes") else { return }
                 // Without the catalog the server still starts on the project's configured runtime.
+                let key = "runtimes:\(project.repo)"
+                if let saved: RuntimeCatalog = await store.cache.value(key), catalog == nil { show(saved) }
                 guard let result: RuntimeCatalog = try? await store.call("runtimes", ["repo": .string(project.repo)]) else { return }
-                catalog = result
-                if result.default == nil && runtime == nil { runtime = result.firstAvailable }
+                show(result)
+                await store.cache.store(result, for: key)
             }
         }
+    }
+    private func show(_ result: RuntimeCatalog) {
+        catalog = result
+        if result.default == nil && runtime == nil { runtime = result.firstAvailable }
     }
     @ViewBuilder private func runtimeRows(_ catalog: RuntimeCatalog) -> some View {
         Divider().overlay(Theme.border)
@@ -337,13 +350,20 @@ struct BranchPicker: View {
         .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find or type a branch")
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .task {
+            let key = "branches:\(project.repo)"
+            if let saved: JSONValue = await store.cache.value(key) { show(saved) }
             do {
                 let result: JSONValue = try await store.call("branches", ["repo": .string(project.repo)])
-                branches = result["branches"].array.compactMap(\.string)
-                defaultBranch = result["defaultBranch"].string
+                show(result)
+                await store.cache.store(result, for: key)
             } catch { self.error = error.localizedDescription }
             loaded = true
         }
+    }
+    private func show(_ result: JSONValue) {
+        branches = result["branches"].array.compactMap(\.string)
+        defaultBranch = result["defaultBranch"].string
+        loaded = true
     }
     private func row(_ value: String?, label: String) -> some View {
         Button { selection = value ?? ""; dismiss() } label: {
