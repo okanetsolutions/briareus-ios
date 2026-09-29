@@ -58,6 +58,8 @@ struct ProjectsList: View {
             }
             if !loaded { ProgressView("Loading projects…").frame(maxWidth: .infinity).listRowBackground(Color.clear) }
         }
+        // Beside the conversation a list would otherwise take the flat sidebar style.
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle("Projects")
         .toolbar {
@@ -119,6 +121,7 @@ struct ProjectView: View {
                 }
             }.listRowBackground(Theme.elevated)
         }
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(project.title).navigationBarTitleDisplayMode(.inline)
         .searchable(text: $search, prompt: "Find a conversation")

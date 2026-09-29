@@ -31,6 +31,8 @@ struct SplitLayout: View {
         NavigationSplitView(columnVisibility: $columns) {
             NavigationStack { ProjectsList() }
                 .navigationSplitViewColumnWidth(min: 300, ideal: 360, max: 460)
+                // The two sides share a background, so a rule marks where the list ends.
+                .overlay(alignment: .trailing) { Rectangle().fill(Theme.border).frame(width: 0.5).ignoresSafeArea() }
         } detail: {
             NavigationStack {
                 switch pane {
@@ -68,12 +70,5 @@ struct PaneLink<Destination: View, Label: View>: View {
         } else {
             NavigationLink(destination: destination, label: label)
         }
-    }
-}
-
-extension View {
-    /// Keeps a transcript at a readable measure in a wide window.
-    func readableWidth() -> some View {
-        frame(maxWidth: 860).frame(maxWidth: .infinity)
     }
 }

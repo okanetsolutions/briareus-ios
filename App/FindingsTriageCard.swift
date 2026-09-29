@@ -42,7 +42,9 @@ struct FindingsTriageCard: View {
             }
             if takesVerdicts {
                 TextField("Note for the fix session (optional)", text: $note, axis: .vertical).lineLimit(1...4)
-                    .textFieldStyle(.roundedBorder).font(.callout)
+                    .font(.callout).padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
             }
             Button { confirming = true } label: {
                 Text(takesVerdicts ? "Complete triage" : "Clear findings").frame(maxWidth: .infinity)
