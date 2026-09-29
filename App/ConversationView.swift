@@ -52,13 +52,20 @@ struct ConversationView: View {
                             Task { await mutate("drop_message", extra: ["index": .number(Double(index))]) }
                         }
                     }
-                    if let triage = session.heldTriage, store.supports("complete_findings") {
-                        FindingsTriageCard(triage: triage, disabled: busy || uncertain) { verdicts, note in
-                            var extra: [String: JSONValue] = [:]
-                            if !verdicts.isEmpty { extra["verdicts"] = .array(verdicts) }
-                            if !note.isEmpty { extra["note"] = .string(note) }
-                            Task { await mutate("complete_findings", extra: extra) }
+                    if let triage = session.heldTriage, let repo = session.repo, store.supports("complete_findings") {
+                        // The findings are ruled on in their own section, as on the dashboard; here they are only announced.
+                        PaneLink(pane: .findings(Project(repo: repo))) { FindingsView(project: Project(repo: repo)) } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "flag.fill").foregroundStyle(Theme.warning)
+                                let count = triage["findings"].array.count
+                                Text("\(count) finding\(count == 1 ? "" : "s") waiting in Findings").font(.subheadline.weight(.medium))
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                            }
+                            .padding(12)
+                            .background(Theme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
+                        .buttonStyle(.plain)
                     }
                     if session.isActive { WorkingIndicator(status: session.status) }
                     Color.clear.frame(height: 1).id("bottom")
@@ -104,7 +111,12 @@ struct ConversationView: View {
         }
         .navigationTitle(session.displayTitle).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
+        // A Mac's toolbar cuts a title short and names the project instead, so the conversation is named above its transcript.
+        #if os(macOS)
+        .safeAreaInset(edge: .top, spacing: 0) { heading }
+        #endif
         .toolbar {
+            #if !os(macOS)
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     Text(session.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -115,6 +127,7 @@ struct ConversationView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            #endif
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if let number = session.pullNumber, let repo = session.repo {
@@ -135,6 +148,7 @@ struct ConversationView: View {
                     if store.supports("reopen") && session.status == "closed" { Button("Reopen", systemImage: "arrow.uturn.backward") { pendingAction = "reopen" } }
                     if store.supports("delete") { Button("Delete conversation", systemImage: "trash", role: .destructive) { pendingAction = "delete" } }
                 } label: { Image(systemName: "ellipsis") }
+                    .buttonStyle(.automatic)
                     .disabled(busy || uncertain).accessibilityLabel("Conversation actions")
             }
         }
@@ -155,6 +169,20 @@ struct ConversationView: View {
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) {}
         }
+    }
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(session.displayTitle).font(.headline).lineLimit(2).textSelection(.enabled)
+            HStack(spacing: 6) {
+                StatusDot(status: session.status)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 10)
+        .background(Theme.background)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 0.5) }
+        .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
     }
     private var subtitle: String {
         var parts = [session.status.capitalized]
@@ -547,7 +575,7 @@ struct WorkingIndicator: View {
 private extension View {
     /// Opens on the latest message; short transcripts still read from the top where the system allows it.
     @ViewBuilder func startAtBottom() -> some View {
-        if #available(iOS 18.0, *) {
+        if #available(iOS 18.0, macOS 15.0, *) {
             defaultScrollAnchor(.bottom, for: .initialOffset).defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.top, for: .alignment)
         } else { defaultScrollAnchor(.bottom) }

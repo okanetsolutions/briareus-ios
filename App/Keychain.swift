@@ -3,10 +3,15 @@ import Security
 
 enum Keychain {
     private static func query(_ origin: String) -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
+        var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: "com.okanetsolutions.briareus.device",
          kSecAttrAccount as String: origin,
          kSecAttrSynchronizable as String: false]
+        // A Mac keeps the token in the keychain the phone uses, where device-only protection holds, not in the login keychain.
+        #if os(macOS)
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return query
     }
     static func read(_ origin: String) throws -> String? {
         var q = query(origin)

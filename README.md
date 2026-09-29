@@ -1,6 +1,6 @@
-# Briareus for iPhone and iPad
+# Briareus for iPhone, iPad and Mac
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or later. No third-party dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
 
 ## Contents
 
@@ -28,9 +28,11 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages. Workspace setup steps are left out.
 - Starts conversations on a chosen branch, provider, model and effort, or on the project default.
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
-- Turns the review loop on or off and completes the triage of held findings from inside a conversation.
+- Turns the review loop on or off from inside a conversation.
+- Keeps the review findings waiting for a decision in a section of their own in each project, as the dashboard does; the conversation they came from only says they are waiting.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
-- On an iPad, or a Mac running the iPad app, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
+- On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
+- On a Mac, runs as a Mac app built from the same sources: projects, a project's conversations and the chosen conversation each in a column of their own, which goes on updating while another app is in front.
 
 **Project board**
 
@@ -52,6 +54,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 | To | You need |
 | --- | --- |
 | Build and run in the simulator | A Mac with Xcode 16 or later |
+| Run the Mac app | macOS 14 or later, and an Apple developer account signed in to Xcode |
 | Install on your own device | A free or paid Apple developer account signed in to Xcode |
 | Distribute through TestFlight or the App Store | [Apple Developer Program](https://developer.apple.com/programs/) membership |
 | Use the app | A Briareus server with the mobile API, reachable over HTTPS, and a device token |
@@ -62,6 +65,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 1. Clone this repository.
 2. Open `Briareus.xcodeproj` and select the **Briareus** scheme.
 3. Select an iPhone or iPad simulator and Run. The simulator needs no signing team.
+4. For the Mac app, select **My Mac** and Run. It is sandboxed and keeps its token in the keychain under the team's access group, so it needs a signing team.
 
 The checked-in project works without installing a generator. After adding or removing source files, regenerate it and commit the result:
 
@@ -223,6 +227,8 @@ swift test
 ```sh
 xcodebuild -project Briareus.xcodeproj -scheme Briareus \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Briareus.xcodeproj -scheme Briareus \
+  -destination 'generic/platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
 ```sh
@@ -239,6 +245,7 @@ The GitHub Actions workflow runs on every pull request and on pushes to `main`, 
 | Core tests | The checked-in project matches the generator, then `swift test` |
 | Simulator build | Builds for the simulator and uploads a simulator `.app` zip |
 | iPhone build | Builds the Release configuration for a physical device, unsigned |
+| Mac build | Builds the Mac app, unsigned |
 | Pairing UI test | Boots a simulator, runs the UI test and uploads the results |
 | ios | Passes only when every job above passed; the one check to require in branch protection |
 
@@ -254,11 +261,12 @@ Manual acceptance with a deployed test project:
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
-- Triage a round of findings and toggle the review loop from a conversation; verify the dashboard shows the same state.
+- Triage a round of findings from the project's Findings section and toggle the review loop from a conversation; verify the dashboard shows the same state.
 - Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh and check the outcome before submitting it again.
 - Test Dynamic Type, VoiceOver, landscape, dark mode, an iPad and a physical iPhone.
+- On a Mac, choose a project and a conversation, resize the window, and check the conversation goes on updating with another app in front.
 
 ## Boundaries
 

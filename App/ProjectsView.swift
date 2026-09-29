@@ -10,8 +10,8 @@ private struct ActivePolling: ViewModifier {
     func body(content: Content) -> some View {
         content.onAppear { visible = true }.onDisappear { visible = false }
             // The interval is part of what the task is, so a conversation that goes idle slows its polling down.
-            .task(id: visible && phase == .active && enabled ? interval : 0) {
-                guard visible && phase == .active && enabled else { return }
+            .task(id: visible && phase.isInUse && enabled ? interval : 0) {
+                guard visible && phase.isInUse && enabled else { return }
                 await poll(every: interval, action: action, failed: failed)
             }
     }
@@ -37,6 +37,7 @@ struct ProjectsList: View {
     @State private var loaded = false
     @State private var error: String?
     @State private var showingConnection = false
+    @Environment(\.splitProject) private var chosen
     var body: some View {
         List {
             if !store.canManage {
@@ -44,13 +45,21 @@ struct ProjectsList: View {
             }
             if let error { ErrorNotice(message: error) }
             ForEach(projects) { project in
-                NavigationLink(value: project) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(project.title).font(.body.weight(.medium))
-                        if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
-                    }.padding(.vertical, 4)
+                let label = VStack(alignment: .leading, spacing: 2) {
+                    Text(project.title).font(.body.weight(.medium))
+                    if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
+                }.padding(.vertical, 4)
+                if let chosen {
+                    let selected = chosen.wrappedValue?.repo == project.repo
+                    Button { chosen.wrappedValue = project } label: {
+                        label.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Theme.row(selected: selected))
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                } else {
+                    NavigationLink(value: project) { label }.listRowBackground(Theme.row)
                 }
-                .listRowBackground(Theme.elevated)
             }
             if loaded && projects.isEmpty && error == nil {
                 ContentUnavailableView("No projects", systemImage: "folder", description: Text("Grant this device access to a project in web Settings."))
@@ -64,9 +73,9 @@ struct ProjectsList: View {
         .navigationTitle("Projects")
         .toolbar {
             Button { showingConnection = true } label: { Image(systemName: "network") }
-                .accessibilityLabel("Connection")
+                .buttonStyle(.automatic).accessibilityLabel("Connection")
         }
-        .sheet(isPresented: $showingConnection) { SettingsView() }
+        .sheet(isPresented: $showingConnection) { SettingsView().sheetSize() }
         .navigationDestination(for: Project.self) { ProjectView(project: $0) }
         .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
@@ -99,12 +108,26 @@ struct ProjectView: View {
             if store.supports("pulls") {
                 Section {
                     PaneLink(pane: .pulls(project)) { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
-            if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.elevated) }
+            let waiting = Session.holdingFindings(sessions).count
+            if waiting > 0 && store.supports("complete_findings") {
+                Section {
+                    PaneLink(pane: .findings(project)) { FindingsView(project: project) } label: {
+                        HStack {
+                            Label("Findings", systemImage: "flag")
+                            Spacer()
+                            Text(String(waiting)).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.warning, in: Capsule())
+                        }
+                    }
+                    .accessibilityLabel("Findings, \(waiting) waiting")
+                }.listRowBackground(Theme.row)
+            }
+            if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.row) }
             let active = filtered.filter(\.isActive)
             if !active.isEmpty {
-                Section("Active") { ForEach(active) { row($0) } }.listRowBackground(Theme.elevated)
+                Section("Active") { ForEach(active) { row($0) } }.listRowBackground(Theme.row)
             }
             Section {
                 ForEach(filtered.filter { !$0.isActive }) { row($0) }
@@ -119,25 +142,55 @@ struct ProjectView: View {
                     Toggle("Show closed", isOn: $showClosed).toggleStyle(.button).buttonStyle(.borderless).controlSize(.mini)
                         .font(.caption.weight(.medium)).textCase(nil)
                 }
-            }.listRowBackground(Theme.elevated)
+            }.listRowBackground(Theme.row)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(project.title).navigationBarTitleDisplayMode(.inline)
+        #if os(macOS)
+        // A Mac's toolbar would put these at the far end of the window, away from the list they act on.
+        .safeAreaInset(edge: .top, spacing: 0) { finder }
+        #else
         .searchable(text: $search, prompt: "Find a conversation")
         .toolbar {
             if store.supports("start_session") {
                 Button { creating = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
             }
         }
+        #endif
         .sheet(isPresented: $creating) {
             NewConversationView(project: project) { session in
                 if let pane { pane.wrappedValue = .conversation(session) } else { created = session }
             }
+            .sheetSize(width: 580, height: 440)
         }
         .navigationDestination(item: $created) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
+    }
+    private var finder: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
+                TextField("Find a conversation", text: $search).autocorrectionDisabled()
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .accessibilityLabel("Clear the search")
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+            if store.supports("start_session") {
+                Button { creating = true } label: {
+                    Image(systemName: "square.and.pencil").font(.body.weight(.medium)).foregroundStyle(Theme.accent)
+                        .frame(width: 32, height: 32).contentShape(Rectangle())
+                }
+                .help("New conversation").accessibilityLabel("New conversation")
+            }
+        }
+        .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+        .background(Theme.background)
     }
     private func row(_ session: Session) -> some View {
         PaneLink(pane: .conversation(session)) { ConversationView(initial: session) } label: {
@@ -236,11 +289,11 @@ struct NewConversationView: View {
             .background(Theme.background)
             .navigationTitle("New conversation").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(busy) }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.buttonStyle(.automatic).disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button { Task { await start() } } label: {
                         if busy { ProgressView() } else { Text("Start").bold() }
-                    }.disabled(!canStart)
+                    }.buttonStyle(.automatic).disabled(!canStart)
                 }
             }
             .interactiveDismissDisabled(busy)
@@ -289,6 +342,7 @@ struct NewConversationView: View {
             pickerRow(icon: "cpu", text: effective.map { catalog.label(for: $0) } ?? "Choose a model",
                       note: runtime == nil && effective != nil ? "Default" : nil, placeholder: effective == nil)
         }
+        .plainMenu()
         .accessibilityLabel("Model: \(effective.map { catalog.label(for: $0) } ?? "none")")
         if let effective, !catalog.efforts(for: effective).isEmpty {
             Divider().overlay(Theme.border)
@@ -304,6 +358,7 @@ struct NewConversationView: View {
                 pickerRow(icon: "gauge.with.dots.needle.50percent", text: "\((effective.effort ?? "default").capitalized) effort",
                           note: nil, placeholder: false)
             }
+            .plainMenu()
             .accessibilityLabel("Effort: \(effective.effort ?? "default")")
         }
     }
@@ -360,10 +415,10 @@ struct BranchPicker: View {
                 if !loaded { ProgressView().frame(maxWidth: .infinity) }
             }
         }
-        .listRowBackground(Theme.elevated)
+        .listRowBackground(Theme.row)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle("Branch").navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find or type a branch")
+        .searchable(text: $search, placement: .pinned, prompt: "Find or type a branch")
         .textInputAutocapitalization(.never).autocorrectionDisabled()
         .task {
             let key = "branches:\(project.repo)"
@@ -390,6 +445,6 @@ struct BranchPicker: View {
             }.contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(Theme.elevated)
+        .listRowBackground(Theme.row)
     }
 }

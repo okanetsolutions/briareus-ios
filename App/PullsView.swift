@@ -53,7 +53,7 @@ struct PullsView: View {
             NavigationLink { PullDetailView(project: project, number: pr.number, stack: stack, summary: pr) } label: {
                 PullRow(pr: pr, stack: stack, repo: project.repo)
             }
-        }.listRowBackground(Theme.elevated)
+        }.listRowBackground(Theme.row)
         if loaded && shownPulls.isEmpty && error == nil {
             ContentUnavailableView(pulls.isEmpty ? "No open pull requests" : "No pull requests match the filters", systemImage: "arrow.triangle.pull")
                 .listRowBackground(Color.clear)
@@ -65,7 +65,7 @@ struct PullsView: View {
                 Text("GitHub would not read this repository’s issues with the server’s token. A fine-grained token needs Issues: read. The pull requests are unaffected.")
                     .font(.footnote).foregroundStyle(.secondary)
                 ErrorNotice(message: refused)
-            }.listRowBackground(Theme.elevated)
+            }.listRowBackground(Theme.row)
         } else {
             Section {
                 ForEach(IssueSummary.nested(shownIssues, repo: project.repo), id: \.issue.number) { row in
@@ -76,7 +76,7 @@ struct PullsView: View {
                 }
             } footer: {
                 if board["issuesTruncated"].bool == true { Text("This repository has more open issues; only the most recently updated are listed.") }
-            }.listRowBackground(Theme.elevated)
+            }.listRowBackground(Theme.row)
             if loaded && shownIssues.isEmpty && error == nil {
                 ContentUnavailableView(issues.isEmpty ? "No open issues" : "No issues match the filters", systemImage: "smallcircle.filled.circle")
                     .listRowBackground(Color.clear)
@@ -156,7 +156,7 @@ struct PullDetailView: View {
     }
     var body: some View {
         List {
-            if let error { ErrorNotice(message: error).listRowBackground(Theme.elevated) }
+            if let error { ErrorNotice(message: error).listRowBackground(Theme.row) }
             if let writeError {
                 ErrorNotice(message: writeError)
                 if uncertain { Text("The request may have completed. Pull down to refresh and look for its conversation below before starting another agent.").font(.caption) }
@@ -216,7 +216,7 @@ struct PullDetailView: View {
                     }
                     Link("Open on GitHub", destination: url)
                 }
-            }.listRowBackground(Theme.elevated)
+            }.listRowBackground(Theme.row)
             if let stack {
                 Section {
                     ForEach(stack.chain, id: \.number) { item in
@@ -235,7 +235,7 @@ struct PullDetailView: View {
                     Text("Stack · \(stack.label(of: number))")
                 } footer: {
                     Text(stack.partial ? "Bottom first. Only part of this stack is visible; it may be longer." : "Bottom first. Merge from the bottom up.")
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             // Nothing is known of its checks, reviews or findings until the pull request answers.
             if pr != .null {
@@ -258,7 +258,7 @@ struct PullDetailView: View {
                         if let url = safeWebURL(check["url"].string) { Link(destination: url) { line }.foregroundStyle(.primary) }
                         else { line }
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
                 Section("Reviews") {
                     ForEach(Array(pr["reviews"].array.enumerated()), id: \.offset) { _, review in
                         LabeledContent(review["user"].string ?? "Reviewer") {
@@ -274,7 +274,7 @@ struct PullDetailView: View {
                     if pr["reviews"].array.isEmpty && requested.isEmpty {
                         Text("No reviews reported").foregroundStyle(.secondary)
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
                 let issues = (board?.issues ?? []).isEmpty ? pr["issues"].array.compactMap(BoardLink.init) : board?.issues ?? []
                 if !issues.isEmpty {
                     Section("Closes") {
@@ -282,7 +282,7 @@ struct PullDetailView: View {
                             if let url = safeWebURL(issue.url) { Link(destination: url) { LinkedRow(link: issue, repo: project.repo) }.foregroundStyle(.primary) }
                             else { LinkedRow(link: issue, repo: project.repo) }
                         }
-                    }.listRowBackground(Theme.elevated)
+                    }.listRowBackground(Theme.row)
                 }
                 if !pr["commitList"].array.isEmpty {
                     Section {
@@ -297,7 +297,7 @@ struct PullDetailView: View {
                                 else { line }
                             }
                         }
-                    }.listRowBackground(Theme.elevated)
+                    }.listRowBackground(Theme.row)
                 }
                 if store.supports("findings") {
                     Section {
@@ -339,7 +339,7 @@ struct PullDetailView: View {
                         Text("Findings")
                     } footer: {
                         if canDecide && !findings.isEmpty { Text("Decisions are saved on the dashboard and mirrored to the pull request’s checklist on GitHub.") }
-                    }.listRowBackground(Theme.elevated)
+                    }.listRowBackground(Theme.row)
                 }
             } else if error == nil {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12).listRowBackground(Color.clear)
@@ -357,7 +357,7 @@ struct PullDetailView: View {
                     }
                 } footer: {
                     if canMerge { Text("Merges \(pr["headRef"].string ?? "this branch") into \(pr["baseRef"].string ?? "its base") on GitHub. This cannot be undone from the app.") }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             if !actions.isEmpty {
                 Section {
@@ -377,7 +377,7 @@ struct PullDetailView: View {
                 } header: {
                     HStack { Text("Actions"); if busy { ProgressView().controlSize(.mini) } }
                 } footer: { Text("Uses the provider and model configured for this project. These actions run paid agents and may write to GitHub.") }
-                    .disabled(busy || uncertain).listRowBackground(Theme.elevated)
+                    .disabled(busy || uncertain).listRowBackground(Theme.row)
             }
             if !runs.isEmpty {
                 Section("Conversations on this pull request") {
@@ -394,7 +394,7 @@ struct PullDetailView: View {
                             }
                         }
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
         }
         .scrollContentBackground(.hidden).background(Theme.background)
@@ -412,6 +412,7 @@ struct PullDetailView: View {
         } message: { action in if !action.hint.isEmpty { Text("\(action.hint).") } }
         .sheet(item: $asking) { action in
             ActionInputView(action: action, number: number) { input in Task { await start(action, input: input) } }
+                .sheetSize(height: 360)
         }
         .confirmationDialog("Merge #\(String(number)) into \(pr["baseRef"].string ?? "its base")?",
                             isPresented: Binding(get: { mergeMethods != nil }, set: { if !$0 { mergeMethods = nil } }), titleVisibility: .visible) {

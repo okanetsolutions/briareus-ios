@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // Warm neutrals and a clay accent, in the spirit of the Claude apps.
 enum Theme {
@@ -14,6 +13,16 @@ enum Theme {
     static let danger = Color(light: 0xC0392B, dark: 0xE5776A)
     static let warning = Color(light: 0xB7791F, dark: 0xE3B25C)
 
+    /// Behind a list row: a card on the phone, nothing on a Mac, whose lists are plain.
+    static var row: some View { row(selected: false) }
+    @ViewBuilder static func row(selected: Bool) -> some View {
+        #if os(macOS)
+        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(selected ? accent.opacity(0.18) : .clear).padding(.horizontal, 6)
+        #else
+        selected ? accent.opacity(0.16) : elevated
+        #endif
+    }
+
     static func statusColor(_ status: String) -> Color {
         switch status {
         case "running": return success
@@ -27,10 +36,14 @@ enum Theme {
 
 extension Color {
     init(light: UInt32, dark: UInt32) {
-        func rgb(_ hex: UInt32) -> UIColor {
-            UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        func rgb(_ hex: UInt32) -> PlatformColor {
+            PlatformColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
         }
+        #if os(macOS)
+        self.init(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(dark) : rgb(light) })
+        #else
         self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) })
+        #endif
     }
 }
 
@@ -138,7 +151,7 @@ struct CodeBlock: View {
                 Text(language ?? "code").font(.caption.monospaced()).foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    UIPasteboard.general.string = text; copied = true
+                    Pasteboard.copy(text); copied = true
                     Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")

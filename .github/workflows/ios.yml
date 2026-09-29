@@ -44,6 +44,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build for physical iPhone (unsigned)
         run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath DeviceBuild CODE_SIGNING_ALLOWED=NO build
+  mac:
+    name: Mac build
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build for Mac (unsigned)
+        run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath MacBuild CODE_SIGNING_ALLOWED=NO build
   pairing:
     name: Pairing UI test
     runs-on: macos-15
@@ -73,7 +81,7 @@ jobs:
   ios:
     name: ios
     if: always()
-    needs: [core, simulator, device, pairing]
+    needs: [core, simulator, device, mac, pairing]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

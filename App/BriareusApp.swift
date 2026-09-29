@@ -8,9 +8,9 @@ struct BriareusApp: App {
         WindowGroup {
             ZStack {
                 Group {
-                    if store.client != nil { ProjectsView() } else { PairingView() }
+                    if store.client != nil { ProjectsView() } else { PairingView().ownControls() }
                 }
-                if phase != .active {
+                if !phase.isInUse {
                     Theme.background.ignoresSafeArea()
                     Label("Briareus", systemImage: "square.stack.3d.up.fill").font(.largeTitle.bold()).foregroundStyle(Theme.accent)
                 }
@@ -18,7 +18,14 @@ struct BriareusApp: App {
             .tint(Theme.accent)
             .environmentObject(store)
             .task { await store.restore() }
+            #if os(macOS)
+            .textFieldStyle(.plain)
+            .frame(minWidth: 480, minHeight: 420)
+            #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1280, height: 820)
+        #endif
     }
 }
 
@@ -120,13 +127,13 @@ struct SettingsView: View {
                     Button("Revoke token and disconnect", role: .destructive) { confirm = "revoke" }
                     Button("Forget this connection", role: .destructive) { confirm = "forget" }
                 } footer: {
-                    Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this phone only; revoke it later in web Settings. Neither action stops running agents.")
+                    Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this device only; revoke it later in web Settings. Neither action stops running agents.")
                 }.disabled(busy)
                 if let error { Section { ErrorNotice(message: error) } }
-                Section { Text("Briareus for iOS · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
-            }.scrollContentBackground(.hidden).background(Theme.background)
+                Section { Text("Briareus for \(Platform.name) · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
+            }.formStyle(.grouped).scrollContentBackground(.hidden).background(Theme.background)
                 .navigationTitle("Connection").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.buttonStyle(.automatic) } }
                 .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
                                     isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
                                     titleVisibility: .visible, presenting: confirm) { action in
