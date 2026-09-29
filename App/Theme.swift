@@ -99,12 +99,13 @@ struct Monogram: View {
 
 // MARK: - Markdown
 
-struct MarkdownText: View {
-    let blocks: [MarkdownBlock]
-    init(_ source: String) { blocks = MarkdownBlock.parse(source) }
+/// Equal sources draw the same, so a screen redrawn around a reply leaves the reply as it is.
+struct MarkdownText: View, Equatable {
+    let source: String
+    init(_ source: String) { self.source = source }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(Array(MarkdownBlock.parse(source).enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .paragraph(let text):
                     Text(inline(text))
