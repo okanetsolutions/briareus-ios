@@ -195,8 +195,9 @@ struct ConversationView: View {
                     TextField(session.isActive ? "Send a follow-up…" : "Reply to your agent…", text: $message, axis: .vertical)
                         .lineLimit(1...8).focused($composerFocused).accessibilityIdentifier("messageInput")
                     HStack(spacing: 10) {
-                        Label(composerHint.text, systemImage: composerHint.icon)
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if let hint = composerHint {
+                            Label(hint.text, systemImage: hint.icon).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                         Spacer(minLength: 0)
                         if store.canTranscribe { VoiceNoteButton(text: $message) }
                         if session.isActive && store.supports("cancel") && trimmedMessage.isEmpty {
@@ -239,8 +240,9 @@ struct ConversationView: View {
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
         .background(Theme.background)
     }
-    private var composerHint: (text: String, icon: String) {
-        guard session.isActive else { return ("Sending starts a paid agent turn", "sparkle") }
+    /// Where a message sent during a turn goes; one sent to an idle agent needs no word.
+    private var composerHint: (text: String, icon: String)? {
+        guard session.isActive else { return nil }
         return session.liveInput == true ? ("Sent into the running turn", "bolt.fill") : ("Queued for the next turn", "clock")
     }
     private func refresh(full: Bool = false) async throws {
