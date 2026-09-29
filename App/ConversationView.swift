@@ -104,7 +104,12 @@ struct ConversationView: View {
         }
         .navigationTitle(session.displayTitle).navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Theme.background, for: .navigationBar)
+        // A Mac's toolbar cuts a title short and names the project instead, so the conversation is named above its transcript.
+        #if os(macOS)
+        .safeAreaInset(edge: .top, spacing: 0) { heading }
+        #endif
         .toolbar {
+            #if !os(macOS)
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     Text(session.displayTitle).font(.subheadline.weight(.semibold)).lineLimit(1)
@@ -115,6 +120,7 @@ struct ConversationView: View {
                 }
                 .accessibilityElement(children: .combine)
             }
+            #endif
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     if let number = session.pullNumber, let repo = session.repo {
@@ -156,6 +162,20 @@ struct ConversationView: View {
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) {}
         }
+    }
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(session.displayTitle).font(.headline).lineLimit(2).textSelection(.enabled)
+            HStack(spacing: 6) {
+                StatusDot(status: session.status)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 10)
+        .background(Theme.background)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.border).frame(height: 0.5) }
+        .accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
     }
     private var subtitle: String {
         var parts = [session.status.capitalized]
