@@ -123,7 +123,9 @@ struct PullRow: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(pr.title).font(.body.weight(.medium)).lineLimit(2)
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("#\(String(pr.number)) · \(pr.branch)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    // The number is what the pull request is called, so only the branch gives way to large text.
+                    Text(verbatim: "#\(pr.number)").font(.caption.monospaced()).foregroundStyle(.secondary).fixedSize()
+                    Text(verbatim: pr.branch).font(.caption.monospaced()).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)
                     Updated(date: pr.updatedAt)
