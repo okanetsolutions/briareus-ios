@@ -1,4 +1,5 @@
-#if os(iOS)
+// The car needs the iOS 26.4 SDK, which came with the Swift 6.3 compiler.
+#if os(iOS) && compiler(>=6.3)
 import CarPlay
 
 // The lists beside the voice screen. Browse chooses what is in hand and Actions says what to do with it; each is
@@ -55,15 +56,6 @@ extension CarAssistant {
         guard controller.templates.count == 2 else { return }
         controller.pushTemplate(template, animated: true) { _, _ in }
     }
-    private func ask(_ question: String, short: String, yes: String, destructive: Bool = false, then: @escaping () -> Void) {
-        let alert = CPAlertTemplate(titleVariants: [question, short], actions: [
-            CPAlertAction(title: yes, style: destructive ? .destructive : .default) { [weak self] _ in
-                self?.controller.dismissTemplate(animated: true) { _, _ in then() }
-            },
-            CPAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in self?.controller.dismissTemplate(animated: true) { _, _ in } },
-        ])
-        controller.presentTemplate(alert, animated: true) { _, _ in }
-    }
     private func choose(_ title: String, _ message: String? = nil, _ options: [(title: String, destructive: Bool, then: () -> Void)]) {
         let actions = options.map { option in
             CPAlertAction(title: option.title, style: option.destructive ? .destructive : .default) { [weak self] _ in
@@ -72,7 +64,8 @@ extension CarAssistant {
         } + [CPAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in self?.controller.dismissTemplate(animated: true) { _, _ in } }]
         controller.presentTemplate(CPActionSheetTemplate(title: title, message: message, actions: actions), animated: true) { _, _ in }
     }
-    private func speak(_ words: String) { Task { await home(); await say(words) } }
+    /// A row that says something and does nothing.
+    private func fact(_ text: String, _ detail: String?, symbol: String) -> CPListItem { item(text, detail, symbol: symbol) {} }
     private func line(_ session: Session) -> String {
         [session.status.capitalized, session.model].compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }.joined(separator: " · ")
     }
@@ -104,7 +97,6 @@ extension CarAssistant {
                         guard let self else { return }
                         self.project = project; self.plan = Plan()
                         self.close()
-                        Task { await self.say("\(project.title).") }
                     }
                 })])
             }
@@ -120,7 +112,7 @@ extension CarAssistant {
             guard let self, let project = self.project else { return }
             let rows = { (sessions: [Session]) in
                 let row = { (session: Session) in
-                    self.item(session.displayTitle, holding ? Spoken.count(session.heldTriage?["findings"].array.count ?? 0, "finding") : self.line(session),
+                    self.item(session.displayTitle, holding ? CarText.count(session.heldTriage?["findings"].array.count ?? 0, "finding") : self.line(session),
                               symbol: holding ? "flag.fill" : session.isActive ? "circle.fill" : "circle") { [weak self] in self?.open(session) }
                 }
                 if holding { show([self.section(nil, Session.holdingFindings(sessions).map(row))]); return }
@@ -187,12 +179,12 @@ extension CarAssistant {
         }
         let leave = [
             item("Revoke token and disconnect", "Disables this token on the server", symbol: "xmark.shield") { [weak self] in
-                self?.ask("Revoke this device token? Pairing again takes the phone.", short: "Revoke this token?", yes: "Revoke", destructive: true) {
+                self?.ask(["Revoke this device token? Pairing again takes the phone.", "Revoke this token?"], yes: "Revoke", destructive: true) {
                     self?.perform(nil) { try await self?.store.revoke() }
                 }
             },
             item("Forget this connection", "Removes it from this iPhone only", symbol: "trash") { [weak self] in
-                self?.ask("Forget this connection? Pairing again takes the phone.", short: "Forget this connection?", yes: "Forget", destructive: true) {
+                self?.ask(["Forget this connection? Pairing again takes the phone.", "Forget this connection?"], yes: "Forget", destructive: true) {
                     self?.perform(nil) { try await self?.store.forget() }
                 }
             },
@@ -313,28 +305,21 @@ extension CarAssistant {
     }
 
     private func actions(on session: Session) -> [CPListSection] {
-        var talk = [item("Read the latest reply", symbol: "speaker.wave.2") { [weak self] in
-            guard let self else { return }
-            let latest = Spoken.latest(self.transcript.events)
-            self.speak(latest.isEmpty ? "Nothing was said yet." : Spoken.say(latest))
-        }]
+        var talk: [CPListItem] = []
+        let question = CarText.openQuestion(transcript.events)
+        if let question { talk.append(fact(CarText.question(question), "The agent asks", symbol: "questionmark.bubble")) }
         if canMessage {
-            talk.append(item(session.isActive ? "Send a follow-up" : "Reply", session.isActive ? (session.liveInput == true ? "Sent into the running turn" : "Queued for the next turn") : nil,
+            talk.append(item(session.isActive ? "Dictate a follow-up" : "Dictate a reply", session.isActive ? (session.liveInput == true ? "Sent into the running turn" : "Queued for the next turn") : nil,
                              symbol: "mic") { [weak self] in self?.dictate(.message) })
-            if let question = Spoken.openQuestion(transcript.events) {
-                talk += Spoken.options(question).map { answer in item("Answer: \(answer)", symbol: "arrow.turn.down.left") { [weak self] in self?.send(answer) } }
+            if let question {
+                talk += CarText.options(question).map { answer in item("Answer: \(answer)", symbol: "arrow.turn.down.left") { [weak self] in self?.send(answer) } }
             }
         }
-        talk.append(item("Read replies as they come", announces ? "On" : "Off", symbol: announces ? "speaker.badge.exclamationmark" : "speaker.slash") { [weak self] in
-            guard let self else { return }
-            self.announces.toggle()
-            self.speak(self.announces ? "Replies are read as they come." : "Replies wait until you ask for them.")
-        })
 
         var agent: [CPListItem] = []
         if store.supports("cancel") && session.isActive {
             agent.append(item("Stop the agent", symbol: "stop.circle") { [weak self] in
-                self?.ask("Stop the running agent?", short: "Stop the agent?", yes: "Stop", destructive: true) { self?.change("cancel", done: "The agent is stopped.") }
+                self?.ask(["Stop the running agent?", "Stop the agent?"], yes: "Stop", destructive: true) { self?.change("cancel", done: "The agent is stopped.") }
             })
         }
         if store.supports("drop_message") {
@@ -347,13 +332,13 @@ extension CarAssistant {
         if store.supports("review_loop") && session.canReviewLoop {
             agent.append(item("Review loop", session.reviewLoopOn ? "On" : "Off", symbol: "repeat") { [weak self] in
                 if session.reviewLoopOn { self?.change("review_loop", ["on": .bool(false)], done: "The review loop is off."); return }
-                self?.ask("Turn on the review loop? Each push gets a paid review round, and may start one now.", short: "Turn on the review loop?", yes: "Turn on") {
+                self?.ask(["Turn on the review loop? Each push gets a paid review round, and may start one now.", "Turn on the review loop?"], yes: "Turn on") {
                     self?.change("review_loop", ["on": .bool(true)], done: "The review loop is on.")
                 }
             })
         }
         if let held = session.heldTriage, store.supports("complete_findings") {
-            agent.append(item("Findings", "\(Spoken.count(held["findings"].array.count, "finding")) waiting for a decision", symbol: "flag.fill", more: true) { [weak self] in
+            agent.append(item("Findings", "\(CarText.count(held["findings"].array.count, "finding")) waiting for a decision", symbol: "flag.fill", more: true) { [weak self] in
                 self.map { $0.third($0.triageList(held)) }
             })
         }
@@ -362,24 +347,24 @@ extension CarAssistant {
         if let number = session.pullNumber, store.supports("pull") {
             more.append(item("Pull request #\(number)", symbol: "arrow.triangle.pull") { [weak self] in self?.open(pull: number) })
         }
-        if store.supports("rename") { more.append(item("Rename", symbol: "pencil") { [weak self] in self?.dictate(.rename) }) }
+        if store.supports("rename") { more.append(item("Rename", "Dictated", symbol: "pencil") { [weak self] in self?.dictate(.rename) }) }
         if store.supports("close") && session.status != "closed" {
             more.append(item("Close the conversation", symbol: "archivebox") { [weak self] in
-                self?.ask("Close this conversation?", short: "Close it?", yes: "Close") { self?.change("close", done: "The conversation is closed.") }
+                self?.ask(["Close this conversation?", "Close it?"], yes: "Close") { self?.change("close", done: "The conversation is closed.") }
             })
         }
         if store.supports("reopen") && session.status == "closed" {
             more.append(item("Reopen", symbol: "arrow.uturn.backward") { [weak self] in
-                self?.ask("Reopen this conversation?", short: "Reopen it?", yes: "Reopen") { self?.change("reopen", done: "The conversation is open again.") }
+                self?.ask(["Reopen this conversation?", "Reopen it?"], yes: "Reopen") { self?.change("reopen", done: "The conversation is open again.") }
             })
         }
         if store.supports("delete") {
             more.append(item("Delete the conversation", symbol: "trash") { [weak self] in
-                self?.ask("Permanently delete this conversation and its transcript?", short: "Delete it for good?", yes: "Delete", destructive: true) { self?.delete() }
+                self?.ask(["Permanently delete this conversation and its transcript?", "Delete it for good?"], yes: "Delete", destructive: true) { self?.delete() }
             })
         }
         more.append(putDown("conversation"))
-        return Self.fit([section(session.displayTitle, talk), section("Agent", agent), section("More", more)])
+        return Self.fit([section(CarText.status(session, asking: question != nil), talk), section("Agent", agent), section("More", more)])
     }
 
     /// The round held for verdicts. An unmarked finding goes as optional, as on the dashboard and on the phone.
@@ -395,24 +380,21 @@ extension CarAssistant {
             let findings = triage["findings"].array
             let fixes = findings.filter { decision($0) == "fix" }.count
             var complete = [item(mine ? "Complete the triage" : "Clear the findings",
-                                 !mine ? "Its author fixes them" : fixes == 0 ? "Without fixes" : "Starts a paid fix session for \(Spoken.count(fixes, "finding"))",
+                                 !mine ? "Its author fixes them" : fixes == 0 ? "Without fixes" : "Starts a paid fix session for \(CarText.count(fixes, "finding"))",
                                  symbol: "checkmark.circle") { [weak self] in
-                let question = !mine ? "Clear these findings?" : fixes == 0 ? "Complete the triage without fixes?" : "Start a paid fix session for \(Spoken.count(fixes, "finding"))?"
-                self?.ask(question, short: mine ? "Complete the triage?" : "Clear them?", yes: mine ? "Complete" : "Clear") { self?.triage() }
+                let question = !mine ? "Clear these findings?" : fixes == 0 ? "Complete the triage without fixes?" : "Start a paid fix session for \(CarText.count(fixes, "finding"))?"
+                self?.ask([question, mine ? "Complete the triage?" : "Clear them?"], yes: mine ? "Complete" : "Clear") { self?.triage() }
             }]
             if mine {
-                complete.append(item("Note for the fix session", note.isEmpty ? "None" : note, symbol: "mic") { [weak self] in self?.dictate(.note) })
+                complete.append(item("Dictate a note for the fix session", note.isEmpty ? nil : note, symbol: "mic") { [weak self] in self?.dictate(.note) })
             }
             let list = findings.map { finding -> CPListItem in
-                let said = [titles[decision(finding)], finding["severity"].string, finding["file"].string?.split(separator: "/").last.map(String.init)].compactMap { $0 }
-                return item(finding["title"].string ?? "Finding", said.joined(separator: " · "), symbol: decision(finding) == "fix" ? "wrench.and.screwdriver" : "flag") { [weak self] in
-                    var options: [(String, Bool, () -> Void)] = [("Read it aloud", false, { Task { await self?.say(Spoken.finding(finding), beside: true) } })]
-                    if mine, let key = finding["key"].string {
-                        options = FindingsTriageCard.options.map { option in
-                            (option.title, false, { self?.verdicts[key] = option.id; template.updateSections(rows()) })
-                        } + options
-                    }
-                    self?.choose(finding["title"].string ?? "Finding", nil, options)
+                item(finding["title"].string ?? "Finding", CarText.finding(finding, verdict: titles[decision(finding)]),
+                     symbol: decision(finding) == "fix" ? "wrench.and.screwdriver" : "flag") { [weak self] in
+                    guard mine, let key = finding["key"].string else { return }
+                    self?.choose(finding["title"].string ?? "Finding", finding["parkedWhy"].string, FindingsTriageCard.options.map { option in
+                        (option.title, false, { self?.verdicts[key] = option.id; template.updateSections(rows()) })
+                    })
                 }
             }
             return Self.fit([section(nil, complete), section(mine ? "Verdicts go on the pull request" : nil, list)])
@@ -422,22 +404,22 @@ extension CarAssistant {
     }
 
     private func actions(onPull number: Int) -> [CPListSection] {
-        var about = [
-            item("Read the summary", symbol: "speaker.wave.2") { [weak self] in
-                guard let self else { return }
-                self.speak(Spoken.pull(number: number, row: self.row, details: self.pull, review: self.review))
-            },
-        ]
+        var about = [fact("State", CarText.state(row: row, details: pull), symbol: "arrow.triangle.pull")]
         if pull != .null {
-            about.append(item("Read the checks", "\(Int(pull["checks"]["passed"].double ?? 0)) passed · \(Int(pull["checks"]["failed"].double ?? 0)) failed · \(Int(pull["checks"]["pending"].double ?? 0)) running",
-                              symbol: "checkmark.circle") { [weak self] in self.map { $0.speak(Spoken.checks($0.pull["checks"])) } })
-            about.append(item("Read the reviews", review, symbol: "person.2") { [weak self] in self.map { $0.speak(Spoken.reviews($0.pull)) } })
+            let failing = CarText.failing(pull["checks"])
+            about.append(item("Checks", CarText.checks(pull["checks"]), symbol: failing.isEmpty ? "checkmark.circle" : "xmark.circle") { [weak self] in
+                if !failing.isEmpty { self?.warn("Failing: " + failing.prefix(6).joined(separator: ", ")) }
+            })
+            let said = CarText.reviews(pull).map { "\($0.user): \($0.state)" }
+            about.append(item("Review", review ?? "No reviews yet", symbol: "person.2") { [weak self] in
+                if !said.isEmpty { self?.warn(said.prefix(6).joined(separator: ", ")) }
+            })
         }
         if store.supports("findings") && !findings.isEmpty {
-            about.append(item("Findings", Spoken.count(findings.count, "finding"), symbol: "flag", more: true) { [weak self] in self.map { $0.third($0.findingsList()) } })
+            about.append(item("Findings", CarText.count(findings.count, "finding"), symbol: "flag", more: true) { [weak self] in self.map { $0.third($0.findingsList()) } })
         }
         if !runs.isEmpty {
-            about.append(item("Conversations on it", Spoken.count(runs.count, "conversation"), symbol: "bubble.left.and.bubble.right", more: true) { [weak self] in
+            about.append(item("Conversations on it", CarText.count(runs.count, "conversation"), symbol: "bubble.left.and.bubble.right", more: true) { [weak self] in
                 guard let self else { return }
                 self.third(CPListTemplate(title: "Conversations", sections: Self.fit([self.section(nil, self.runs.map { session in
                     self.item(session.displayTitle, self.line(session), symbol: session.isActive ? "circle.fill" : "circle") { [weak self] in self?.open(session) }
@@ -452,7 +434,7 @@ extension CarAssistant {
         let errands = offered.map { action in
             item(action.label, row?.recommended == action.id ? "Suggested" : action.input != nil ? "Dictated" : nil, symbol: row?.recommended == action.id ? "sparkle" : "bolt") { [weak self] in
                 if action.input != nil { self?.dictate(.feedback(action)); return }
-                self?.ask("Start a paid \(action.label) session on #\(number)? \(action.hint).", short: "Start \(action.label)?", yes: "Start",
+                self?.ask(["Start a paid \(action.label) session on #\(number)? \(action.hint).", "Start \(action.label)?"], yes: "Start",
                           destructive: action.id == "delete-self-comments") { self?.run(action) }
             }
         }
@@ -463,15 +445,11 @@ extension CarAssistant {
         let decides = store.supports("finding_decision")
         return CPListTemplate(title: "Findings", sections: Self.fit([section(nil, findings.map { finding in
             let fixed = finding["fixed"].bool == true
-            let said = [fixed ? "Fixed" : finding["decision"].string.map { titles[$0] ?? $0.capitalized } ?? "Undecided", finding["severity"].string,
-                        finding["file"].string?.split(separator: "/").last.map(String.init)].compactMap { $0 }
-            return item(finding["title"].string ?? "Finding", said.joined(separator: " · "), symbol: fixed ? "checkmark.circle" : "flag") { [weak self] in
-                var options: [(String, Bool, () -> Void)] = []
-                if decides, !fixed, let key = finding["key"].string {
-                    options = FindingsTriageCard.options.map { option in (option.title, false, { self?.decide(key, option.id) }) }
-                    if finding["decision"].string != nil { options.append(("Clear the decision", false, { self?.decide(key, nil) })) }
-                }
-                options.append(("Read it aloud", false, { Task { await self?.say(Spoken.finding(finding), beside: true) } }))
+            let verdict = finding["decision"].string.map { titles[$0] ?? $0.capitalized } ?? "Undecided"
+            return item(finding["title"].string ?? "Finding", CarText.finding(finding, verdict: verdict), symbol: fixed ? "checkmark.circle" : "flag") { [weak self] in
+                guard decides, !fixed, let key = finding["key"].string else { return }
+                var options: [(String, Bool, () -> Void)] = FindingsTriageCard.options.map { option in (option.title, false, { self?.decide(key, option.id) }) }
+                if finding["decision"].string != nil { options.append(("Clear the decision", false, { self?.decide(key, nil) })) }
                 self?.choose(finding["title"].string ?? "Finding", nil, options)
             }
         })]))
@@ -488,7 +466,7 @@ extension CarAssistant {
                 if !allowed.isEmpty { methods = methods.filter(allowed.contains) }
                 notes += MergeState.warnings(mergeable: page.pr["mergeable"], state: page.pr["mergeableState"].string)
                 if let head = page.pr["headSha"].string, head != pull["headSha"].string {
-                    guard (try? await load(pull: number)) != nil else { speak("The pull request changed and could not be read again."); return }
+                    guard (try? await load(pull: number)) != nil else { warn("The pull request changed and could not be read again."); return }
                     notes.append("New commits were pushed.")
                 }
             }
@@ -499,15 +477,16 @@ extension CarAssistant {
             guard case .pull(number) = focus else { return }
             choose("Merge #\(number) into \(pull["baseRef"].string ?? "its base")?", notes.isEmpty ? nil : notes.joined(separator: " "),
                    methods.map { method in (titles[method] ?? method.capitalized, false, { [weak self] in self?.merge(method) }) })
-            if !notes.isEmpty { await say(notes.joined(separator: " "), beside: true) }
         }
     }
 
     private func actions(on issue: IssueSummary) -> [CPListSection] {
-        var rows = [item("Read the issue", symbol: "speaker.wave.2") { [weak self] in self?.speak(Spoken.issue(issue)) }]
+        let said = ["#\(issue.number)"] + (issue.isEpic ? ["Epic \(issue.subIssuesDone)/\(issue.subIssues)"] : []) + issue.labels.prefix(3).map(\.name)
+            + (issue.comments > 0 ? [CarText.count(issue.comments, "comment")] : [])
+        var rows = [fact(issue.author.map { "By @\($0)" } ?? "Issue", said.joined(separator: " · "), symbol: "smallcircle.filled.circle")]
         if store.supports("start_session") {
             rows.append(item("Start a session on it", "Starts a paid agent", symbol: "play") { [weak self] in
-                self?.ask("Start a paid session on issue #\(issue.number)?", short: "Start a session?", yes: "Start") { self?.begin(on: issue) }
+                self?.ask(["Start a paid session on issue #\(issue.number)?", "Start a session?"], yes: "Start") { self?.begin(on: issue) }
             })
         }
         let answers = !store.supports("pull") ? [] : issue.pulls.filter { !$0.isForeign(to: project?.repo ?? "") }.map { link in
