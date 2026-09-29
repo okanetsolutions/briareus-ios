@@ -16,7 +16,7 @@ struct PullFilesView: View {
         List {
             if changed {
                 Label("This pull request changed while reading. Showing its latest revision.", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.footnote).foregroundStyle(.secondary).listRowBackground(Theme.elevated)
+                    .font(.footnote).foregroundStyle(.secondary).listRowBackground(Theme.row)
             }
             if list.pr != .null {
                 Section("Description") {
@@ -26,7 +26,7 @@ struct PullFilesView: View {
                     if let author = list.pr["author"].string {
                         Label(author, systemImage: "person.crop.circle").font(.caption).foregroundStyle(.secondary)
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
                 Section {
                     ForEach(list.files) { file in
                         NavigationLink { FileDiffView(file: file) } label: { FileRow(file: file) }
@@ -46,13 +46,13 @@ struct PullFilesView: View {
                     }.font(.caption.monospacedDigit()).textCase(nil)
                 } footer: {
                     if list.truncated { Text("GitHub lists only the first 3,000 files of this pull request.") }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             if let error {
                 Section {
                     ErrorNotice(message: error)
                     Button("Try again") { Task { await load() } }.disabled(loading)
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             if list.pr == .null && error == nil {
                 ProgressView("Loading changes…").frame(maxWidth: .infinity).padding(.vertical, 24).listRowBackground(Color.clear)
@@ -157,7 +157,7 @@ struct FileDiffView: View {
         .navigationTitle(file.name).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             Button { wrap.toggle() } label: { Image(systemName: wrap ? "arrow.left.and.right.text.vertical" : "text.word.spacing") }
-                .accessibilityLabel(wrap ? "Scroll long lines" : "Wrap long lines")
+                .buttonStyle(.automatic).accessibilityLabel(wrap ? "Scroll long lines" : "Wrap long lines")
         }
         .task { if lines.isEmpty, let patch = file.patch { lines = DiffLine.parse(patch) } }
     }

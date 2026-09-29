@@ -34,7 +34,7 @@ struct FindingsTriageCard: View {
                         Picker("Decision", selection: Binding(get: { decision(finding) }, set: { decisions[key] = $0 })) {
                             if decision(finding).isEmpty { Text("—").tag("") }
                             ForEach(Self.options, id: \.id) { Text($0.title).tag($0.id) }
-                        }.pickerStyle(.segmented)
+                        }.pickerStyle(.segmented).labelsHidden()
                     }
                 }
                 .padding(10).frame(maxWidth: .infinity, alignment: .leading)

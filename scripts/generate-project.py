@@ -10,7 +10,7 @@ def put(name, value):
     key = ident(name); objects[key] = value; return key
 
 def q(value): return '"' + str(value).replace('\\', '\\\\').replace('"', '\\"') + '"'
-def settings(values): return '{' + ''.join(f'{k} = {q(v)}; ' for k, v in values.items()) + '}'
+def settings(values): return '{' + ''.join(f'{q(k) if "[" in k else k} = {q(v)}; ' for k, v in values.items()) + '}'
 def config_list(name, values):
     ids = []
     for kind in ['Debug', 'Release']:
@@ -26,7 +26,7 @@ def files(folder):
     for path in sorted((root / folder).rglob('*')):
         if not path.is_file() or '.xcassets/' in str(path): continue
         rel = str(path.relative_to(root)); ext = path.suffix
-        kind = {'.swift':'sourcecode.swift', '.plist':'text.plist.xml', '.xcprivacy':'text.xml'}.get(ext, 'text')
+        kind = {'.swift':'sourcecode.swift', '.plist':'text.plist.xml', '.xcprivacy':'text.xml', '.entitlements':'text.plist.entitlements'}.get(ext, 'text')
         ref = put(rel, f'{{isa = PBXFileReference; lastKnownFileType = {q(kind)}; path = {q(rel)}; sourceTree = SOURCE_ROOT;}}'); children.append(ref)
         if ext in ['.swift', '.xcprivacy']:
             build = put(rel+'build', f'{{isa = PBXBuildFile; fileRef = {ref};}}')
@@ -46,10 +46,14 @@ appref = put('appProduct', '{isa = PBXFileReference; explicitFileType = wrapper.
 testref = put('testProduct', '{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = BriareusUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;}')
 products = put('Products', f'{{isa = PBXGroup; children = ({appref},{testref},); name = Products; sourceTree = "<group>";}}')
 main = put('main', f'{{isa = PBXGroup; children = ({appgroup},{coregroup},{testgroup},{products},); sourceTree = "<group>";}}')
-base = {'IPHONEOS_DEPLOYMENT_TARGET':'17.0', 'SDKROOT':'iphoneos', 'SWIFT_VERSION':'5.0', 'CLANG_ENABLE_MODULES':'YES', 'CLANG_ENABLE_OBJC_ARC':'YES', 'ENABLE_USER_SCRIPT_SANDBOXING':'YES', 'GCC_C_LANGUAGE_STANDARD':'gnu17'}
+base = {'IPHONEOS_DEPLOYMENT_TARGET':'17.0', 'MACOSX_DEPLOYMENT_TARGET':'14.0', 'SDKROOT':'iphoneos', 'SWIFT_VERSION':'5.0', 'CLANG_ENABLE_MODULES':'YES', 'CLANG_ENABLE_OBJC_ARC':'YES', 'ENABLE_USER_SCRIPT_SANDBOXING':'YES', 'GCC_C_LANGUAGE_STANDARD':'gnu17'}
 projectconfigs = config_list('project', base)
-appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks'})
-testconfigs = config_list('tests', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus.uitests', 'PRODUCT_NAME':'BriareusUITests', 'GENERATE_INFOPLIST_FILE':'YES', 'TEST_TARGET_NAME':'Briareus', 'TARGETED_DEVICE_FAMILY':'1,2', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'})
+appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator macosx', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks',
+    # The Mac app is its own build of the same sources, not the iPad app in a window.
+    'SUPPORTS_MACCATALYST':'NO', 'SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD':'NO',
+    'INFOPLIST_FILE[sdk=macosx*]':'App/Info-macOS.plist', 'CODE_SIGN_ENTITLEMENTS[sdk=macosx*]':'App/Briareus-macOS.entitlements',
+    'ENABLE_HARDENED_RUNTIME[sdk=macosx*]':'YES', 'LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]':'$(inherited) @executable_path/../Frameworks'})
+testconfigs = config_list('tests', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus.uitests', 'PRODUCT_NAME':'BriareusUITests', 'GENERATE_INFOPLIST_FILE':'YES', 'TEST_TARGET_NAME':'Briareus', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'})
 phases = [phase('appSources','PBXSourcesBuildPhase',appfiles+corefiles),phase('appFrameworks','PBXFrameworksBuildPhase',[]),phase('appResources','PBXResourcesBuildPhase',resources)]
 apptarget = put('appTarget', f'{{isa = PBXNativeTarget; buildConfigurationList = {appconfigs}; buildPhases = ({",".join(phases)},); buildRules = (); dependencies = (); name = Briareus; productName = Briareus; productReference = {appref}; productType = "com.apple.product-type.application";}}')
 proxy = put('proxy', f'{{isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {apptarget}; remoteInfo = Briareus;}}')

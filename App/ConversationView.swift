@@ -135,6 +135,7 @@ struct ConversationView: View {
                     if store.supports("reopen") && session.status == "closed" { Button("Reopen", systemImage: "arrow.uturn.backward") { pendingAction = "reopen" } }
                     if store.supports("delete") { Button("Delete conversation", systemImage: "trash", role: .destructive) { pendingAction = "delete" } }
                 } label: { Image(systemName: "ellipsis") }
+                    .buttonStyle(.automatic)
                     .disabled(busy || uncertain).accessibilityLabel("Conversation actions")
             }
         }
@@ -547,7 +548,7 @@ struct WorkingIndicator: View {
 private extension View {
     /// Opens on the latest message; short transcripts still read from the top where the system allows it.
     @ViewBuilder func startAtBottom() -> some View {
-        if #available(iOS 18.0, *) {
+        if #available(iOS 18.0, macOS 15.0, *) {
             defaultScrollAnchor(.bottom, for: .initialOffset).defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.top, for: .alignment)
         } else { defaultScrollAnchor(.bottom) }

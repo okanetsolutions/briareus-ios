@@ -26,9 +26,12 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
         // Dropped while the permission prompt was up.
         guard state == .starting else { return }
         do {
+            // A Mac has no audio session to claim: the recorder takes the input by itself.
+            #if !os(macOS)
             let audio = AVAudioSession.sharedInstance()
             try audio.setCategory(.record, mode: .default)
             try audio.setActive(true)
+            #endif
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("voice-note-\(UUID().uuidString).m4a")
             // Speech needs no more than this, and five minutes of it stay near a megabyte.
             let recorder = try AVAudioRecorder(url: file, settings: [
@@ -58,7 +61,9 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
         recorder?.delegate = nil; recorder?.stop(); recorder = nil
         if let file { try? FileManager.default.removeItem(at: file) }
         upload = nil; transcribe = nil; deliver = nil; state = .idle
+        #if !os(macOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
     private func recorded(_ file: URL, complete: Bool) {
         // Reached by stop(), the time limit or an interruption; a dropped note has no recorder left.
@@ -135,7 +140,7 @@ struct VoiceNoteButton: View {
                                 : note.state == .transcribing ? "Transcribing the voice note" : "Record a voice note")
         }
         // Recording cannot go on in the background: what was said until then is transcribed, as if stopped.
-        .onChange(of: phase) { if phase != .active { note.stop() } }
+        .onChange(of: phase) { if !phase.isInUse { note.stop() } }
         .onDisappear { note.drop() }
         .alert("Voice note", isPresented: Binding(get: { note.error != nil }, set: { if !$0 { note.error = nil } })) {
             Button("OK", role: .cancel) {}

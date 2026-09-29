@@ -254,7 +254,7 @@ struct IssueDetailView: View {
                         Text("The request may have completed. Check the project’s conversations before starting another agent.").font(.caption)
                         Button("I have checked") { uncertain = false; self.writeError = nil }.buttonStyle(.bordered).controlSize(.small)
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             Section {
                 Text(issue.title).font(.title3.bold())
@@ -268,12 +268,12 @@ struct IssueDetailView: View {
                 if issue.comments > 0 { LabeledContent("Comments", value: "\(issue.comments)") }
                 if let updated = issue.updatedAt { LabeledContent("Updated") { Updated(date: updated) } }
                 if let url = safeWebURL(issue.url) { Link("Open on GitHub", destination: url) }
-            }.listRowBackground(Theme.elevated)
+            }.listRowBackground(Theme.row)
             if let parent = issue.parent {
                 Section("Part of") {
                     if let url = safeWebURL(parent.url) { Link(destination: url) { LinkedRow(link: parent, repo: project.repo) } }
                     else { LinkedRow(link: parent, repo: project.repo) }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
             Section {
                 ForEach(issue.pulls, id: \.self) { pull in
@@ -285,7 +285,7 @@ struct IssueDetailView: View {
                     }
                 }
                 if issue.pulls.isEmpty { Text("No open pull request closes this issue yet").foregroundStyle(.secondary) }
-            } header: { Text("Pull requests") }.listRowBackground(Theme.elevated)
+            } header: { Text("Pull requests") }.listRowBackground(Theme.row)
             if store.supports("start_session") {
                 Section {
                     if issue.isEpic {
@@ -304,7 +304,7 @@ struct IssueDetailView: View {
                         Text(issue.pulls.isEmpty ? "The session reads the issue, implements it on a branch of its own and opens a pull request closing it. It runs a paid agent on this project’s configured model."
                              : "A pull request is already answering this issue. A second session is a paid agent working on the same thing.")
                     }
-                }.listRowBackground(Theme.elevated)
+                }.listRowBackground(Theme.row)
             }
         }
         .scrollContentBackground(.hidden).background(Theme.background)
@@ -360,9 +360,9 @@ struct ActionInputView: View {
             .background(Theme.background)
             .navigationTitle(action.label).navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.buttonStyle(.automatic) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") { dismiss(); start(trimmed) }.bold()
+                    Button("Start") { dismiss(); start(trimmed) }.bold().buttonStyle(.automatic)
                         .disabled(trimmed.isEmpty && action.input?.required == true)
                 }
             }
