@@ -1,6 +1,6 @@
 # Briareus for iPhone, iPad and Mac
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or later. No third-party dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
 
 ## Contents
 
