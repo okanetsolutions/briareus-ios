@@ -11,11 +11,15 @@ public enum BoardDate {
     /// GitHub's timestamps come with and without fractional seconds.
     public static func parse(_ value: String?) -> Date? {
         guard let value else { return nil }
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: value) { return date }
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: value)
+        return whole.date(from: value) ?? fractional.date(from: value)
     }
+    // Making a formatter costs far more than reading a date with one, and a transcript reads a date for every message drawn.
+    private static let whole = ISO8601DateFormatter()
+    private static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 }
 
 public struct PullLabel: Hashable, Sendable {

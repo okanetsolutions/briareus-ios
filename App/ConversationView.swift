@@ -7,12 +7,14 @@ struct ConversationView: View {
     @Environment(\.splitPane) private var pane
     @State private var snapshot: Session?
     @State private var transcript = Transcript()
+    /// The transcript as it is drawn, grouped once when events arrive rather than each time the screen is redrawn.
+    @State private var rows: [TranscriptRow] = []
     @State private var loaded = false
     @State private var restored = false
     /// Set when a write to the saved transcript failed, so the next one rewrites it whole and leaves no gap.
     @State private var unsaved = false
     @State private var retimed = false
-    @State private var message = ""
+    @State private var draft = Draft()
     @State private var busy = false
     @State private var loading = false
     @State private var error: String?
@@ -39,10 +41,10 @@ struct ConversationView: View {
                             Text(loaded ? "No messages yet" : "Waiting for the conversation…").font(.callout).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.top, 80)
                     }
-                    ForEach(TranscriptRow.group(transcript.events.filter(\.visible))) { row in
+                    ForEach(rows) { row in
                         switch row {
                         case .event(let event):
-                            EventView(event: event, canAnswer: canMessage) { message = $0; composerFocused = true }
+                            EventView(event: event, canAnswer: canMessage) { draft.text = $0; composerFocused = true }
                         case .tools(let events):
                             VStack(alignment: .leading, spacing: 2) { ForEach(events) { ToolRow(event: $0) } }
                         }
@@ -216,43 +218,14 @@ struct ConversationView: View {
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
-    private var trimmedMessage: String { message.trimmingCharacters(in: .whitespacesAndNewlines) }
     @ViewBuilder private var composer: some View {
         VStack(spacing: 0) {
             if canMessage {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField(session.isActive ? "Send a follow-up…" : "Reply to your agent…", text: $message, axis: .vertical)
-                        .lineLimit(1...8).focused($composerFocused).accessibilityIdentifier("messageInput")
-                    HStack(spacing: 10) {
-                        if let hint = composerHint {
-                            Label(hint.text, systemImage: hint.icon).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                        if store.canTranscribe { VoiceNoteButton(text: $message) }
-                        if session.isActive && store.supports("cancel") && trimmedMessage.isEmpty {
-                            Button { pendingAction = "cancel" } label: {
-                                Image(systemName: "stop.fill").font(.footnote).foregroundStyle(.primary)
-                                    .frame(width: 32, height: 32).background(Theme.bubble, in: Circle())
-                            }.disabled(busy || uncertain).accessibilityLabel("Stop agent")
-                        } else {
-                            let enabled = !busy && !uncertain && !trimmedMessage.isEmpty
-                            Button {
-                                Task { await mutate("message", extra: ["text": .string(message)]) }
-                            } label: {
-                                Group {
-                                    if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.up").font(.subheadline.weight(.bold)) }
-                                }
-                                .foregroundStyle(.white).frame(width: 32, height: 32)
-                                .background(enabled || busy ? Theme.accent : Color.secondary.opacity(0.35), in: Circle())
-                            }.disabled(!enabled).accessibilityLabel("Send message")
-                        }
-                    }
-                }
-                .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
-                .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.06), radius: 10, y: 2)
-                .onTapGesture { composerFocused = true }
+                MessageBox(draft: draft, active: session.isActive, hint: composerHint,
+                           stoppable: session.isActive && store.supports("cancel"), voice: store.canTranscribe,
+                           busy: busy, blocked: busy || uncertain, focused: $composerFocused,
+                           send: { text in Task { await mutate("message", extra: ["text": .string(text)]) } },
+                           stop: { pendingAction = "cancel" })
             } else {
                 HStack(spacing: 10) {
                     Image(systemName: store.canManage ? "archivebox" : "eye").foregroundStyle(.secondary)
@@ -282,7 +255,7 @@ struct ConversationView: View {
         if !restored {
             // Saved events show at once and move the cursor, so only what happened since is downloaded.
             let saved: [Event] = await store.cache.lines(cacheKey)
-            if !restored { restored = true; transcript.append(saved) }
+            if !restored { restored = true; show(saved) }
         }
         // A transcript saved before messages showed their time has none; it is read again once to get them.
         var full = full
@@ -292,10 +265,16 @@ struct ConversationView: View {
         let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(since))])
         try Task.checkCancellation()
         let events = result.events ?? []
-        if full { transcript = Transcript() }
-        snapshot = result.session; transcript.append(events); error = nil; loaded = true
+        snapshot = result.session; show(events, replacing: full); error = nil; loaded = true
         if full || unsaved { unsaved = !(await store.cache.replace(transcript.events, in: cacheKey)) }
         else if !events.isEmpty { unsaved = !(await store.cache.append(events, to: cacheKey)) }
+    }
+    /// A poll that brought nothing leaves the transcript, and so the rows drawn from it, untouched.
+    private func show(_ events: [Event], replacing: Bool = false) {
+        guard replacing || !events.isEmpty else { return }
+        if replacing { transcript = Transcript() }
+        transcript.append(events)
+        rows = TranscriptRow.group(transcript.events.filter(\.visible))
     }
     private func mutate(_ name: String, extra: [String: JSONValue] = [:]) async {
         guard !busy && !uncertain else { return }
@@ -303,7 +282,7 @@ struct ConversationView: View {
         defer { busy = false }
         do {
             let _: JSONValue = try await store.call(name, ["sessionId": .string(initial.id)].merging(extra) { _, new in new })
-            if name == "message", message == extra["text"]?.string { message = ""; atBottom = true }
+            if name == "message", draft.text == extra["text"]?.string { draft.text = ""; atBottom = true }
             if name == "delete" {
                 await store.cache.remove(cacheKey)
                 // Beside the list there is nothing to go back to: the right-hand side empties instead.
@@ -329,13 +308,67 @@ enum TranscriptRow: Identifiable {
     }
     static func group(_ events: [Event]) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
+        var tools: [Event] = []
         for event in events {
-            if toolKinds.contains(event.kind) {
-                if case .tools(let existing)? = rows.last { rows[rows.count - 1] = .tools(existing + [event]) }
-                else { rows.append(.tools([event])) }
-            } else { rows.append(.event(event)) }
+            if toolKinds.contains(event.kind) { tools.append(event); continue }
+            if !tools.isEmpty { rows.append(.tools(tools)); tools = [] }
+            rows.append(.event(event))
         }
+        if !tools.isEmpty { rows.append(.tools(tools)) }
         return rows
+    }
+}
+
+/// What is being typed. The screen holds it without reading it, so a keystroke redraws the box it is typed in
+/// and not the transcript above it.
+@Observable final class Draft {
+    var text = ""
+}
+
+private struct MessageBox: View {
+    @Bindable var draft: Draft
+    let active: Bool
+    let hint: (text: String, icon: String)?
+    let stoppable: Bool
+    let voice: Bool
+    let busy: Bool
+    let blocked: Bool
+    let focused: FocusState<Bool>.Binding
+    let send: (String) -> Void
+    let stop: () -> Void
+    var body: some View {
+        let empty = draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        VStack(alignment: .leading, spacing: 10) {
+            TextField(active ? "Send a follow-up…" : "Reply to your agent…", text: $draft.text, axis: .vertical)
+                .lineLimit(1...8).focused(focused).accessibilityIdentifier("messageInput")
+            HStack(spacing: 10) {
+                if let hint {
+                    Label(hint.text, systemImage: hint.icon).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                if voice { VoiceNoteButton(text: $draft.text) }
+                if stoppable && empty {
+                    Button(action: stop) {
+                        Image(systemName: "stop.fill").font(.footnote).foregroundStyle(.primary)
+                            .frame(width: 32, height: 32).background(Theme.bubble, in: Circle())
+                    }.disabled(blocked).accessibilityLabel("Stop agent")
+                } else {
+                    let enabled = !blocked && !empty
+                    Button { send(draft.text) } label: {
+                        Group {
+                            if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.up").font(.subheadline.weight(.bold)) }
+                        }
+                        .foregroundStyle(.white).frame(width: 32, height: 32)
+                        .background(enabled || busy ? Theme.accent : Color.secondary.opacity(0.35), in: Circle())
+                    }.disabled(!enabled).accessibilityLabel("Send message")
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
+        .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 2)
+        .onTapGesture { focused.wrappedValue = true }
     }
 }
 
