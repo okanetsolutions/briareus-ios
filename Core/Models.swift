@@ -135,6 +135,8 @@ public struct SessionResult: Decodable, Sendable {
 public struct Event: Codable, Identifiable, Sendable {
     public let seq: Int
     public let kind: String
+    /// When the server logged it, as an ISO 8601 date.
+    public let t: String?
     public let text: String?
     public let name: String?
     public let summary: String?
@@ -145,6 +147,7 @@ public struct Event: Codable, Identifiable, Sendable {
     public let isError: Bool?
     public let attachments: [JSONValue]?
     public var id: Int { seq }
+    public var time: Date? { BoardDate.parse(t) }
     /// Tool events carry their detail in `summary`; other kinds use `text`.
     public var detail: String? { text ?? summary }
     /// Status and workspace setup output are dashboard plumbing, not part of the conversation.

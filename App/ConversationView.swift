@@ -10,6 +10,7 @@ struct ConversationView: View {
     @State private var restored = false
     /// Set when a write to the saved transcript failed, so the next one rewrites it whole and leaves no gap.
     @State private var unsaved = false
+    @State private var retimed = false
     @State private var message = ""
     @State private var busy = false
     @State private var loading = false
@@ -115,9 +116,6 @@ struct ConversationView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if let cost = session.usage?["costUsd"].double {
-                        Text("Spent \(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4))))")
-                    }
                     if let number = session.pullNumber, let repo = session.repo {
                         if store.supports("pull_files") {
                             Button("View changes", systemImage: "doc.text.magnifyingglass") { pull = PullRoute(repo: repo, number: number, changes: true) }
@@ -161,7 +159,6 @@ struct ConversationView: View {
         var parts = [session.status.capitalized]
         if let model = session.model, !model.isEmpty { parts.append(model) }
         if session.reviewLoopOn { parts.append("Review loop") }
-        if let cost = session.usage?["costUsd"].double { parts.append(cost.formatted(.currency(code: "USD").precision(.fractionLength(2)))) }
         return parts.joined(separator: " · ")
     }
     private var actionTitle: String {
@@ -256,6 +253,10 @@ struct ConversationView: View {
             let saved: [Event] = await store.cache.lines(cacheKey)
             if !restored { restored = true; transcript.append(saved) }
         }
+        // A transcript saved before messages showed their time has none; it is read again once to get them.
+        var full = full
+        if !retimed && !transcript.events.isEmpty && transcript.events.allSatisfy({ $0.t == nil }) { full = true }
+        retimed = true
         let since = full ? 0 : transcript.cursor
         let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(since))])
         try Task.checkCancellation()
@@ -321,11 +322,15 @@ struct EventView: View {
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Theme.surface, in: Capsule())
                     }
+                    EventTime(date: event.time)
                 }
             }
             .accessibilityElement(children: .combine).accessibilityLabel("You: \(event.text ?? "")")
         case "text":
-            MarkdownText(event.text ?? "")
+            VStack(alignment: .leading, spacing: 6) {
+                MarkdownText(event.text ?? "")
+                EventTime(date: event.time)
+            }
         case "ask":
             AskCard(event: event, canAnswer: canAnswer, answer: answer)
         case "result":
@@ -454,6 +459,18 @@ struct AskCard: View {
     }
 }
 
+/// When a message was logged: the time alone for today's, with its day for an older one.
+struct EventTime: View {
+    let date: Date?
+    static func text(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+    }
+    var body: some View {
+        if let date { Text(Self.text(date)).font(.caption2).foregroundStyle(.tertiary) }
+    }
+}
+
 struct TurnFooter: View {
     let event: Event
     var body: some View {
@@ -463,7 +480,7 @@ struct TurnFooter: View {
                 .foregroundStyle(failed ? Theme.danger : Theme.success)
             Text(failed ? "Turn failed" : "Turn complete")
             if let ms = event.durationMs { Text("·"); Text(Duration.milliseconds(ms).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))) }
-            if let cost = event.costUsd { Text("·"); Text(cost, format: .currency(code: "USD").precision(.fractionLength(2...4))) }
+            if let time = event.time { Text("·"); Text(EventTime.text(time)) }
         }
         .font(.caption).foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
