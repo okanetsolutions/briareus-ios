@@ -14,6 +14,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
 - Revokes its token remotely or forgets the local connection.
+- On an iPad, or a Mac running the iPad app, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
 
 Read-only connections hide write controls. A capability catalog keeps unsupported operations unavailable. Projects, conversations, transcripts and pull requests are saved on the phone, so a screen opens on what it last showed and then asks the server only for what changed; a saved transcript resumes from its last event, and pulling down reads it again in full. Backgrounding pauses polling and covers the app switcher snapshot.
 
