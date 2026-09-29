@@ -65,7 +65,6 @@ struct ConversationView: View {
                         .onAppear { atBottom = true }.onDisappear { atBottom = false }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
-                .readableWidth()
             }
             .startAtBottom()
             .scrollDismissesKeyboard(.interactively)
@@ -240,7 +239,6 @@ struct ConversationView: View {
             }
         }
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
-        .readableWidth()
         .background(Theme.background)
     }
     /// Where a message sent during a turn goes; one sent to an idle agent needs no word.
