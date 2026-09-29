@@ -2,12 +2,13 @@ import SwiftUI
 
 /// What the right-hand side shows where there is room for two columns.
 enum Pane: Hashable {
-    case conversation(Session), pulls(Project)
+    case conversation(Session), pulls(Project), findings(Project)
     /// A conversation keeps its identity while polling changes what is known about it.
     var id: String {
         switch self {
         case .conversation(let session): return "conversation:\(session.id)"
         case .pulls(let project): return "pulls:\(project.repo)"
+        case .findings(let project): return "findings:\(project.repo)"
         }
     }
 }
@@ -75,6 +76,7 @@ struct SplitLayout: View {
             switch pane {
             case .conversation(let session): ConversationView(initial: session)
             case .pulls(let project): PullsView(project: project)
+            case .findings(let project): FindingsView(project: project)
             case nil:
                 ContentUnavailableView("No conversation selected", systemImage: "bubble.left.and.text.bubble.right",
                                        description: Text("Choose a conversation from the list to read it here."))

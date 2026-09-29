@@ -122,6 +122,11 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
     public var pullNumber: Int? {
         (prStatus?["number"].double ?? startedOnPr?.double).flatMap { $0 >= 1 ? Int($0) : nil }
     }
+    /// The conversations with a round waiting, the one held longest first, as the dashboard's queue orders them.
+    public static func holdingFindings(_ sessions: [Session]) -> [Session] {
+        sessions.filter { $0.heldTriage != nil }
+            .sorted { ($0.heldTriage?["heldAt"].string ?? "") < ($1.heldTriage?["heldAt"].string ?? "") }
+    }
     public var displayTitle: String { title.flatMap { $0.isEmpty ? nil : $0 } ?? "New conversation" }
     public var isActive: Bool { ["queued", "preparing", "running", "starting"].contains(status) }
     public static func == (lhs: Session, rhs: Session) -> Bool { lhs.id == rhs.id }

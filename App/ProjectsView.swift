@@ -110,6 +110,20 @@ struct ProjectView: View {
                     PaneLink(pane: .pulls(project)) { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
                 }.listRowBackground(Theme.row)
             }
+            let waiting = Session.holdingFindings(sessions).count
+            if waiting > 0 && store.supports("complete_findings") {
+                Section {
+                    PaneLink(pane: .findings(project)) { FindingsView(project: project) } label: {
+                        HStack {
+                            Label("Findings", systemImage: "flag")
+                            Spacer()
+                            Text(String(waiting)).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.warning, in: Capsule())
+                        }
+                    }
+                    .accessibilityLabel("Findings, \(waiting) waiting")
+                }.listRowBackground(Theme.row)
+            }
             if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.row) }
             let active = filtered.filter(\.isActive)
             if !active.isEmpty {

@@ -52,13 +52,20 @@ struct ConversationView: View {
                             Task { await mutate("drop_message", extra: ["index": .number(Double(index))]) }
                         }
                     }
-                    if let triage = session.heldTriage, store.supports("complete_findings") {
-                        FindingsTriageCard(triage: triage, disabled: busy || uncertain) { verdicts, note in
-                            var extra: [String: JSONValue] = [:]
-                            if !verdicts.isEmpty { extra["verdicts"] = .array(verdicts) }
-                            if !note.isEmpty { extra["note"] = .string(note) }
-                            Task { await mutate("complete_findings", extra: extra) }
+                    if let triage = session.heldTriage, let repo = session.repo, store.supports("complete_findings") {
+                        // The findings are ruled on in their own section, as on the dashboard; here they are only announced.
+                        PaneLink(pane: .findings(Project(repo: repo))) { FindingsView(project: Project(repo: repo)) } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "flag.fill").foregroundStyle(Theme.warning)
+                                let count = triage["findings"].array.count
+                                Text("\(count) finding\(count == 1 ? "" : "s") waiting in Findings").font(.subheadline.weight(.medium))
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
+                            }
+                            .padding(12)
+                            .background(Theme.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
+                        .buttonStyle(.plain)
                     }
                     if session.isActive { WorkingIndicator(status: session.status) }
                     Color.clear.frame(height: 1).id("bottom")

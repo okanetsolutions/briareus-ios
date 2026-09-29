@@ -180,6 +180,11 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(sessions.map(\.canReviewLoop), [true, false, false])
         XCTAssertEqual(sessions.map { $0.heldTriage?["findings"].array.first?["key"].string }, ["k1", "k2", nil])
     }
+    func testFindingsQueueHoldsTheOldestRoundFirst() throws {
+        let data = Data(#"[{"id":"a","status":"idle","reviewLoop":{"triage":{"heldAt":"2026-09-29T10:00:00Z","findings":[{"key":"k1"}]}}},{"id":"b","status":"idle"},{"id":"c","status":"idle","reviewTriage":{"heldAt":"2026-09-28T09:00:00Z","findings":[{"key":"k2"}]}},{"id":"d","status":"idle","reviewTriage":{"findings":[]}}]"#.utf8)
+        let sessions = try JSONDecoder().decode([Session].self, from: data)
+        XCTAssertEqual(Session.holdingFindings(sessions).map(\.id), ["c", "a"])
+    }
     func testSetupEventsAreHidden() throws {
         let data = Data(#"[{"seq":1,"kind":"setup","text":"Installing dependencies"},{"seq":2,"kind":"text","text":"Done"}]"#.utf8)
         let events = try JSONDecoder().decode([Event].self, from: data)

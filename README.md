@@ -28,7 +28,8 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages. Workspace setup steps are left out.
 - Starts conversations on a chosen branch, provider, model and effort, or on the project default.
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
-- Turns the review loop on or off and completes the triage of held findings from inside a conversation.
+- Turns the review loop on or off from inside a conversation.
+- Keeps the review findings waiting for a decision in a section of their own in each project, as the dashboard does; the conversation they came from only says they are waiting.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
 - On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
 - On a Mac, runs as a Mac app built from the same sources: projects, a project's conversations and the chosen conversation each in a column of their own, which goes on updating while another app is in front.
@@ -260,7 +261,7 @@ Manual acceptance with a deployed test project:
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
-- Triage a round of findings and toggle the review loop from a conversation; verify the dashboard shows the same state.
+- Triage a round of findings from the project's Findings section and toggle the review loop from a conversation; verify the dashboard shows the same state.
 - Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh and check the outcome before submitting it again.
