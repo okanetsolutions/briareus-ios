@@ -10,6 +10,7 @@ struct ConversationView: View {
     @State private var restored = false
     /// Set when a write to the saved transcript failed, so the next one rewrites it whole and leaves no gap.
     @State private var unsaved = false
+    @State private var retimed = false
     @State private var message = ""
     @State private var busy = false
     @State private var loading = false
@@ -68,7 +69,7 @@ struct ConversationView: View {
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
             // Pulling down reads the whole transcript again, in case the saved one drifted from the server's.
-            .refreshable { do { try await refresh(full: true) } catch { self.error = error.localizedDescription } }
+            .refreshable { do { try await refresh(full: true) } catch { if let said = failure(error) { self.error = said } } }
             .onChange(of: transcript.events.count) { old, _ in
                 // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
                 if old == 0 {
@@ -115,15 +116,12 @@ struct ConversationView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    if let cost = session.usage?["costUsd"].double {
-                        Text("Spent \(cost.formatted(.currency(code: "USD").precision(.fractionLength(2...4))))")
-                    }
                     if let number = session.pullNumber, let repo = session.repo {
                         if store.supports("pull_files") {
                             Button("View changes", systemImage: "doc.text.magnifyingglass") { pull = PullRoute(repo: repo, number: number, changes: true) }
                         }
                         if store.supports("pull") {
-                            Button("Pull request #\(number)", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
+                            Button("Pull request #\(String(number))", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
                         }
                     }
                     if store.supports("review_loop") && session.canReviewLoop {
@@ -144,9 +142,10 @@ struct ConversationView: View {
             else { PullDetailView(project: Project(repo: route.repo), number: route.number) }
         }
         .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: { try await refresh() }) { error = $0.localizedDescription; loaded = true }
-        .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
-            Button("Confirm", role: pendingAction == "delete" || pendingAction == "cancel" ? .destructive : nil) {
-                if let action = pendingAction { Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) } }
+        .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
+                            titleVisibility: .visible, presenting: pendingAction) { action in
+            Button("Confirm", role: action == "delete" || action == "cancel" ? .destructive : nil) {
+                Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) }
             }
         }
         .alert("Rename conversation", isPresented: $renaming) {
@@ -160,7 +159,6 @@ struct ConversationView: View {
         var parts = [session.status.capitalized]
         if let model = session.model, !model.isEmpty { parts.append(model) }
         if session.reviewLoopOn { parts.append("Review loop") }
-        if let cost = session.usage?["costUsd"].double { parts.append(cost.formatted(.currency(code: "USD").precision(.fractionLength(2)))) }
         return parts.joined(separator: " · ")
     }
     private var actionTitle: String {
@@ -197,8 +195,9 @@ struct ConversationView: View {
                     TextField(session.isActive ? "Send a follow-up…" : "Reply to your agent…", text: $message, axis: .vertical)
                         .lineLimit(1...8).focused($composerFocused).accessibilityIdentifier("messageInput")
                     HStack(spacing: 10) {
-                        Label(composerHint.text, systemImage: composerHint.icon)
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        if let hint = composerHint {
+                            Label(hint.text, systemImage: hint.icon).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                         Spacer(minLength: 0)
                         if store.canTranscribe { VoiceNoteButton(text: $message) }
                         if session.isActive && store.supports("cancel") && trimmedMessage.isEmpty {
@@ -241,11 +240,14 @@ struct ConversationView: View {
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
         .background(Theme.background)
     }
-    private var composerHint: (text: String, icon: String) {
-        guard session.isActive else { return ("Sending starts a paid agent turn", "sparkle") }
+    /// Where a message sent during a turn goes; one sent to an idle agent needs no word.
+    private var composerHint: (text: String, icon: String)? {
+        guard session.isActive else { return nil }
         return session.liveInput == true ? ("Sent into the running turn", "bolt.fill") : ("Queued for the next turn", "clock")
     }
     private func refresh(full: Bool = false) async throws {
+        // A poll already reading must not swallow a pull to refresh, which waits its turn.
+        while full && loading { try await Task.sleep(for: .milliseconds(100)) }
         guard !loading else { return }
         loading = true; defer { loading = false }
         if !restored {
@@ -253,6 +255,10 @@ struct ConversationView: View {
             let saved: [Event] = await store.cache.lines(cacheKey)
             if !restored { restored = true; transcript.append(saved) }
         }
+        // A transcript saved before messages showed their time has none; it is read again once to get them.
+        var full = full
+        if !retimed && !transcript.events.isEmpty && transcript.events.allSatisfy({ $0.t == nil }) { full = true }
+        retimed = true
         let since = full ? 0 : transcript.cursor
         let result: SessionResult = try await store.call("session", ["sessionId": .string(initial.id), "since": .number(Double(since))])
         try Task.checkCancellation()
@@ -318,11 +324,15 @@ struct EventView: View {
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Theme.surface, in: Capsule())
                     }
+                    EventTime(date: event.time)
                 }
             }
             .accessibilityElement(children: .combine).accessibilityLabel("You: \(event.text ?? "")")
         case "text":
-            MarkdownText(event.text ?? "")
+            VStack(alignment: .leading, spacing: 6) {
+                MarkdownText(event.text ?? "")
+                EventTime(date: event.time)
+            }
         case "ask":
             AskCard(event: event, canAnswer: canAnswer, answer: answer)
         case "result":
@@ -451,6 +461,18 @@ struct AskCard: View {
     }
 }
 
+/// When a message was logged: the time alone for today's, with its day for an older one.
+struct EventTime: View {
+    let date: Date?
+    static func text(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.day().month(.abbreviated).hour().minute())
+    }
+    var body: some View {
+        if let date { Text(Self.text(date)).font(.caption2).foregroundStyle(.tertiary) }
+    }
+}
+
 struct TurnFooter: View {
     let event: Event
     var body: some View {
@@ -460,7 +482,7 @@ struct TurnFooter: View {
                 .foregroundStyle(failed ? Theme.danger : Theme.success)
             Text(failed ? "Turn failed" : "Turn complete")
             if let ms = event.durationMs { Text("·"); Text(Duration.milliseconds(ms).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .narrow))) }
-            if let cost = event.costUsd { Text("·"); Text(cost, format: .currency(code: "USD").precision(.fractionLength(2...4))) }
+            if let time = event.time { Text("·"); Text(EventTime.text(time)) }
         }
         .font(.caption).foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)

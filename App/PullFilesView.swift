@@ -11,7 +11,7 @@ struct PullFilesView: View {
     @State private var changed = false
     /// False while the list on screen is a saved one the server has not confirmed yet.
     @State private var confirmed = false
-    private var key: String { "files:\(project.repo)#\(number)" }
+    private var key: String { "files:\(project.repo)#\(String(number))" }
     var body: some View {
         List {
             if changed {
@@ -59,7 +59,7 @@ struct PullFilesView: View {
             }
         }
         .scrollContentBackground(.hidden).background(Theme.background)
-        .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("#\(String(number))").navigationBarTitleDisplayMode(.inline)
         .refreshable { list = PullFileList(); changed = false; confirmed = true; await load() }
         .task { if !confirmed { await load() } }
     }

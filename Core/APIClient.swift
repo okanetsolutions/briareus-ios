@@ -83,11 +83,12 @@ public final class APIClient: @unchecked Sendable {
     public func revoke() async throws {
         let _: JSONValue = try await request(path: "token", method: "DELETE", body: nil)
     }
-    public func operation<T: Decodable>(_ name: String, arguments: [String: JSONValue] = [:]) async throws -> T {
+    /// `timeout` is for an operation that answers only once its work is done; the rest give up after 30 idle seconds.
+    public func operation<T: Decodable>(_ name: String, arguments: [String: JSONValue] = [:], timeout: TimeInterval? = nil) async throws -> T {
         guard name.range(of:  #"\A[a-z][a-z0-9_]*\z"#, options: .regularExpression) != nil else {
             throw APIError.http(400, "Invalid operation", retryAfter: nil)
         }
-        return try await request(path: "operations/\(name)", method: "POST", body: .object(arguments))
+        return try await request(path: "operations/\(name)", method: "POST", body: .object(arguments), timeout: timeout)
     }
     /// The text of a recorded voice note. `language` is the spoken one as a BCP 47 tag; empty lets the server detect it.
     public func transcribe(_ audio: Data, type: String = "audio/mp4", language: String = "") async throws -> String {
@@ -104,10 +105,11 @@ public final class APIClient: @unchecked Sendable {
         guard let text = result["text"].string else { throw APIError.nonJSON }
         return text
     }
-    private func request<T: Decodable>(path: String, method: String, body: JSONValue?) async throws -> T {
+    private func request<T: Decodable>(path: String, method: String, body: JSONValue?, timeout: TimeInterval? = nil) async throws -> T {
         let url = path.isEmpty ? address.baseURL : address.baseURL.appendingPathComponent(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let timeout { request.timeoutInterval = timeout }
         if let body {
             let data = try JSONEncoder().encode(body)
             guard data.count <= 1_048_576 else { throw APIError.oversizedRequest }

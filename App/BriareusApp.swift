@@ -128,12 +128,14 @@ struct SettingsView: View {
                 .navigationTitle("Connection").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
                 .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
-                                    isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
+                                    isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
+                                    titleVisibility: .visible, presenting: confirm) { action in
                     Button("Continue", role: .destructive) {
-                        let action = confirm; busy = true
+                        busy = true
                         Task {
                             defer { busy = false }
-                            do { if action == "revoke" { try await store.revoke() } else { try await store.forget() } }
+                            // Named both ways: a token meant to be revoked must never be merely forgotten.
+                            do { if action == "revoke" { try await store.revoke() } else if action == "forget" { try await store.forget() } }
                             catch { self.error = error.localizedDescription }
                         }
                     }

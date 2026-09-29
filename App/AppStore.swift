@@ -87,11 +87,11 @@ final class AppStore: ObservableObject {
             device = discovery.device; operations = catalog.operations; transcribes = discovery.transcribe; client = api
         } catch { connectionError = error.localizedDescription }
     }
-    func call<T: Decodable>(_ name: String, _ args: [String: JSONValue] = [:]) async throws -> T {
+    func call<T: Decodable>(_ name: String, _ args: [String: JSONValue] = [:], timeout: TimeInterval? = nil) async throws -> T {
         guard let api = client, supports(name) else {
             throw APIError.http(403, "This device cannot perform that action.", retryAfter: nil)
         }
-        do { return try await api.operation(name, arguments: args) }
+        do { return try await api.operation(name, arguments: args, timeout: timeout) }
         catch {
             if (error as? APIError)?.isUnauthorized == true { await invalidateCredentials(error) }
             throw error
@@ -129,6 +129,12 @@ final class AppStore: ObservableObject {
         catch { if (error as? APIError)?.isUnauthorized != true { throw error } }
         try await forget()
     }
+}
+
+/// What a failed read should say, or nil for one that was only abandoned: left behind by its screen, not refused.
+func failure(_ error: Error) -> String? {
+    if error is CancellationError || (error as? URLError)?.code == .cancelled { return nil }
+    return error.localizedDescription
 }
 
 // The task is canceled by SwiftUI when its screen disappears or the scene becomes inactive.

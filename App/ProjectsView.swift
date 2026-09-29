@@ -9,7 +9,8 @@ private struct ActivePolling: ViewModifier {
     let failed: (Error) -> Void
     func body(content: Content) -> some View {
         content.onAppear { visible = true }.onDisappear { visible = false }
-            .task(id: visible && phase == .active && enabled) {
+            // The interval is part of what the task is, so a conversation that goes idle slows its polling down.
+            .task(id: visible && phase == .active && enabled ? interval : 0) {
                 guard visible && phase == .active && enabled else { return }
                 await poll(every: interval, action: action, failed: failed)
             }
@@ -58,7 +59,7 @@ struct ProjectsView: View {
             }
             .sheet(isPresented: $showingConnection) { SettingsView() }
             .navigationDestination(for: Project.self) { ProjectView(project: $0) }
-            .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
+            .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
             .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
         }
     }
@@ -123,7 +124,7 @@ struct ProjectView: View {
             NewConversationView(project: project) { session in created = session }
         }
         .navigationDestination(item: $created) { ConversationView(initial: $0) }
-        .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
+        .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
     }
     private func row(_ session: Session) -> some View {

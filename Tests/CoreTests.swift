@@ -274,6 +274,9 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(transcript.events.map(\.seq), [1, 2, 3]); XCTAssertEqual(transcript.cursor, 3)
         XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].detail, "ls")
         XCTAssertEqual(transcript.events[2].costUsd, 0.5)
+        let timed = try JSONDecoder().decode(Event.self, from: Data(#"{"seq":4,"kind":"text","t":"2026-09-28T15:55:49.120Z","text":"Hi"}"#.utf8))
+        XCTAssertEqual(timed.time.map { Int($0.timeIntervalSince1970) }, 1790610949)
+        XCTAssertNil(transcript.events[2].time)
         await cache.replace(second, in: "transcript:s/1")
         let replaced: [Event] = await cache.lines("transcript:s/1")
         XCTAssertEqual(replaced.map(\.seq), [2, 3])
@@ -322,6 +325,111 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(saved.confirm(try page(#"{"pr":{"headSha":"h1","baseSha":"b2"},"files":[],"nextPage":null}"#)))
         var empty = PullFileList()
         XCTAssertFalse(empty.confirm(try page(#"{"pr":{},"files":[],"nextPage":null}"#)))
+    }
+    private func board() throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data(#"""
+        {"author":"TheBot","pulls":[
+          {"number":7,"title":"Add invoices","branch":"feat/invoices","baseBranch":"main","draft":false,"author":"thebot","assignees":["ana"],
+           "reviewers":[{"user":"Ana","state":"requested"},{"user":"luis","state":"approved"}],
+           "labels":[{"name":"Has-Conflicts","color":"d93f0b"},{"name":"backend","color":"zzz"}],
+           "issues":[{"number":3,"title":"Invoices","state":"closed","stateReason":"not_planned","repo":"acme/other","labels":[]}],
+           "mergeable":"unknown","checks":"failure","reviewDecision":"review_required","recommended":"solve-conflicts","updatedAt":"2026-09-28T15:55:49Z"},
+          {"number":8,"title":"Fix login","branch":"fix/login","author":"ana","labels":[{"name":"feedback-given","color":"fbca04"},{"name":"backend"}],
+           "reviewers":[{"user":"luis","state":"commented"}],"mergeable":"conflicting","checks":"pending","updatedAt":"2026-09-28T15:55:49.120Z"},
+          {"number":9,"title":"Docs","branch":"docs","author":"luis","mergeable":"mergeable"},
+          {"title":"No number"}],
+         "issues":[
+          {"number":20,"title":"Child","author":"ana","labels":[],"parent":{"number":21,"title":"Epic","repo":"o/r"},"pulls":[{"number":8,"title":"Fix login","draft":true,"repo":"o/r"}]},
+          {"number":21,"title":"Epic","labels":[{"name":"backend"}],"subIssues":{"total":3,"completed":1,"open":2}},
+          {"number":22,"title":"Elsewhere","parent":{"number":21,"title":"Theirs","repo":"acme/other"}},
+          {"number":23,"title":"Loop a","parent":{"number":24,"title":"Loop b"}},
+          {"number":24,"title":"Loop b","parent":{"number":23,"title":"Loop a"}}]}
+        """#.utf8))
+    }
+    func testBoardRowsReadLabelsConflictsAndWhatEachAsksFor() throws {
+        let pulls = try board()["pulls"].array.compactMap(PullSummary.init)
+        XCTAssertEqual(pulls.map(\.number), [7, 8, 9])
+        XCTAssertEqual(pulls[0].labels.map(\.name), ["Has-Conflicts", "backend"])
+        XCTAssertEqual(pulls[0].labels[0].rgb?.map { Int(($0 * 255).rounded()) }, [0xd9, 0x3f, 0x0b])
+        XCTAssertNil(pulls[0].labels[1].rgb)
+        // The label says so before GitHub has finished computing the merge.
+        XCTAssertFalse(pulls[0].conflicting); XCTAssertTrue(pulls[0].hasConflicts); XCTAssertTrue(pulls[0].checksFailed)
+        XCTAssertTrue(pulls[1].conflicting); XCTAssertTrue(pulls[1].awaitsFeedback); XCTAssertFalse(pulls[1].checksFailed)
+        XCTAssertFalse(pulls[2].hasConflicts); XCTAssertNil(pulls[2].checks); XCTAssertEqual(pulls[2].labels, [])
+        XCTAssertEqual(pulls[0].recommended, "solve-conflicts")
+        XCTAssertEqual(pulls[0].reviewers.map(\.state), ["requested", "approved"])
+        XCTAssertNotNil(pulls[0].updatedAt); XCTAssertNotNil(pulls[1].updatedAt); XCTAssertNil(pulls[2].updatedAt)
+        let issue = try XCTUnwrap(pulls[0].issues.first)
+        XCTAssertTrue(issue.notPlanned); XCTAssertEqual(issue.reference(in: "o/r"), "acme/other#3")
+        XCTAssertEqual(pulls[0].raw["branch"].string, "feat/invoices")
+    }
+    func testBoardFilterCountsEachPickerAgainstTheOthers() throws {
+        let pulls = try board()["pulls"].array.compactMap(PullSummary.init)
+        var filter = BoardFilter(opening: "TheBot", rows: pulls)
+        XCTAssertEqual(filter.author, "thebot")
+        XCTAssertEqual(pulls.filter { filter.passes($0) }.map(\.number), [7])
+        XCTAssertEqual(filter.options(.author, in: pulls).map { "\($0.text) \($0.count)" }, ["ana 1", "luis 1", "thebot 1"])
+        XCTAssertEqual(filter.options(.label, in: pulls).map { "\($0.value) \($0.count)" }, ["backend 1", "has-conflicts 1"])
+        filter[.author] = ""; filter[.label] = "Backend"
+        XCTAssertEqual(pulls.filter { filter.passes($0) }.map(\.number), [7, 8])
+        XCTAssertEqual(filter.options(.reviewer, in: pulls).map { "\($0.text) \($0.count)" }, ["Ana 1", "luis 2"])
+        filter[.reviewer] = "ANA"
+        XCTAssertEqual(pulls.filter { filter.passes($0) }.map(\.number), [7])
+        // A pick the other filters have emptied still lists itself, so the board can be widened again.
+        filter[.author] = "luis"
+        XCTAssertEqual(pulls.filter { filter.passes($0) }.map(\.number), [])
+        XCTAssertEqual(filter.options(.reviewer, in: pulls), [.init(value: "ana", text: "ana", count: 0)])
+        XCTAssertTrue(filter.isOn)
+        // Nobody to open on when the configured author has nothing open.
+        XCTAssertFalse(BoardFilter(opening: "ghost", rows: pulls).isOn); XCTAssertFalse(BoardFilter(opening: nil, rows: pulls).isOn)
+    }
+    func testBoardOffersTheErrandsAPullRequestIsInAStateFor() throws {
+        let pulls = try board()["pulls"].array.compactMap(PullSummary.init)
+        XCTAssertEqual(BoardAction.offered(pull: pulls[0]).map(\.id),
+                       ["run", "review", "solve-conflicts", "fix-checks", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+        XCTAssertEqual(BoardAction.offered(pull: pulls[1]).map(\.id),
+                       ["run", "review", "solve-conflicts", "implement-feedback", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+        XCTAssertFalse(BoardAction.offered(pull: pulls[2]).contains { ["solve-conflicts", "fix-checks", "implement-feedback"].contains($0.id) })
+        XCTAssertTrue(BoardAction.offered(pull: pulls[2], failedChecks: 1).contains { $0.id == "fix-checks" })
+        // Off the board nothing is known about its state, so the errands that answer one stay on offer.
+        XCTAssertTrue(BoardAction.offered(pull: nil).contains { $0.id == "solve-conflicts" })
+        let catalog = try JSONDecoder().decode(JSONValue.self, from: Data(#"""
+        [{"id":"custom-feedback","label":"Give feedback","hint":"h","input":{"label":"Tell it","placeholder":"e.g.","required":true}},
+         {"id":"test-run","label":"Run test sheet","icon":"🎬","hint":"Execute it","input":null},{"label":"No id"}]
+        """#.utf8)).array
+        let offered = BoardAction.offered(catalog: catalog, pull: pulls[2])
+        XCTAssertEqual(offered.last?.id, "test-run"); XCTAssertEqual(offered.last?.operation, "test_run")
+        let feedback = try XCTUnwrap(offered.first { $0.id == "custom-feedback" })
+        XCTAssertEqual(feedback.input?.label, "Tell it")
+        XCTAssertEqual(feedback.arguments(repo: "o/r", number: 9, branch: "docs", input: " Use 404 \n"),
+                       ["repo": .string("o/r"), "prNumber": .number(9), "input": .string("Use 404")])
+        let known = Dictionary(uniqueKeysWithValues: BoardAction.known.map { ($0.id, $0) })
+        XCTAssertEqual(known["run"]?.operation, "serve_pull"); XCTAssertEqual(known["solve-conflicts"]?.operation, "solve_conflicts")
+        XCTAssertEqual(known["review"]?.arguments(repo: "o/r", number: 9, branch: "docs", input: "ignored"),
+                       ["repo": .string("o/r"), "prNumber": .number(9), "branch": .string("docs")])
+        XCTAssertEqual(known["run"]?.arguments(repo: "o/r", number: 9, branch: "docs"), ["repo": .string("o/r"), "prNumber": .number(9)])
+    }
+    func testIssuesNestUnderTheirEpicAndWordTheirOwnSession() throws {
+        let issues = try board()["issues"].array.compactMap(IssueSummary.init)
+        let rows = IssueSummary.nested(issues, repo: "o/r")
+        // A child follows its epic; one whose epic is elsewhere, and a loop of parents, stay flat and are drawn once.
+        XCTAssertEqual(rows.map { "\($0.issue.number):\($0.depth)" }, ["21:0", "20:1", "22:0", "23:0", "24:1"])
+        XCTAssertTrue(issues[1].isEpic); XCTAssertEqual(issues[1].subIssuesDone, 1); XCTAssertFalse(issues[0].isEpic)
+        XCTAssertEqual(issues[0].pulls.map(\.number), [8]); XCTAssertTrue(issues[0].pulls[0].draft)
+        XCTAssertEqual(IssueSummary.nested(Array(issues.prefix(1)), repo: "o/r").map(\.depth), [0])
+        let prompt = issues[0].prompt(repo: "o/r")
+        XCTAssertTrue(prompt.hasPrefix("Issue #20: Child\n"))
+        XCTAssertTrue(prompt.contains("gh issue view 20 --repo o/r --comments"))
+        XCTAssertTrue(prompt.contains("sub-issue of o/r#21 (Epic)")); XCTAssertTrue(prompt.contains("`Closes #20`"))
+        XCTAssertTrue(issues[2].prompt(repo: "o/r").contains("sub-issue of acme/other#21"))
+        XCTAssertFalse(issues[1].prompt(repo: "o/r").contains("sub-issue of"))
+    }
+    func testMergeWarningsSayWhatStandsInTheWay() {
+        XCTAssertEqual(MergeState.warnings(mergeable: .bool(true), state: "clean"), [])
+        XCTAssertEqual(MergeState.warnings(mergeable: .bool(false), state: "dirty").count, 1)
+        XCTAssertTrue(MergeState.warnings(mergeable: .null, state: "unknown")[0].contains("still checking"))
+        XCTAssertTrue(MergeState.warnings(mergeable: .bool(true), state: "behind")[0].contains("behind"))
+        XCTAssertTrue(MergeState.warnings(mergeable: .bool(true), state: "blocked")[0].contains("blocked"))
     }
     private func body(of request: URLRequest) -> Data {
         if let data = request.httpBody { return data }
