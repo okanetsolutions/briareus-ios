@@ -244,6 +244,7 @@ The GitHub Actions workflow runs on every pull request and on pushes to `main`, 
 | Core tests | The checked-in project matches the generator, then `swift test` |
 | Simulator build | Builds for the simulator and uploads a simulator `.app` zip |
 | iPhone build | Builds the Release configuration for a physical device, unsigned |
+| Mac build | Builds the Mac app, unsigned |
 | Pairing UI test | Boots a simulator, runs the UI test and uploads the results |
 | ios | Passes only when every job above passed; the one check to require in branch protection |
 
