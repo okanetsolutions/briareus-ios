@@ -4,6 +4,9 @@ import hashlib
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
+# CarPlay lists the app only with an entitlement Apple grants to a team on request. Until the team has it, a build
+# for a device that asked for it would not sign, so only the simulator, which asks for no grant, carries it.
+CARPLAY_ON_DEVICE = False
 objects = {}
 def ident(name): return hashlib.sha1(name.encode()).hexdigest()[:24].upper()
 def put(name, value):
@@ -51,6 +54,8 @@ projectconfigs = config_list('project', base)
 appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator macosx', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks',
     # The Mac app is its own build of the same sources, not the iPad app in a window.
     'SUPPORTS_MACCATALYST':'NO', 'SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD':'NO',
+    'CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]':'App/Briareus-CarPlay.entitlements',
+    **({'CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]':'App/Briareus-CarPlay.entitlements'} if CARPLAY_ON_DEVICE else {}),
     'INFOPLIST_FILE[sdk=macosx*]':'App/Info-macOS.plist', 'CODE_SIGN_ENTITLEMENTS[sdk=macosx*]':'App/Briareus-macOS.entitlements',
     'ENABLE_HARDENED_RUNTIME[sdk=macosx*]':'YES', 'LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]':'$(inherited) @executable_path/../Frameworks'})
 testconfigs = config_list('tests', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus.uitests', 'PRODUCT_NAME':'BriareusUITests', 'GENERATE_INFOPLIST_FILE':'YES', 'TEST_TARGET_NAME':'Briareus', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'})

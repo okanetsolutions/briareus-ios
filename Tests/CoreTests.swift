@@ -447,4 +447,52 @@ final class CoreTests: XCTestCase {
         }
         return data
     }
+    func testRepliesAreSaidWithoutTheirMarkdown() {
+        let reply = "## Done\nI fixed **the bug** in `parse()`; see [the docs](https://example.com/a) and #12.\n\n- first\n- second\n\n```swift\nlet x = 1\n```\n\n| a | b |\n| - | - |\n\nhttps://example.com/x"
+        XCTAssertEqual(Spoken.text(reply), "Done. I fixed the bug in parse(); see the docs and number 12. first. second. A code block is left out. A table is left out. a link.")
+        XCTAssertEqual(Spoken.inline("a_b_c and *this* and 2 * 3 * 4"), "a_b_c and this and 2 * 3 * 4")
+        XCTAssertEqual(Spoken.text(""), "")
+        XCTAssertEqual(Spoken.title(" Fix  the\nlogin. "), "Fix the login")
+    }
+    func testTheLatestTurnIsSaidWithItsQuestionAndToolCount() throws {
+        let data = Data(#"[{"seq":1,"kind":"user","text":"Old"},{"seq":2,"kind":"text","text":"Old answer"},{"seq":3,"kind":"user","text":"Go"},{"seq":4,"kind":"setup","text":"npm ci"},{"seq":5,"kind":"tool","name":"Bash","summary":"ls"},{"seq":6,"kind":"cmd","text":"git status"},{"seq":7,"kind":"text","text":"Looked **around**"},{"seq":8,"kind":"stderr","text":"warn"},{"seq":9,"kind":"ask","question":"Which one?","options":[{"label":"Left"},{"label":"Right"}]}]"#.utf8)
+        let events = try JSONDecoder().decode([Event].self, from: data)
+        XCTAssertEqual(Spoken.latest(events).map(\.seq), [5, 6, 7, 8, 9])
+        XCTAssertEqual(Spoken.say(Spoken.latest(events)), "2 tools were used. Looked around. A question for you: Which one? The answers offered are: Left and Right.")
+        XCTAssertEqual(Spoken.openQuestion(events)?.seq, 9)
+        XCTAssertEqual(Spoken.options(events[8]), ["Left", "Right"])
+        let answered = try JSONDecoder().decode([Event].self, from: Data(#"[{"seq":1,"kind":"ask","question":"Sure?"},{"seq":2,"kind":"user","text":"Yes"},{"seq":3,"kind":"result","isError":true}]"#.utf8))
+        XCTAssertNil(Spoken.openQuestion(answered))
+        XCTAssertEqual(Spoken.say(answered), "A question for you: Sure? You said: Yes. The turn failed.")
+        XCTAssertEqual(Spoken.latest([]).count, 0)
+    }
+    func testLongRepliesAreCutAtASentence() {
+        let long = String(repeating: "One sentence here. ", count: 200)
+        let cut = Spoken.cut(long, limit: 100)
+        XCTAssertTrue(cut.hasSuffix("here. The rest is on your phone.")); XCTAssertLessThan(cut.count, 140)
+        XCTAssertEqual(Spoken.cut("Short.", limit: 100), "Short.")
+        XCTAssertEqual(Spoken.cut(String(repeating: "a", count: 300), limit: 100).count, 100 + " The rest is on your phone.".count)
+    }
+    func testConversationsAndPullRequestsAreSaidAsSentences() throws {
+        let sessions = try JSONDecoder().decode([Session].self, from: Data(#"[{"id":"a","status":"running","title":"Fix login","queued":[{"text":"x"}]},{"id":"b","status":"idle","reviewTriage":{"findings":[{"key":"k"}]}},{"id":"c","status":"closed","title":"Done"}]"#.utf8))
+        XCTAssertEqual(sessions.map(Spoken.status), [
+            "Fix login. The agent is working. 1 message queued.",
+            "New conversation. It is waiting for you. 1 finding waits for a decision.",
+            "Done. It is closed.",
+        ])
+        let row = PullSummary(try JSONDecoder().decode(JSONValue.self, from: Data(#"{"number":7,"title":"Add cache","branch":"cache","baseBranch":"main","author":"ana","mergeable":"conflicting","checks":"failure","labels":[{"name":"bug"}],"issues":[{"number":3}]}"#.utf8)))
+        XCTAssertEqual(Spoken.pull(number: 7, row: row, details: .null),
+                       "Pull request 7: Add cache. By ana. From cache into main. It conflicts with its base. Its checks failed. Labelled bug. It closes issue 3.")
+        let pr = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"title":"Add cache","state":"open","draft":true,"headRef":"cache","baseRef":"main","checks":{"passed":2,"failed":1,"pending":0,"runs":[{"name":"lint","conclusion":"failure"},{"name":"test","conclusion":"success"}]},"reviews":[{"user":"bo","state":"CHANGES_REQUESTED"}]}"#.utf8))
+        XCTAssertEqual(Spoken.pull(number: 7, row: nil, details: pr, review: "Changes requested"),
+                       "Pull request 7: Add cache. It is a draft. From cache into main. 2 checks passed, 1 failed, 0 still running. Failing: lint. Review: Changes requested.")
+        XCTAssertEqual(Spoken.reviews(pr), "Reviews: bo, changes requested.")
+        XCTAssertEqual(Spoken.checks(.null), "It has no checks.")
+        XCTAssertEqual(Spoken.pull(number: 7, row: nil, details: .object(["state": .string("closed"), "merged": .bool(true), "title": .string("T")])),
+                       "Pull request 7: T. It is merged. It has no checks.")
+        let finding = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"title":"Leak in `open`","severity":"high","file":"src/io/file.swift","decision":"fix"}"#.utf8))
+        XCTAssertEqual(Spoken.finding(finding), "Leak in open. Severity high. In file.swift. Decided: fix.")
+        let issue = IssueSummary(try JSONDecoder().decode(JSONValue.self, from: Data(#"{"number":4,"title":"Epic","author":"ana","comments":2,"subIssues":{"total":3,"completed":1},"pulls":[{"number":9}]}"#.utf8)))!
+        XCTAssertEqual(Spoken.issue(issue), "Issue 4: Epic. By ana. An epic with 1 of 3 sub-issues done. 2 comments. Answered by pull request 9.")
+    }
 }

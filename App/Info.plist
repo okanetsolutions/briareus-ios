@@ -11,7 +11,16 @@
     <key>ITSAppUsesNonExemptEncryption</key><false/>
     <key>LSRequiresIPhoneOS</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Briareus records the voice notes you dictate and sends them to your server to be written out as text.</string>
-    <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
+    <key>UIApplicationSceneManifest</key><dict>
+        <key>UIApplicationSupportsMultipleScenes</key><true/>
+        <key>UISceneConfigurations</key><dict>
+            <key>CPTemplateApplicationSceneSessionRoleApplication</key><array><dict>
+                <key>UISceneClassName</key><string>CPTemplateApplicationScene</string>
+                <key>UISceneConfigurationName</key><string>CarPlay</string>
+                <key>UISceneDelegateClassName</key><string>$(PRODUCT_MODULE_NAME).CarPlayScene</string>
+            </dict></array>
+        </dict>
+    </dict>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
     <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>

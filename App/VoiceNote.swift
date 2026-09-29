@@ -11,6 +11,11 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func refuse(_ reason: String) { if state == .idle { error = reason } }
     /// Past this a note stops by itself and is transcribed, as on the dashboard: a forgotten microphone would record on.
     static let limit: TimeInterval = 5 * 60
+    /// Speech needs no more than this, and five minutes of it stay near a megabyte.
+    static let settings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 22_050, AVNumberOfChannelsKey: 1,
+        AVEncoderBitRateKey: 32_000, AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+    ]
     private var recorder: AVAudioRecorder?
     private var upload: Task<Void, Never>?
     private var transcribe: ((Data) async throws -> String)?
@@ -33,11 +38,7 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
             try audio.setActive(true)
             #endif
             let file = FileManager.default.temporaryDirectory.appendingPathComponent("voice-note-\(UUID().uuidString).m4a")
-            // Speech needs no more than this, and five minutes of it stay near a megabyte.
-            let recorder = try AVAudioRecorder(url: file, settings: [
-                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 22_050, AVNumberOfChannelsKey: 1,
-                AVEncoderBitRateKey: 32_000, AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
-            ])
+            let recorder = try AVAudioRecorder(url: file, settings: Self.settings)
             recorder.delegate = self
             guard recorder.record(forDuration: Self.limit) else { throw CocoaError(.fileWriteUnknown) }
             self.recorder = recorder; self.transcribe = transcribe; self.deliver = deliver
