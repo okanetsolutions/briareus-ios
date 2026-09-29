@@ -24,44 +24,50 @@ extension View {
 }
 
 struct ProjectsView: View {
+    @Environment(\.horizontalSizeClass) private var width
+    var body: some View {
+        // An iPad or a Mac window has room for the conversation beside the list; a phone, or a narrow window, does not.
+        if width == .regular { SplitLayout() } else { NavigationStack { ProjectsList() } }
+    }
+}
+
+struct ProjectsList: View {
     @EnvironmentObject private var store: AppStore
     @State private var projects: [Project] = []
     @State private var loaded = false
     @State private var error: String?
     @State private var showingConnection = false
     var body: some View {
-        NavigationStack {
-            List {
-                if !store.canManage {
-                    Label("Read-only access", systemImage: "eye").font(.subheadline).foregroundStyle(.secondary)
-                }
-                if let error { ErrorNotice(message: error) }
-                ForEach(projects) { project in
-                    NavigationLink(value: project) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(project.title).font(.body.weight(.medium))
-                            if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
-                        }.padding(.vertical, 4)
-                    }
-                    .listRowBackground(Theme.elevated)
-                }
-                if loaded && projects.isEmpty && error == nil {
-                    ContentUnavailableView("No projects", systemImage: "folder", description: Text("Grant this device access to a project in web Settings."))
-                        .listRowBackground(Color.clear)
-                }
-                if !loaded { ProgressView("Loading projects…").frame(maxWidth: .infinity).listRowBackground(Color.clear) }
+        List {
+            if !store.canManage {
+                Label("Read-only access", systemImage: "eye").font(.subheadline).foregroundStyle(.secondary)
             }
-            .scrollContentBackground(.hidden).background(Theme.background)
-            .navigationTitle("Projects")
-            .toolbar {
-                Button { showingConnection = true } label: { Image(systemName: "network") }
-                    .accessibilityLabel("Connection")
+            if let error { ErrorNotice(message: error) }
+            ForEach(projects) { project in
+                NavigationLink(value: project) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(project.title).font(.body.weight(.medium))
+                        if project.title != project.repo { Text(project.repo).font(.caption).foregroundStyle(.secondary) }
+                    }.padding(.vertical, 4)
+                }
+                .listRowBackground(Theme.elevated)
             }
-            .sheet(isPresented: $showingConnection) { SettingsView() }
-            .navigationDestination(for: Project.self) { ProjectView(project: $0) }
-            .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
-            .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
+            if loaded && projects.isEmpty && error == nil {
+                ContentUnavailableView("No projects", systemImage: "folder", description: Text("Grant this device access to a project in web Settings."))
+                    .listRowBackground(Color.clear)
+            }
+            if !loaded { ProgressView("Loading projects…").frame(maxWidth: .infinity).listRowBackground(Color.clear) }
         }
+        .scrollContentBackground(.hidden).background(Theme.background)
+        .navigationTitle("Projects")
+        .toolbar {
+            Button { showingConnection = true } label: { Image(systemName: "network") }
+                .accessibilityLabel("Connection")
+        }
+        .sheet(isPresented: $showingConnection) { SettingsView() }
+        .navigationDestination(for: Project.self) { ProjectView(project: $0) }
+        .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
+        .foregroundPoll(every: 30, action: load) { error = $0.localizedDescription; loaded = true }
     }
     private func load() async throws {
         if !loaded, let saved: [Project] = await store.cache.value("projects"), !loaded { projects = saved; loaded = true }
@@ -82,6 +88,7 @@ struct ProjectView: View {
     @State private var created: Session?
     @State private var error: String?
     @State private var loaded = false
+    @Environment(\.splitPane) private var pane
     var filtered: [Session] {
         sessions.filter { (showClosed || $0.status != "closed") && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
     }
@@ -89,7 +96,7 @@ struct ProjectView: View {
         List {
             if store.supports("pulls") {
                 Section {
-                    NavigationLink { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
+                    PaneLink(pane: .pulls(project)) { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
                 }.listRowBackground(Theme.elevated)
             }
             if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.elevated) }
@@ -121,14 +128,16 @@ struct ProjectView: View {
             }
         }
         .sheet(isPresented: $creating) {
-            NewConversationView(project: project) { session in created = session }
+            NewConversationView(project: project) { session in
+                if let pane { pane.wrappedValue = .conversation(session) } else { created = session }
+            }
         }
         .navigationDestination(item: $created) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
     }
     private func row(_ session: Session) -> some View {
-        NavigationLink { ConversationView(initial: session) } label: {
+        PaneLink(pane: .conversation(session)) { ConversationView(initial: session) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 StatusDot(status: session.status).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                 VStack(alignment: .leading, spacing: 4) {
