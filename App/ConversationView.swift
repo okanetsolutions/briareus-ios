@@ -123,7 +123,7 @@ struct ConversationView: View {
                             Button("View changes", systemImage: "doc.text.magnifyingglass") { pull = PullRoute(repo: repo, number: number, changes: true) }
                         }
                         if store.supports("pull") {
-                            Button("Pull request #\(number)", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
+                            Button("Pull request #\(String(number))", systemImage: "arrow.triangle.pull") { pull = PullRoute(repo: repo, number: number, changes: false) }
                         }
                     }
                     if store.supports("review_loop") && session.canReviewLoop {

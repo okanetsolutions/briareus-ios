@@ -8,7 +8,10 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Lists permitted projects and conversations, with search and status updates.
 - Shows incremental transcripts, agent questions, tool activity, queued messages and costs.
 - Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, turns the review loop on or off, completes held findings triage, renames, stops, closes, reopens and deletes sessions when the token permits it.
-- Lists pull requests, descriptions, file changes with diffs, checks, reviews and findings, records fix, optional or dismiss decisions on findings, merges a pull request when the server offers `merge_pull`, and starts review/QA sessions using the server-configured runtime.
+- Shows the project board as the dashboard does: open pull requests with their labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack, narrowed by author, reviewer or label.
+- Opens a pull request on its description, file changes with diffs, checks, reviews, commits, the issues it closes, findings and the conversations already run on it; records fix, optional or dismiss decisions on findings, and merges when the server offers `merge_pull`, saying first what stands in the way.
+- Starts the board's errands on a pull request using the server-configured runtime: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, test sheet, QA, PR body and delete my comments, with the one its state asks for marked as suggested.
+- Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
 - Revokes its token remotely or forgets the local connection.
 
@@ -44,7 +47,7 @@ xcodebuild -project Briareus.xcodeproj -scheme Briareus \
 
 Choose an installed simulator for the last command (`xcrun simctl list devices available`). The GitHub Actions workflow selects one automatically, runs the core tests, builds both simulator and physical-iPhone targets, runs the pairing UI test, and uploads a simulator `.app` zip and test results. The simulator artifact is not an installable iPhone IPA. Core tests run on macOS or Linux with Swift 5.9+; SwiftUI and signing require Xcode on macOS.
 
-Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor/deduplication, runtime selection, pull request file paging and diff line numbering. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
+Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor/deduplication, runtime selection, pull request file paging, diff line numbering, board rows, filters, errands and issue nesting. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
 
 Manual acceptance with a deployed test project:
 
@@ -53,7 +56,7 @@ Manual acceptance with a deployed test project:
 - Background/foreground and leave/reopen the conversation; verify it opens at once on the saved transcript, then shows incremental updates and no duplicate events.
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
-- Open a PR and compare checks/reviews/findings against the dashboard; review and QA starts may spend money and write to GitHub.
+- Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a PR and compare checks/reviews/findings. The actions start paid agents and may write to GitHub.
 - Revoke the token in web Settings during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh/check the outcome before submitting it again.
@@ -61,6 +64,6 @@ Manual acceptance with a deployed test project:
 
 ## Boundaries
 
-This first client covers the native mobile API's core workflow. The API does not expose attachment upload/download, APNs push notifications, workspace previews, provider management or full web composer modes. Diffs GitHub does not return (binary or very large files) open on GitHub instead. Review and QA always use the runtime configured on the server. Findings are readable here; triage and custom dashboard actions remain in the web dashboard.
+This first client covers the native mobile API's core workflow. The API does not expose attachment upload/download, APNs push notifications, workspace previews, provider management or full web composer modes. Diffs GitHub does not return (binary or very large files) open on GitHub instead. Review, QA and the board's other actions always use the runtime configured on the server. A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither. Run prepares and serves the workspace, but its preview link keeps the browser's protection and does not open from the app. Starting an epic, which picks an orchestrator's and its workers' models, remains in the web dashboard.
 
 HTTPS is required. The native transport has no cookies or HTTP cache, refuses all redirects, never embeds a shared token, and never automatically retries a write. Credentials use [Keychain's device-only, when-unlocked protection](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly), scoped by canonical server origin. The app follows Apple's [URLSession redirect delegate](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:)) behavior. Only the server origin is saved in UserDefaults; the privacy manifest declares that use. Saved responses live in the app’s Caches directory with [complete file protection](https://developer.apple.com/documentation/foundation/fileprotectiontype/complete), are left out of backups, and are erased when the connection is forgotten, revoked, expired or replaced by another device token; entries untouched for 30 days are dropped. No analytics or third-party tracking SDK is included. Your configured server processes conversations under its own policies.
