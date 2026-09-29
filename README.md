@@ -1,53 +1,249 @@
-# Briareus for iPhone
+# Briareus for iPhone and iPad
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), using the versioned mobile API introduced in [PR #59](https://github.com/nadinyamaui/briareus/pull/59) and extended in [PR #62](https://github.com/nadinyamaui/briareus/pull/62). Requires iOS 17 or later. No third-party app dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or later. No third-party dependencies.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Build and run](#build-and-run)
+- [Deploy](#deploy)
+  - [1. Prepare the server](#1-prepare-the-server)
+  - [2. Make the app yours](#2-make-the-app-yours)
+  - [3. Install on your own device](#3-install-on-your-own-device)
+  - [4. Distribute through TestFlight or the App Store](#4-distribute-through-testflight-or-the-app-store)
+  - [5. Pair the app with the server](#5-pair-the-app-with-the-server)
+  - [Releasing an update](#releasing-an-update)
+  - [Troubleshooting](#troubleshooting)
+- [Project layout](#project-layout)
+- [Validation](#validation)
+- [Boundaries](#boundaries)
+- [Security and privacy](#security-and-privacy)
 
 ## What it does
 
-- Connects to your HTTPS dashboard with a per-device token stored in Keychain.
-- Lists permitted projects and conversations, with search and status updates.
-- Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages.
-- Starts conversations on a chosen branch, provider, model and effort (or the project default), sends follow-ups, turns the review loop on or off, completes held findings triage, renames, stops, closes, reopens and deletes sessions when the token permits it.
-- Shows the project board as the dashboard does: open pull requests with their labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack, narrowed by author, reviewer or label.
-- Opens a pull request on its description, file changes with diffs, checks, reviews, commits, the issues it closes, findings and the conversations already run on it; records fix, optional or dismiss decisions on findings, and merges when the server offers `merge_pull`, saying first what stands in the way.
-- Starts the board's errands on a pull request using the server-configured runtime: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, test sheet, QA, PR body and delete my comments, with the one its state asks for marked as suggested.
-- Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
+**Conversations**
+
+- Lists the projects and conversations the device token permits, with search and status updates.
+- Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages. Workspace setup steps are left out.
+- Starts conversations on a chosen branch, provider, model and effort, or on the project default.
+- Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
+- Turns the review loop on or off and completes the triage of held findings from inside a conversation.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
-- Revokes its token remotely or forgets the local connection.
 
-Read-only connections hide write controls. A capability catalog keeps unsupported operations unavailable. Projects, conversations, transcripts and pull requests are saved on the phone, so a screen opens on what it last showed and then asks the server only for what changed; a saved transcript resumes from its last event, and pulling down reads it again in full. Backgrounding pauses polling and covers the app switcher snapshot.
+**Project board**
 
-## Open and run
+- Shows open pull requests as the dashboard does: labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack position, narrowed by author, reviewer or label.
+- Opens a pull request on its description, file changes with diffs, checks, reviews, commits, the issues it closes, findings and the conversations already run on it.
+- Records fix, optional or dismiss decisions on findings, and merges when the server offers it, saying first what stands in the way.
+- Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, test sheet, QA, PR body and delete my comments. The one the pull request's state asks for is marked as suggested.
+- Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
 
-1. Clone this repository on a Mac with Xcode 16 or later.
+**Connection**
+
+- Pairs with a per-device token stored in Keychain, and revokes it remotely or forgets the local connection.
+- Hides write controls on a Read-only token. A capability catalog read from the server keeps operations it does not offer unavailable, so the app adapts to older and newer servers.
+- Saves projects, conversations, transcripts and pull requests on the device. A screen opens on what it last showed and then asks the server only for what changed; a saved transcript resumes from its last event, and pulling down reads it again in full.
+- Pauses polling in the background and covers the app switcher snapshot.
+
+## Requirements
+
+| To | You need |
+| --- | --- |
+| Build and run in the simulator | A Mac with Xcode 16 or later |
+| Install on your own device | A free or paid Apple developer account signed in to Xcode |
+| Distribute through TestFlight or the App Store | [Apple Developer Program](https://developer.apple.com/programs/) membership |
+| Use the app | A Briareus server with the mobile API, reachable over HTTPS, and a device token |
+| Run the core tests only | Swift 5.9 or later, on macOS or Linux |
+
+## Build and run
+
+1. Clone this repository.
 2. Open `Briareus.xcodeproj` and select the **Briareus** scheme.
-3. Select an iPhone simulator and Run. The simulator needs no signing team.
-4. For a real iPhone, select your Apple development team under **Signing & Capabilities** and use a bundle identifier registered to that team; select the connected phone and Run.
-5. To distribute through TestFlight, use an Apple Developer Program team, register the app in App Store Connect, then **Product → Archive → Distribute App**. Signing identities and provisioning profiles are intentionally not in this repository.
+3. Select an iPhone or iPad simulator and Run. The simulator needs no signing team.
 
-The checked-in project works without a generator installation. After adding source files, run `python3 scripts/generate-project.py` and commit the updated project. The generator resets generated build settings, so make persistent bundle/team changes there too.
+The checked-in project works without installing a generator. After adding or removing source files, regenerate it and commit the result:
 
-## Connect to your server
+```sh
+python3 scripts/generate-project.py
+```
 
-Deploy Briareus PR #62 or later (PR #59 works without the model picker and in-app diffs; voice notes need [PR #66](https://github.com/nadinyamaui/briareus/pull/66) and the server's `OPENAI_TRANSCRIBE_API_KEY` and `OPENAI_TRANSCRIBE_MODEL`), enable dashboard password login, then create a device token in **Settings → Mobile devices**. Choose permitted projects and Read only or Manage. Paste the public HTTPS server address (or its `/api/mobile/v1` URL) and one-time token into the app.
+The generator rewrites the project's build settings, so lasting changes to the bundle identifier, team or version belong in [scripts/generate-project.py](scripts/generate-project.py), not in Xcode's settings pane. CI fails when the checked-in project differs from what the generator produces.
 
-If Cloudflare Access protects the dashboard, follow the server's [mobile deployment guide](https://github.com/nadinyamaui/briareus/blob/main/docs/mobile-api.md). Only `/api/mobile/v1` and `/api/mobile/v1/*` receive the mobile exception. A redirect or HTML page in the app means the mobile endpoint is still intercepted or misconfigured. The app does not change server deployment or Cloudflare settings.
+## Deploy
 
-A revoked/expired token returns to pairing. Create a replacement in web Settings. Forgetting removes local credentials and saved conversations only; it does not revoke a server token or stop existing agents.
+A deployment has two halves: a Briareus server exposing the mobile API, and a signed build of this app on the device. Signing identities and provisioning profiles are intentionally not in this repository.
+
+### 1. Prepare the server
+
+1. Deploy a recent version of [Briareus](https://github.com/nadinyamaui/briareus) and publish it on an HTTPS hostname. Plain HTTP is refused by the app.
+2. Enable dashboard password login (`npm run set-password`, then restart). The mobile API fails closed while login is off.
+3. For voice notes, set `OPENAI_TRANSCRIBE_API_KEY` and `OPENAI_TRANSCRIBE_MODEL` on the server. Without them everything else works and the microphone explains what is missing.
+4. If an access proxy such as Cloudflare Access protects the dashboard, exempt only `/api/mobile/v1` and `/api/mobile/v1/*` from its interactive login. The device token still guards every request. Do not exempt `/api/*`, `/settings`, `/login` or the whole hostname. The server's [mobile deployment guide](https://github.com/nadinyamaui/briareus/blob/main/docs/mobile-api.md) has the exact steps.
+5. Check the endpoint from outside your network, without cookies:
+
+   ```sh
+   curl -i https://briareus.example.com/api/mobile/v1/
+   ```
+
+   A `401` with `application/json` means the endpoint is reachable and waiting for a token. A redirect or an HTML page means a proxy still intercepts the path.
+
+The app never changes server or proxy settings.
+
+### 2. Make the app yours
+
+The project ships with its maintainers' bundle identifier and signing team. To sign it with your own account, edit these values in [scripts/generate-project.py](scripts/generate-project.py):
+
+| Setting | Where | Set it to |
+| --- | --- | --- |
+| `PRODUCT_BUNDLE_IDENTIFIER` | app and UI test targets | An identifier you own, such as `com.example.briareus` and `com.example.briareus.uitests` |
+| `DEVELOPMENT_TEAM` | app and UI test targets | Your ten-character Apple team ID |
+| `MARKETING_VERSION` | app target | The version users see, such as `1.0` |
+| `CURRENT_PROJECT_VERSION` | app target | The build number; raise it for every upload |
+
+Then regenerate the project:
+
+```sh
+python3 scripts/generate-project.py
+```
+
+Your team ID is under **Membership details** in the [Apple developer account](https://developer.apple.com/account). For a one-off build you can instead override the values on the `xcodebuild` command line, as the examples below do, and leave the repository untouched.
+
+### 3. Install on your own device
+
+1. Connect the iPhone or iPad, unlock it and trust the Mac. Turn on **Settings → Privacy & Security → Developer Mode** on the device.
+2. In Xcode, check that your team appears under **Signing & Capabilities** with automatic signing on.
+3. Select the device as the destination and Run.
+
+With a free Apple account the build expires after seven days and must be reinstalled; a paid membership lasts a year.
+
+### 4. Distribute through TestFlight or the App Store
+
+One-time setup:
+
+1. Register the bundle identifier under **Certificates, Identifiers & Profiles** in the developer account, or let Xcode's automatic signing do it.
+2. Create the app in [App Store Connect](https://appstoreconnect.apple.com) with the same bundle identifier.
+
+From Xcode:
+
+1. Select **Any iOS Device (arm64)** as the destination.
+2. **Product → Archive**.
+3. In the Organizer, **Distribute App → App Store Connect → Upload**.
+
+From the command line, archive first:
+
+```sh
+xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Release \
+  -destination 'generic/platform=iOS' -archivePath build/Briareus.xcarchive \
+  DEVELOPMENT_TEAM=YOURTEAMID PRODUCT_BUNDLE_IDENTIFIER=com.example.briareus \
+  CURRENT_PROJECT_VERSION=2 -allowProvisioningUpdates archive
+```
+
+Save this as `ExportOptions.plist`, outside the repository or left uncommitted:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>method</key><string>app-store-connect</string>
+    <key>destination</key><string>upload</string>
+    <key>teamID</key><string>YOURTEAMID</string>
+    <key>signingStyle</key><string>automatic</string>
+</dict></plist>
+```
+
+Then export and upload:
+
+```sh
+xcodebuild -exportArchive -archivePath build/Briareus.xcarchive \
+  -exportOptionsPlist ExportOptions.plist -exportPath build/export \
+  -allowProvisioningUpdates
+```
+
+Set `destination` to `export` to get an `.ipa` in `build/export` instead of uploading. On a machine without a signed-in Xcode, such as a CI runner, add `-authenticationKeyPath`, `-authenticationKeyID` and `-authenticationKeyIssuerID` with an [App Store Connect API key](https://developer.apple.com/documentation/appstoreconnectapi/creating-api-keys-for-app-store-connect-api), kept in the runner's secrets.
+
+Once the build finishes processing in App Store Connect:
+
+- **TestFlight, internal**: add members of your team under **TestFlight → Internal Testing**. They get the build at once.
+- **TestFlight, external**: create a group and submit the build for beta review. Reviewers need a server address and a device token to get past pairing; put them in the test information.
+- **App Store**: fill in the listing and the privacy answers, then submit for review with the same demo access.
+
+The app declares that it uses no non-exempt encryption (`ITSAppUsesNonExemptEncryption` is false), so uploads are not held for export compliance. It asks for the microphone only when a voice note is recorded.
+
+### 5. Pair the app with the server
+
+1. Sign in to the web dashboard and open **Settings → Mobile devices**.
+2. Create a token: give the device a name, choose the projects it may see, **Read only** or **Manage**, and an expiry.
+3. In the app, enter the public HTTPS server address (or its `/api/mobile/v1` URL) and the one-time token.
+
+Issue one token per device. **Manage** permits paid agent starts, messages, GitHub changes and session deletion on the chosen projects; **Read only** permits none of them.
+
+A revoked or expired token returns the app to pairing; create a replacement in the dashboard. Forgetting the connection removes local credentials and saved conversations only. It does not revoke the server token or stop running agents.
+
+### Releasing an update
+
+1. Raise `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` for a user-visible release, in the generator.
+2. Regenerate the project and commit it.
+3. Run the [validation](#validation) commands.
+4. Archive and upload as above.
+
+App Store Connect rejects an upload whose build number it has already seen for that version.
+
+### Troubleshooting
+
+| Symptom | Cause |
+| --- | --- |
+| The app shows a redirect or an HTML page while pairing | An access proxy still intercepts `/api/mobile/v1`, or the address points at the wrong host |
+| The address is rejected | It is not HTTPS |
+| Pairing reappears during use | The token was revoked or expired, or the server's `AUTH_SECRET` was rotated |
+| A project is missing | The token does not include it |
+| Write controls are missing | The token is Read only, or the server does not offer that operation |
+| The microphone explains that transcription is off | The server lacks the transcription settings from step 1 |
+| Signing fails with "no profiles found" | The bundle identifier belongs to another team; choose your own in step 2 |
+| Xcode changes disappear after regenerating | They were made in Xcode instead of in the generator |
+
+## Project layout
+
+| Path | Contents |
+| --- | --- |
+| `App/` | SwiftUI screens, the app store, Keychain access, voice notes, assets and the privacy manifest |
+| `Core/` | The `BriareusCore` Swift package: API client, models, saved-response cache, board, diff and Markdown handling. No UIKit or SwiftUI, so it builds and tests on macOS and Linux |
+| `Tests/` | Core tests, run with `swift test` |
+| `UITests/` | The pairing UI test, run in the simulator |
+| `scripts/generate-project.py` | Generates `Briareus.xcodeproj` |
+| `.github/workflows/ios.yml` | Continuous integration |
 
 ## Validation
 
 ```sh
 swift test
+```
+
+```sh
 xcodebuild -project Briareus.xcodeproj -scheme Briareus \
   -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+```sh
 xcodebuild -project Briareus.xcodeproj -scheme Briareus \
   -destination 'platform=iOS Simulator,name=iPhone 16' CODE_SIGNING_ALLOWED=NO test
 ```
 
-Choose an installed simulator for the last command (`xcrun simctl list devices available`). The GitHub Actions workflow selects one automatically, runs the core tests, builds both simulator and physical-iPhone targets, runs the pairing UI test, and uploads a simulator `.app` zip and test results. The simulator artifact is not an installable iPhone IPA. Core tests run on macOS or Linux with Swift 5.9+; SwiftUI and signing require Xcode on macOS.
+Choose an installed simulator for the last command (`xcrun simctl list devices available`).
 
-Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor/deduplication, runtime selection, pull request file paging, diff line numbering, board rows, filters, errands and issue nesting. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
+The GitHub Actions workflow runs on every pull request and on pushes to `main`, as parallel jobs:
+
+| Job | What it checks |
+| --- | --- |
+| Core tests | The checked-in project matches the generator, then `swift test` |
+| Simulator build | Builds for the simulator and uploads a simulator `.app` zip |
+| iPhone build | Builds the Release configuration for a physical device, unsigned |
+| Pairing UI test | Boots a simulator, runs the UI test and uploads the results |
+| ios | Passes only when every job above passed; the one check to require in branch protection |
+
+The simulator artifact is not an installable IPA, and the workflow neither signs nor uploads to App Store Connect.
+
+Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor and deduplication, runtime selection, pull request file paging, diff line numbering, board rows, filters, errands and issue nesting. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
 
 Manual acceptance with a deployed test project:
 
@@ -56,14 +252,28 @@ Manual acceptance with a deployed test project:
 - Background/foreground and leave/reopen the conversation; verify it opens at once on the saved transcript, then shows incremental updates and no duplicate events.
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
-- Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a PR and compare checks/reviews/findings. The actions start paid agents and may write to GitHub.
-- Revoke the token in web Settings during polling and verify pairing appears; also test self-revocation and local-only forgetting.
+- Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
+- Triage a round of findings and toggle the review loop from a conversation; verify the dashboard shows the same state.
+- Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
-- Lose networking during a write; refresh/check the outcome before submitting it again.
-- Test Dynamic Type, VoiceOver, landscape, dark mode and a physical iPhone.
+- Lose networking during a write; refresh and check the outcome before submitting it again.
+- Test Dynamic Type, VoiceOver, landscape, dark mode, an iPad and a physical iPhone.
 
 ## Boundaries
 
-This first client covers the native mobile API's core workflow. The API does not expose attachment upload/download, APNs push notifications, workspace previews, provider management or full web composer modes. Diffs GitHub does not return (binary or very large files) open on GitHub instead. Review, QA and the board's other actions always use the runtime configured on the server. A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither. Run prepares and serves the workspace, but its preview link keeps the browser's protection and does not open from the app. Starting an epic, which picks an orchestrator's and its workers' models, remains in the web dashboard.
+The app covers what the mobile API exposes. The API does not offer attachment upload or download, push notifications, workspace previews, provider management or the web composer's full set of modes.
 
-HTTPS is required. The native transport has no cookies or HTTP cache, refuses all redirects, never embeds a shared token, and never automatically retries a write. Credentials use [Keychain's device-only, when-unlocked protection](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly), scoped by canonical server origin. The app follows Apple's [URLSession redirect delegate](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:)) behavior. Only the server origin is saved in UserDefaults; the privacy manifest declares that use. Saved responses live in the app’s Caches directory with [complete file protection](https://developer.apple.com/documentation/foundation/fileprotectiontype/complete), are left out of backups, and are erased when the connection is forgotten, revoked, expired or replaced by another device token; entries untouched for 30 days are dropped. No analytics or third-party tracking SDK is included. Your configured server processes conversations under its own policies.
+- Diffs GitHub does not return (binary or very large files) open on GitHub instead.
+- Review, QA and the board's other errands always use the runtime configured on the server.
+- A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither.
+- Run prepares and serves the workspace, but its preview link keeps the browser's protection and does not open from the app.
+- Starting an epic, which picks an orchestrator's and its workers' models, remains in the web dashboard.
+
+## Security and privacy
+
+- HTTPS is required. The transport has no cookies or HTTP cache, [refuses all redirects](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:)), and never automatically retries a write.
+- No shared secret is built into the app. Each device holds its own token, in Keychain with [device-only, when-unlocked protection](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly), scoped by canonical server origin.
+- Only the server origin is saved in UserDefaults; the privacy manifest declares that use.
+- Saved responses live in the app's Caches directory with [complete file protection](https://developer.apple.com/documentation/foundation/fileprotectiontype/complete) and are left out of backups. They are erased when the connection is forgotten, revoked, expired or replaced by another device token, and entries untouched for 30 days are dropped.
+- Voice notes are sent to your server for transcription and nowhere else by the app.
+- No analytics or third-party tracking SDK is included. Your server processes conversations under its own policies.
