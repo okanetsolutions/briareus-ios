@@ -4,6 +4,7 @@ struct ConversationView: View {
     let initial: Session
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.splitPane) private var pane
     @State private var snapshot: Session?
     @State private var transcript = Transcript()
     @State private var loaded = false
@@ -64,6 +65,7 @@ struct ConversationView: View {
                         .onAppear { atBottom = true }.onDisappear { atBottom = false }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
+                .readableWidth()
             }
             .startAtBottom()
             .scrollDismissesKeyboard(.interactively)
@@ -238,6 +240,7 @@ struct ConversationView: View {
             }
         }
         .padding(.horizontal, 12).padding(.top, 6).padding(.bottom, 8)
+        .readableWidth()
         .background(Theme.background)
     }
     /// Where a message sent during a turn goes; one sent to an idle agent needs no word.
@@ -275,7 +278,12 @@ struct ConversationView: View {
         do {
             let _: JSONValue = try await store.call(name, ["sessionId": .string(initial.id)].merging(extra) { _, new in new })
             if name == "message", message == extra["text"]?.string { message = ""; atBottom = true }
-            if name == "delete" { await store.cache.remove(cacheKey); dismiss(); return }
+            if name == "delete" {
+                await store.cache.remove(cacheKey)
+                // Beside the list there is nothing to go back to: the right-hand side empties instead.
+                if pane?.wrappedValue?.id == Pane.conversation(initial).id { pane?.wrappedValue = nil } else { dismiss() }
+                return
+            }
         } catch {
             writeError = error.localizedDescription; uncertain = true; return
         }

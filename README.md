@@ -30,6 +30,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
 - Turns the review loop on or off and completes the triage of held findings from inside a conversation.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
+- On an iPad, or a Mac running the iPad app, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
 
 **Project board**
 
