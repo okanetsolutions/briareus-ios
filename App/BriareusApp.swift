@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct BriareusApp: App {
-    @StateObject private var store = AppStore()
+    @StateObject private var store = AppStore.shared
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {

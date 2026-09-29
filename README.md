@@ -1,4 +1,4 @@
-# Briareus for iPhone, iPad and Mac
+# Briareus for iPhone, iPad, Mac and CarPlay
 
 A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's versioned mobile API (`/api/mobile/v1`) and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
 
@@ -42,6 +42,15 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, test sheet, QA, PR body and delete my comments. The one the pull request's state asks for is marked as suggested.
 - Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
 
+**In the car**
+
+- Runs in CarPlay as a voice-based conversational app, on iOS 26.4 or later. A car has no keyboard, so what the agent is told is dictated; what was understood is shown and sent on a yes. The app listens and never speaks.
+- Chooses a project, a conversation, a pull request or an issue from lists, and keeps the one chosen in hand on the voice screen.
+- Starts a conversation from a dictated task, on a chosen branch, model and effort or on the project default. Sends follow-ups, answers an agent's question with one of the answers it offers, renames by dictation, stops, closes, reopens and deletes, removes queued messages and turns the review loop on or off.
+- Completes a review round's triage, with a verdict per finding and a dictated note for the fix session.
+- Shows a pull request's state, checks and reviews, records decisions on its findings, merges it, and starts the board's errands on it, feedback in your own words included. Starts a session on an issue.
+- Asks before every paid or destructive action. Revokes the token or forgets the connection; pairing takes the phone.
+
 **Connection**
 
 - Pairs with a per-device token stored in Keychain, and revokes it remotely or forgets the local connection.
@@ -57,6 +66,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 | Run the Mac app | macOS 14 or later, and an Apple developer account signed in to Xcode |
 | Install on your own device | A free or paid Apple developer account signed in to Xcode |
 | Distribute through TestFlight or the App Store | [Apple Developer Program](https://developer.apple.com/programs/) membership |
+| Use the app in a car | iOS 26.4 or later, and a build made with Xcode 26.4 or later and signed with the CarPlay entitlement Apple granted to your team |
 | Use the app | A Briareus server with the mobile API, reachable over HTTPS, and a device token |
 | Run the core tests only | Swift 5.9 or later, on macOS or Linux |
 
@@ -185,6 +195,18 @@ Issue one token per device. **Manage** permits paid agent starts, messages, GitH
 
 A revoked or expired token returns the app to pairing; create a replacement in the dashboard. Forgetting the connection removes local credentials and saved conversations only. It does not revoke the server token or stop running agents.
 
+### CarPlay
+
+CarPlay lists an app only when it is signed with a CarPlay entitlement, and Apple grants those to a team on request. Briareus asks for the one for voice-based conversational apps, `com.apple.developer.carplay-voice-based-conversation`.
+
+1. Request the entitlement for your team at [developer.apple.com/contact/carplay](https://developer.apple.com/contact/carplay/), in the voice-based conversational category.
+2. Once granted, add the CarPlay capability to the app's identifier under **Certificates, Identifiers & Profiles**.
+3. Set `CARPLAY_ON_DEVICE = True` in [scripts/generate-project.py](scripts/generate-project.py) and regenerate the project. Builds for a device are then signed with [App/Briareus-CarPlay.entitlements](App/Briareus-CarPlay.entitlements).
+
+Until then the flag stays off: a build that asks for an entitlement its team does not have fails to sign. Builds for the simulator always carry it, since the simulator asks for no grant.
+
+Pair on the phone first. With transcription off on the server the car still works through its lists, but nothing can be dictated.
+
 ### Releasing an update
 
 1. Raise `CURRENT_PROJECT_VERSION`, and `MARKETING_VERSION` for a user-visible release, in the generator.
@@ -203,6 +225,8 @@ App Store Connect rejects an upload whose build number it has already seen for t
 | Pairing reappears during use | The token was revoked or expired, or the server's `AUTH_SECRET` was rotated |
 | A project is missing | The token does not include it |
 | Write controls are missing | The token is Read only, or the server does not offer that operation |
+| Briareus is missing from the CarPlay home screen | The build is not signed with the CarPlay entitlement, or the phone runs an iOS before 26.4 |
+| The car says to connect on the iPhone | The phone is not paired, or was restarted and not unlocked since |
 | The microphone explains that transcription is off | The server lacks the transcription settings from step 1 |
 | Signing fails with "no profiles found" | The bundle identifier belongs to another team; choose your own in step 2 |
 | Xcode changes disappear after regenerating | They were made in Xcode instead of in the generator |
@@ -211,8 +235,8 @@ App Store Connect rejects an upload whose build number it has already seen for t
 
 | Path | Contents |
 | --- | --- |
-| `App/` | SwiftUI screens, the app store, Keychain access, voice notes, assets and the privacy manifest |
-| `Core/` | The `BriareusCore` Swift package: API client, models, saved-response cache, board, diff and Markdown handling. No UIKit or SwiftUI, so it builds and tests on macOS and Linux |
+| `App/` | SwiftUI screens, the CarPlay scene (`CarPlayScene`, `CarMenus`, `CarDictation`), the app store, Keychain access, voice notes, assets and the privacy manifest |
+| `Core/` | The `BriareusCore` Swift package: API client, models, saved-response cache, board, diff and Markdown handling, and what a car's screen says. No UIKit or SwiftUI, so it builds and tests on macOS and Linux |
 | `Tests/` | Core tests, run with `swift test` |
 | `UITests/` | The pairing UI test, run in the simulator |
 | `scripts/generate-project.py` | Generates `Briareus.xcodeproj` |
@@ -251,7 +275,7 @@ The GitHub Actions workflow runs on every pull request and on pushes to `main`, 
 
 The simulator artifact is not an installable IPA, and the workflow neither signs nor uploads to App Store Connect.
 
-Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor and deduplication, runtime selection, pull request file paging, diff line numbering, board rows, filters, errands and issue nesting. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
+Tests exercise the saved-response cache, origin validation, credential headers, operation bodies, redirect rejection, non-JSON responses, expiry, rate limiting, write timeouts without retry, revocation, response compatibility, transcript cursor and deduplication, runtime selection, pull request file paging, diff line numbering, board rows, filters, errands, issue nesting, and conversations and pull requests as a car's screen words them. The simulator test verifies pairing and HTTP rejection without a live server or a real token.
 
 Manual acceptance with a deployed test project:
 
@@ -266,12 +290,15 @@ Manual acceptance with a deployed test project:
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh and check the outcome before submitting it again.
 - Test Dynamic Type, VoiceOver, landscape, dark mode, an iPad and a physical iPhone.
+- In CarPlay, with the phone locked: choose a project and a conversation, dictate a message, answer no and yes when it is shown, and check the dashboard sees it once. Start a conversation, stop the agent, triage a round of findings, look at a pull request's checks, start an errand on it, check that music comes back after each dictation and that the app never speaks. Check that every list opens from the voice screen and that none goes deeper than two screens.
 - On a Mac, choose a project and a conversation, resize the window, and check the conversation goes on updating with another app in front.
 
 ## Boundaries
 
 The app covers what the mobile API exposes. The API does not offer attachment upload or download, push notifications, workspace previews, provider management or the web composer's full set of modes.
 
+- In a car the agent's replies are not shown or read aloud: the screen says what a conversation is doing and what it asks, and the transcript, file changes and diffs stay on the phone. Search, and a branch that is not on the list, need the phone too, as does pairing.
+- CarPlay lists show as many rows as the car allows, fewer while it moves; the rest are on the phone.
 - Diffs GitHub does not return (binary or very large files) open on GitHub instead.
 - Review, QA and the board's other errands always use the runtime configured on the server.
 - A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither.
@@ -281,8 +308,8 @@ The app covers what the mobile API exposes. The API does not offer attachment up
 ## Security and privacy
 
 - HTTPS is required. The transport has no cookies or HTTP cache, [refuses all redirects](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:)), and never automatically retries a write.
-- No shared secret is built into the app. Each device holds its own token, in Keychain with [device-only, when-unlocked protection](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly), scoped by canonical server origin.
+- No shared secret is built into the app. Each device holds its own token, in Keychain, scoped by canonical server origin and never leaving the device. On a Mac it is readable [while unlocked](https://developer.apple.com/documentation/security/ksecattraccessiblewhenunlockedthisdeviceonly); on an iPhone or iPad [from the first unlock after a restart](https://developer.apple.com/documentation/security/ksecattraccessibleafterfirstunlockthisdeviceonly), since in a car the app runs with the phone locked.
 - Only the server origin is saved in UserDefaults; the privacy manifest declares that use.
-- Saved responses live in the app's Caches directory with [complete file protection](https://developer.apple.com/documentation/foundation/fileprotectiontype/complete) and are left out of backups. They are erased when the connection is forgotten, revoked, expired or replaced by another device token, and entries untouched for 30 days are dropped.
-- Voice notes are sent to your server for transcription and nowhere else by the app.
+- Saved responses live in the app's Caches directory, [protected until the first unlock after a restart](https://developer.apple.com/documentation/foundation/fileprotectiontype/completeuntilfirstuserauthentication) for the same reason, and are left out of backups. They are erased when the connection is forgotten, revoked, expired or replaced by another device token, and entries untouched for 30 days are dropped.
+- Voice notes, and what is dictated in a car, are sent to your server for transcription and nowhere else by the app.
 - No analytics or third-party tracking SDK is included. Your server processes conversations under its own policies.

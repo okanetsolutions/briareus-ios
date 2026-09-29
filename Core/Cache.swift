@@ -51,9 +51,21 @@ public actor DiskCache {
         let entries = (try? files.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
         for entry in entries {
             guard let modified = try? entry.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                  now.timeIntervalSince(modified) > age else { continue }
+                  now.timeIntervalSince(modified) > age else { unlock(entry); continue }
             try? files.removeItem(at: entry)
         }
+        unlock(directory)
+    }
+
+    #if os(iOS)
+    /// Readable from the first unlock after a restart onwards: in a car the app runs with the phone locked.
+    static let protection = FileProtectionType.completeUntilFirstUserAuthentication
+    #endif
+    /// Entries saved before the app ran in a car were readable with the phone unlocked only.
+    private func unlock(_ entry: URL) {
+        #if os(iOS)
+        try? files.setAttributes([.protectionKey: Self.protection], ofItemAtPath: entry.path)
+        #endif
     }
 
     private func url(_ key: String) -> URL {
@@ -65,8 +77,8 @@ public actor DiskCache {
             var attributes: [FileAttributeKey: Any] = [:]
             var options: Data.WritingOptions = .atomic
             #if os(iOS)
-            attributes[.protectionKey] = FileProtectionType.complete
-            options.insert(.completeFileProtection)
+            attributes[.protectionKey] = Self.protection
+            options.insert(.completeFileProtectionUntilFirstUserAuthentication)
             #endif
             try files.createDirectory(at: directory, withIntermediateDirectories: true, attributes: attributes)
             try data.write(to: url(key), options: options)

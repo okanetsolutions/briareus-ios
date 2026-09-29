@@ -447,4 +447,40 @@ final class CoreTests: XCTestCase {
         }
         return data
     }
+    func testTheCarShowsAConversationInAFewWords() throws {
+        let sessions = try JSONDecoder().decode([Session].self, from: Data(#"[{"id":"a","status":"running","title":"Fix login","queued":[{"text":"x"}]},{"id":"b","status":"idle","reviewTriage":{"findings":[{"key":"k"}]}},{"id":"c","status":"closed"}]"#.utf8))
+        XCTAssertEqual(sessions.map { CarText.status($0) }, ["Working · 1 queued", "Waiting for you · 1 finding", "Closed"])
+        XCTAssertEqual(CarText.status(sessions[1], asking: true), "Asks you a question · 1 finding")
+        XCTAssertEqual(CarText.status(sessions[0], asking: true), "Working · Asks you a question · 1 queued")
+        let events = try JSONDecoder().decode([Event].self, from: Data(#"[{"seq":1,"kind":"user","text":"Go"},{"seq":2,"kind":"ask","question":"Which **one**, see [docs](https://e.com)?","options":[{"label":"Left"},{"label":"Right"}]},{"seq":3,"kind":"tool","name":"Bash"}]"#.utf8))
+        XCTAssertEqual(CarText.openQuestion(events)?.seq, 2)
+        XCTAssertEqual(CarText.options(events[1]), ["Left", "Right"])
+        XCTAssertEqual(CarText.question(events[1]), "Which one, see docs?")
+        let answered = try JSONDecoder().decode([Event].self, from: Data(#"[{"seq":1,"kind":"ask","question":"Sure?"},{"seq":2,"kind":"user","text":"Yes"},{"seq":3,"kind":"result"}]"#.utf8))
+        XCTAssertNil(CarText.openQuestion(answered))
+        XCTAssertEqual(CarText.inline("a_b_c and *this* and 2 * 3 * 4"), "a_b_c and this and 2 * 3 * 4")
+    }
+    func testTheCarShowsAPullRequestInAFewWords() throws {
+        let row = PullSummary(try JSONDecoder().decode(JSONValue.self, from: Data(#"{"number":7,"title":"Add cache","mergeable":"conflicting","draft":true}"#.utf8)))
+        XCTAssertEqual(CarText.state(row: row, details: .null), "Draft · Conflicts")
+        XCTAssertEqual(CarText.state(row: nil, details: .null), "Closed")
+        XCTAssertEqual(CarText.state(row: nil, details: .object(["state": .string("closed"), "merged": .bool(true)])), "Merged")
+        XCTAssertEqual(CarText.state(row: nil, details: .object(["state": .string("open")])), "Open")
+        let pr = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"checks":{"passed":2,"failed":1,"pending":0,"runs":[{"name":"lint","conclusion":"failure"},{"name":"test","conclusion":"success"}]},"reviews":[{"user":"bo","state":"CHANGES_REQUESTED"},{"state":"APPROVED"}]}"#.utf8))
+        XCTAssertEqual(CarText.checks(pr["checks"]), "2 passed · 1 failed · 0 running")
+        XCTAssertEqual(CarText.checks(.null), "None")
+        XCTAssertEqual(CarText.failing(pr["checks"]), ["lint"])
+        XCTAssertEqual(CarText.reviews(pr).map { "\($0.user): \($0.state)" }, ["bo: Changes requested"])
+        let finding = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"title":"Leak","severity":"high","file":"src/io/file.swift"}"#.utf8))
+        XCTAssertEqual(CarText.finding(finding, verdict: "Fix"), "Fix · high · file.swift")
+        XCTAssertEqual(CarText.finding(.object(["fixed": .bool(true)]), verdict: "Fix"), "Fixed")
+    }
+    func testWhatWasDictatedIsShownWholeAndCutShorter() {
+        XCTAssertEqual(CarText.title(" Fix  the\nlogin. "), "Fix the login")
+        XCTAssertEqual(CarText.variants("Short"), ["“Short”"])
+        let long = String(repeating: "word ", count: 40).trimmingCharacters(in: .whitespaces)
+        let variants = CarText.variants(long, before: "Send “")
+        XCTAssertEqual(variants.count, 3); XCTAssertEqual(variants[0], "Send “\(long)”")
+        XCTAssertEqual(variants[2].count, "Send “".count + 59 + 2); XCTAssertTrue(variants[2].hasSuffix("…”"))
+    }
 }

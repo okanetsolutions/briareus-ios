@@ -13,6 +13,15 @@ enum Keychain {
         #endif
         return query
     }
+    /// A car is driven with the phone locked in a pocket, so the token is readable from the first unlock after
+    /// a restart onwards. It still never leaves the device. A Mac has no car and keeps it to an unlocked session.
+    private static var accessible: CFString {
+        #if os(iOS)
+        kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        #else
+        kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        #endif
+    }
     static func read(_ origin: String) throws -> String? {
         var q = query(origin)
         q[kSecReturnData as String] = true
@@ -22,12 +31,14 @@ enum Keychain {
         if status == errSecItemNotFound { return nil }
         guard status == errSecSuccess, let data = result as? Data,
               let token = String(data: data, encoding: .utf8) else { throw failure(status) }
+        // A token saved before the app ran in a car is moved to the protection the car needs.
+        SecItemUpdate(query(origin) as CFDictionary, [kSecAttrAccessible as String: accessible] as CFDictionary)
         return token
     }
     static func save(_ token: String, origin: String) throws {
         let q = query(origin)
         let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8),
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+            kSecAttrAccessible as String: accessible]
         let status = SecItemUpdate(q as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
             let added = SecItemAdd(q.merging(attributes) { _, new in new } as CFDictionary, nil)

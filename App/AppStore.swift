@@ -2,6 +2,8 @@ import SwiftUI
 
 @MainActor
 final class AppStore: ObservableObject {
+    /// One connection for the phone's windows and the car's screen.
+    static let shared = AppStore()
     @Published private(set) var client: APIClient?
     @Published private(set) var device: Device?
     @Published private(set) var operations: [Operation] = []
