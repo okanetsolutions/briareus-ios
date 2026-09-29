@@ -133,21 +133,50 @@ struct ProjectView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(project.title).navigationBarTitleDisplayMode(.inline)
+        #if os(macOS)
+        // A Mac's toolbar would put these at the far end of the window, away from the list they act on.
+        .safeAreaInset(edge: .top, spacing: 0) { finder }
+        #else
         .searchable(text: $search, prompt: "Find a conversation")
         .toolbar {
             if store.supports("start_session") {
-                Button { creating = true } label: { Image(systemName: "square.and.pencil") }.buttonStyle(.automatic).accessibilityLabel("New conversation")
+                Button { creating = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
             }
         }
+        #endif
         .sheet(isPresented: $creating) {
             NewConversationView(project: project) { session in
                 if let pane { pane.wrappedValue = .conversation(session) } else { created = session }
             }
-            .sheetSize()
+            .sheetSize(width: 580, height: 440)
         }
         .navigationDestination(item: $created) { ConversationView(initial: $0) }
         .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
+    }
+    private var finder: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.callout).foregroundStyle(.secondary)
+                TextField("Find a conversation", text: $search).autocorrectionDisabled()
+                if !search.isEmpty {
+                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                        .accessibilityLabel("Clear the search")
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+            if store.supports("start_session") {
+                Button { creating = true } label: {
+                    Image(systemName: "square.and.pencil").font(.body.weight(.medium)).foregroundStyle(Theme.accent)
+                        .frame(width: 32, height: 32).contentShape(Rectangle())
+                }
+                .help("New conversation").accessibilityLabel("New conversation")
+            }
+        }
+        .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
+        .background(Theme.background)
     }
     private func row(_ session: Session) -> some View {
         PaneLink(pane: .conversation(session)) { ConversationView(initial: session) } label: {
@@ -299,6 +328,7 @@ struct NewConversationView: View {
             pickerRow(icon: "cpu", text: effective.map { catalog.label(for: $0) } ?? "Choose a model",
                       note: runtime == nil && effective != nil ? "Default" : nil, placeholder: effective == nil)
         }
+        .plainMenu()
         .accessibilityLabel("Model: \(effective.map { catalog.label(for: $0) } ?? "none")")
         if let effective, !catalog.efforts(for: effective).isEmpty {
             Divider().overlay(Theme.border)
@@ -314,6 +344,7 @@ struct NewConversationView: View {
                 pickerRow(icon: "gauge.with.dots.needle.50percent", text: "\((effective.effort ?? "default").capitalized) effort",
                           note: nil, placeholder: false)
             }
+            .plainMenu()
             .accessibilityLabel("Effort: \(effective.effort ?? "default")")
         }
     }

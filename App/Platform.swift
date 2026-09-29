@@ -79,3 +79,14 @@ enum Platform {
         #endif
     }
 }
+
+extension View {
+    /// A menu drawn by its own label. A Mac would otherwise wrap it in a button with an indicator.
+    func plainMenu() -> some View {
+        #if os(macOS)
+        menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+        #else
+        self
+        #endif
+    }
+}
