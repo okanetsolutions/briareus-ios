@@ -11,6 +11,8 @@ struct PullsView: View {
     @State private var pullFilter = BoardFilter()
     @State private var issueFilter = BoardFilter()
     @State private var loaded = false
+    /// The filter the board last opened on, until the server has answered once and the picks are the user's.
+    @State private var opening: BoardFilter? = BoardFilter()
     @State private var error: String?
     private var filter: Binding<BoardFilter> { tab == .pulls ? $pullFilter : $issueFilter }
     private var rows: [BoardRow] { tab == .pulls ? pulls : issues }
@@ -42,7 +44,7 @@ struct PullsView: View {
                     BoardFilterMenu(filter: filter, rows: rows, kinds: tab == .pulls ? BoardFilter.Kind.allCases : [.author, .label])
                 }
             }
-            .refreshable { do { try await load(fresh: true) } catch { self.error = error.localizedDescription } }
+            .refreshable { do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } } }
             .foregroundPoll(every: 45, action: { try await load() }) { error = $0.localizedDescription; loaded = true }
     }
     @ViewBuilder private var pullRows: some View {
@@ -81,19 +83,24 @@ struct PullsView: View {
             }
         }
     }
-    private func show(_ result: JSONValue) {
-        let opening = !loaded
+    private func show(_ result: JSONValue, saved: Bool = false) {
         board = result
         pulls = result["pulls"].array.compactMap(PullSummary.init)
         issues = result["issues"].array.compactMap(IssueSummary.init)
-        if opening { pullFilter = BoardFilter(opening: result["author"].string, rows: pulls) }
+        // A saved board may be out of date about who has something open, so the server's first answer
+        // opens the board again, unless the pickers were touched meanwhile.
+        if let last = opening {
+            let filter = BoardFilter(opening: result["author"].string, rows: pulls)
+            if pullFilter == last { pullFilter = filter }
+            opening = saved ? filter : nil
+        }
         if issues.isEmpty && !result["issuesError"].isSet { tab = .pulls }
         loaded = true
     }
     /// `fresh` has the server ask GitHub again instead of answering from its own short cache.
     private func load(fresh: Bool = false) async throws {
         let key = "pulls:\(project.repo)"
-        if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded { show(saved) }
+        if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded { show(saved, saved: true) }
         var result: JSONValue
         do { result = try await store.call("pulls", ["repo": .string(project.repo)].merging(fresh ? ["fresh": .string("1")] : [:]) { $1 }) }
         catch APIError.http(400, _, _) where fresh {
@@ -152,7 +159,7 @@ struct PullDetailView: View {
             if let error { ErrorNotice(message: error).listRowBackground(Theme.elevated) }
             if let writeError {
                 ErrorNotice(message: writeError)
-                if uncertain { Text("The request may have completed. Check the project’s conversations before starting another agent.").font(.caption) }
+                if uncertain { Text("The request may have completed. Pull down to refresh and look for its conversation below before starting another agent.").font(.caption) }
             }
             Section {
                 Text(pr["title"].string ?? board?.title ?? "Pull request #\(number)").font(.title3.bold())
@@ -297,8 +304,9 @@ struct PullDetailView: View {
                         if let findingsError { ErrorNotice(message: findingsError) }
                         ForEach(Array(findings.enumerated()), id: \.offset) { _, finding in
                             DisclosureGroup {
-                                Text(.init(finding["body"].string ?? finding["title"].string ?? "")).textSelection(.enabled)
-                                if let file = finding["file"].string { Text(file).font(.caption.monospaced()) }
+                                if let file = finding["file"].string {
+                                    Text(verbatim: finding["line"].double.map { "\(file):\(Int($0))" } ?? file).font(.caption.monospaced()).textSelection(.enabled)
+                                }
                                 if let url = safeWebURL(finding["url"].string) { Link("Open finding on GitHub", destination: url) }
                                 if canDecide, let key = finding["key"].string, finding["fixed"].bool != true {
                                     Picker("Decision", selection: Binding(
@@ -312,7 +320,7 @@ struct PullDetailView: View {
                                 }
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(finding["title"].string ?? "Finding")
+                                    Text(verbatim: finding["title"].string ?? "Finding")
                                     HStack(spacing: 6) {
                                         if let severity = finding["severity"].string { Text(severity) }
                                         if finding["fixed"].bool == true { Text("Fixed").foregroundStyle(Theme.success) }
@@ -392,14 +400,16 @@ struct PullDetailView: View {
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle("#\(String(number))").navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $started) { ConversationView(initial: $0) }
-        .refreshable { do { try await load() } catch { self.error = error.localizedDescription } }
+        .refreshable {
+            // Pulling down is how an uncertain start is checked: its conversation is listed below if it began.
+            do { try await load(); uncertain = false; writeError = nil } catch { if let said = failure(error) { self.error = said } }
+        }
         .foregroundPoll(every: 30, enabled: !busy && !merging && deciding == nil && pendingAction == nil && asking == nil && mergeMethods == nil, action: load) { error = $0.localizedDescription }
         .confirmationDialog("Start a paid \(pendingAction?.label ?? "") session on #\(String(number))?",
-                            isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
-            Button("Start session", role: pendingAction?.id == "delete-self-comments" ? .destructive : nil) {
-                if let action = pendingAction { Task { await start(action) } }
-            }
-        } message: { if let hint = pendingAction?.hint, !hint.isEmpty { Text("\(hint).") } }
+                            isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
+                            titleVisibility: .visible, presenting: pendingAction) { action in
+            Button("Start session", role: action.id == "delete-self-comments" ? .destructive : nil) { Task { await start(action) } }
+        } message: { action in if !action.hint.isEmpty { Text("\(action.hint).") } }
         .sheet(item: $asking) { action in
             ActionInputView(action: action, number: number) { input in Task { await start(action, input: input) } }
         }
@@ -454,7 +464,9 @@ struct PullDetailView: View {
     private func checkIcon(_ result: String) -> some View {
         switch result.lowercased() {
         case "success", "passed", "neutral", "skipped": return Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
-        case "failure", "failed", "cancelled", "timed_out", "action_required", "error": return Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.danger)
+        case "failure", "failed", "timed_out", "action_required", "error": return Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.danger)
+        // Neither passed nor failed, as the counts above have it.
+        case "cancelled", "stale": return Image(systemName: "minus.circle.fill").foregroundStyle(Color.secondary)
         default: return Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
         }
     }
@@ -523,7 +535,8 @@ struct PullDetailView: View {
         guard !busy, !uncertain, let branch = pr["headRef"].string else { return }
         busy = true; defer { busy = false }
         do {
-            let result: SessionResult = try await store.call(action.operation, action.arguments(repo: project.repo, number: number, branch: branch, input: input))
+            let result: SessionResult = try await store.call(action.operation, action.arguments(repo: project.repo, number: number, branch: branch, input: input),
+                                                             timeout: action.timeout)
             started = result.session; writeError = nil
         } catch {
             writeError = error.localizedDescription

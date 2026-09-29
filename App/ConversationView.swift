@@ -68,7 +68,7 @@ struct ConversationView: View {
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
             // Pulling down reads the whole transcript again, in case the saved one drifted from the server's.
-            .refreshable { do { try await refresh(full: true) } catch { self.error = error.localizedDescription } }
+            .refreshable { do { try await refresh(full: true) } catch { if let said = failure(error) { self.error = said } } }
             .onChange(of: transcript.events.count) { old, _ in
                 // The first page can be thousands of events; jump without animating so the lazy stack lays out once.
                 if old == 0 {
@@ -144,9 +144,10 @@ struct ConversationView: View {
             else { PullDetailView(project: Project(repo: route.repo), number: route.number) }
         }
         .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: { try await refresh() }) { error = $0.localizedDescription; loaded = true }
-        .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }), titleVisibility: .visible) {
-            Button("Confirm", role: pendingAction == "delete" || pendingAction == "cancel" ? .destructive : nil) {
-                if let action = pendingAction { Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) } }
+        .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
+                            titleVisibility: .visible, presenting: pendingAction) { action in
+            Button("Confirm", role: action == "delete" || action == "cancel" ? .destructive : nil) {
+                Task { await mutate(action, extra: action == "review_loop" ? ["on": .bool(true)] : [:]) }
             }
         }
         .alert("Rename conversation", isPresented: $renaming) {
@@ -246,6 +247,8 @@ struct ConversationView: View {
         return session.liveInput == true ? ("Sent into the running turn", "bolt.fill") : ("Queued for the next turn", "clock")
     }
     private func refresh(full: Bool = false) async throws {
+        // A poll already reading must not swallow a pull to refresh, which waits its turn.
+        while full && loading { try await Task.sleep(for: .milliseconds(100)) }
         guard !loading else { return }
         loading = true; defer { loading = false }
         if !restored {

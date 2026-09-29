@@ -248,7 +248,10 @@ struct IssueDetailView: View {
             if let writeError {
                 Section {
                     ErrorNotice(message: writeError)
-                    if uncertain { Text("The request may have completed. Check the project’s conversations before starting another agent.").font(.caption) }
+                    if uncertain {
+                        Text("The request may have completed. Check the project’s conversations before starting another agent.").font(.caption)
+                        Button("I have checked") { uncertain = false; self.writeError = nil }.buttonStyle(.bordered).controlSize(.small)
+                    }
                 }.listRowBackground(Theme.elevated)
             }
             Section {

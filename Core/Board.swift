@@ -258,6 +258,8 @@ public struct BoardAction: Identifiable, Hashable, Sendable {
         self.id = id; self.label = label; self.hint = hint; self.input = input
     }
     public var operation: String { id == "run" ? "serve_pull" : id.replacingOccurrences(of: "-", with: "_") }
+    /// Run answers only once the workspace is prepared and serving, which takes longer than a request is given.
+    public var timeout: TimeInterval? { id == "run" ? 170 : nil }
     /// Review and QA check the branch out themselves; the rest look the pull request up by number.
     public func arguments(repo: String, number: Int, branch: String?, input: String? = nil) -> [String: JSONValue] {
         var args: [String: JSONValue] = ["repo": .string(repo), "prNumber": .number(Double(number))]
