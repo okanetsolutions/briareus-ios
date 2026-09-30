@@ -420,6 +420,14 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(feedback.input?.label, "Tell it")
         XCTAssertEqual(feedback.arguments(repo: "o/r", number: 9, branch: "docs", input: " Use 404 \n"),
                        ["repo": .string("o/r"), "prNumber": .number(9), "input": .string("Use 404")])
+        // The board's list names the errand a row asks for, but only one that would be offered on it.
+        XCTAssertEqual(BoardAction.suggested(pull: pulls[0])?.label, "Solve conflicts")
+        XCTAssertNil(BoardAction.suggested(pull: pulls[1]))
+        let asking = { (id: String) in try XCTUnwrap(PullSummary(.object(["number": .number(9), "mergeable": .string("mergeable"), "recommended": .string(id)]))) }
+        XCTAssertNil(BoardAction.suggested(pull: try asking("solve-conflicts")))
+        XCTAssertNil(BoardAction.suggested(pull: try asking("release-notes")))
+        XCTAssertEqual(BoardAction.suggested(catalog: catalog, pull: try asking("release-notes"))?.label, "Release notes")
+        XCTAssertNil(BoardAction.suggested(catalog: catalog, pull: try asking("test-run")))
         let known = Dictionary(uniqueKeysWithValues: BoardAction.known.map { ($0.id, $0) })
         XCTAssertEqual(known["run"]?.operation, "serve_pull"); XCTAssertEqual(known["solve-conflicts"]?.operation, "solve_conflicts")
         XCTAssertEqual(known["review"]?.arguments(repo: "o/r", number: 9, branch: "docs", input: "ignored"),

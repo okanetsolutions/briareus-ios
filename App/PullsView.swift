@@ -9,6 +9,8 @@ struct PullsView: View {
     @State private var board: JSONValue = .null
     /// How many conversations are at work on each pull request, by its number.
     @State private var activeRuns: [Int: Int] = [:]
+    /// The errands the server lists, which name a suggested one this app predates.
+    @State private var catalog: [JSONValue] = []
     @State private var tab = Tab.pulls
     @State private var pullFilter = BoardFilter()
     @State private var issueFilter = BoardFilter()
@@ -59,7 +61,7 @@ struct PullsView: View {
         ForEach(shownPulls) { pr in
             let stack = StackPosition(pr.raw["stack"], chain: board["stacks"])
             NavigationLink { PullDetailView(project: project, number: pr.number, stack: stack, summary: pr) } label: {
-                PullRow(pr: pr, stack: stack, repo: project.repo, activeRuns: activeRuns[pr.number] ?? 0)
+                PullRow(pr: pr, stack: stack, repo: project.repo, activeRuns: activeRuns[pr.number] ?? 0, suggested: suggested(on: pr))
             }
         }.listRowBackground(Theme.row)
         if loaded && shownPulls.isEmpty && error == nil {
@@ -91,6 +93,11 @@ struct PullsView: View {
             }
         }
     }
+    /// Only an errand the pull request's own screen would offer, so the row never names one that cannot be started there.
+    private func suggested(on pr: PullSummary) -> BoardAction? {
+        guard store.canManage, let action = BoardAction.suggested(catalog: catalog, pull: pr), store.supports(action.operation) else { return nil }
+        return action
+    }
     private func show(_ result: JSONValue, saved: Bool = false) {
         board = result
         pulls = result["pulls"].array.compactMap(PullSummary.init)
@@ -109,6 +116,8 @@ struct PullsView: View {
     private func load(fresh: Bool = false) async throws {
         let key = "pulls:\(project.repo)"
         if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded { show(saved, saved: true) }
+        if catalog.isEmpty, let saved: JSONValue = await store.cache.value("actions"), catalog.isEmpty { catalog = saved["actions"].array }
+        async let listed: JSONValue? = actions()
         var result: JSONValue
         do { result = try await store.call("pulls", ["repo": .string(project.repo)].merging(fresh ? ["fresh": .string("1")] : [:]) { $1 }) }
         catch APIError.http(400, _, _) where fresh {
@@ -118,6 +127,14 @@ struct PullsView: View {
         try Task.checkCancellation()
         show(result); error = nil
         await store.cache.store(result, for: key)
+        // The rows do not wait for the catalog: all it adds is the name of an errand newer than this app.
+        if let served = await listed, !Task.isCancelled {
+            catalog = served["actions"].array
+            await store.cache.store(served, for: "actions")
+        }
+    }
+    private func actions() async -> JSONValue? {
+        store.canManage && store.supports("actions") ? try? await store.call("actions") : nil
     }
     private func loadRuns() async throws {
         guard store.supports("sessions") else { return }

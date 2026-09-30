@@ -115,6 +115,8 @@ struct PullRow: View {
     let repo: String
     /// The conversations at work on it right now.
     var activeRuns = 0
+    /// The errand this pull request asks for, when this device could start it.
+    var suggested: BoardAction? = nil
     private var review: ReviewStatus? {
         ReviewStatus(decision: pr.reviewDecision, reviews: pr.reviewers.map { .object(["state": .string($0.state)]) })
     }
@@ -132,7 +134,7 @@ struct PullRow: View {
                     Spacer(minLength: 4)
                     Updated(date: pr.updatedAt)
                 }
-                if activeRuns > 0 || pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft {
+                if activeRuns > 0 || pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft || suggested != nil {
                     FlowLayout(spacing: 5) {
                         if activeRuns > 0 {
                             Badge(text: "\(activeRuns) active run\(activeRuns == 1 ? "" : "s")", systemImage: "bolt.fill", color: Theme.statusColor("running"))
@@ -142,6 +144,10 @@ struct PullRow: View {
                         if let stack { StackBadge(stack: stack) }
                         if let review { ReviewBadge(status: review) }
                         if pr.draft { Badge(text: "Draft", systemImage: "pencil", color: .secondary) }
+                        if let suggested {
+                            Badge(text: "Suggested: \(suggested.label)", systemImage: "sparkle", color: Theme.accent)
+                                .accessibilityLabel("Suggested action: \(suggested.label)")
+                        }
                     }
                 }
                 if !pr.labels.isEmpty { LabelChips(labels: pr.labels) }
