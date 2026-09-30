@@ -25,7 +25,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 **Conversations**
 
 - Lists the projects and conversations the device token permits, with search and status updates.
-- Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages. Workspace setup steps are left out.
+- Shows incremental transcripts with the time of each message, agent questions and queued messages. The tools, commands and git steps an agent runs are left out, as are workspace setup steps.
 - Starts conversations on a chosen branch, provider, model and effort, or on the project default.
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
 - Turns the review loop on or off from inside a conversation.
@@ -39,7 +39,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Shows open pull requests as the dashboard does: labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack position, narrowed by author, reviewer or label.
 - Opens a pull request on its description, file changes with diffs, checks, reviews, commits, the issues it closes, findings and the conversations already run on it.
 - Records fix, optional or dismiss decisions on findings, and merges when the server offers it, saying first what stands in the way.
-- Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, test sheet, QA, PR body and delete my comments. The one the pull request's state asks for is marked as suggested, and named on its row in the list.
+- Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, PR body and delete my comments. The one the pull request's state asks for is marked as suggested, and named on its row in the list.
 - Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, and starts a session on an issue.
 
 **In the car**
@@ -281,9 +281,10 @@ Manual acceptance with a deployed test project:
 
 - Pair with a Read-only token; verify only its projects appear and mutation controls are absent.
 - Pair with Manage, start a conversation, send a follow-up and check the dashboard sees it once.
+- Open a conversation whose agent ran tools, commands and git steps; verify the transcript shows only the messages, questions and turn endings.
 - Background/foreground and leave/reopen the conversation; verify it opens at once on the saved transcript, then shows incremental updates and no duplicate events.
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
-- Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
+- Test a question, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
 - Triage a round of findings from the project's Findings section and toggle the review loop from a conversation; verify the dashboard shows the same state.
 - Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
@@ -300,7 +301,7 @@ The app covers what the mobile API exposes. The API does not offer attachment up
 - In a car the agent's replies are not shown or read aloud: the screen says what a conversation is doing and what it asks, and the transcript, file changes and diffs stay on the phone. Search, and a branch that is not on the list, need the phone too, as does pairing.
 - CarPlay lists show as many rows as the car allows, fewer while it moves; the rest are on the phone.
 - Diffs GitHub does not return (binary or very large files) open on GitHub instead.
-- Review, QA and the board's other errands always use the runtime configured on the server.
+- Review and the board's other errands always use the runtime configured on the server.
 - A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither.
 - Run prepares and serves the workspace, but its preview link keeps the browser's protection and does not open from the app.
 - Starting an epic, which picks an orchestrator's and its workers' models, remains in the web dashboard.

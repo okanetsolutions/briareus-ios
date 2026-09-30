@@ -127,6 +127,12 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
         sessions.filter { $0.heldTriage != nil }
             .sorted { ($0.heldTriage?["heldAt"].string ?? "") < ($1.heldTriage?["heldAt"].string ?? "") }
     }
+    /// How many conversations are at work on each pull request, by its number.
+    public static func activeRuns(_ sessions: [Session]) -> [Int: Int] {
+        sessions.reduce(into: [:]) { counts, session in
+            if session.isActive, let number = session.pullNumber { counts[number, default: 0] += 1 }
+        }
+    }
     public var displayTitle: String { title.flatMap { $0.isEmpty ? nil : $0 } ?? "New conversation" }
     public var isActive: Bool { ["queued", "preparing", "running", "starting"].contains(status) }
     public static func == (lhs: Session, rhs: Session) -> Bool { lhs.id == rhs.id }
@@ -153,10 +159,11 @@ public struct Event: Codable, Identifiable, Sendable {
     public let attachments: [JSONValue]?
     public var id: Int { seq }
     public var time: Date? { BoardDate.parse(t) }
-    /// Tool events carry their detail in `summary`; other kinds use `text`.
-    public var detail: String? { text ?? summary }
-    /// Status and workspace setup output are dashboard plumbing, not part of the conversation.
-    public var visible: Bool { !["status", "setup"].contains(kind) && (text != nil || question != nil || ["tool", "tool_error", "result"].contains(kind)) }
+    /// A conversation is what was said. Status and setup output are dashboard plumbing, and the tools, commands
+    /// and git steps an agent ran stay on the dashboard.
+    public var visible: Bool {
+        !["status", "setup", "tool", "tool_error", "cmd", "git"].contains(kind) && (text != nil || question != nil || kind == "result")
+    }
 }
 
 // Cursor and transcript have one lifetime: saved events restore both, and an empty transcript starts at zero.

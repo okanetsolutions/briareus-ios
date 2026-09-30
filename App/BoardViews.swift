@@ -113,6 +113,8 @@ struct PullRow: View {
     let pr: PullSummary
     let stack: StackPosition?
     let repo: String
+    /// The conversations at work on it right now.
+    var activeRuns = 0
     /// The errand this pull request asks for, when this device could start it.
     var suggested: BoardAction? = nil
     private var review: ReviewStatus? {
@@ -132,8 +134,11 @@ struct PullRow: View {
                     Spacer(minLength: 4)
                     Updated(date: pr.updatedAt)
                 }
-                if pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft || suggested != nil {
+                if activeRuns > 0 || pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft || suggested != nil {
                     FlowLayout(spacing: 5) {
+                        if activeRuns > 0 {
+                            Badge(text: "\(activeRuns) active run\(activeRuns == 1 ? "" : "s")", systemImage: "bolt.fill", color: Theme.statusColor("running"))
+                        }
                         if pr.conflicting { ConflictBadge() }
                         if let checks = pr.checks { ChecksBadge(state: checks) }
                         if let stack { StackBadge(stack: stack) }

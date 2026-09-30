@@ -190,6 +190,11 @@ final class CoreTests: XCTestCase {
         let events = try JSONDecoder().decode([Event].self, from: data)
         XCTAssertEqual(events.filter(\.visible).map(\.seq), [2])
     }
+    func testOnlyWhatWasSaidIsShown() throws {
+        let data = Data(#"[{"seq":1,"kind":"user","text":"Go"},{"seq":2,"kind":"tool","name":"Bash","summary":"ls"},{"seq":3,"kind":"tool_error","text":"No such file"},{"seq":4,"kind":"cmd","text":"npm test"},{"seq":5,"kind":"git","text":"git push"},{"seq":6,"kind":"text","text":"Done"},{"seq":7,"kind":"ask","question":"Ship it?"},{"seq":8,"kind":"result"}]"#.utf8)
+        let events = try JSONDecoder().decode([Event].self, from: data)
+        XCTAssertEqual(events.filter(\.visible).map(\.seq), [1, 6, 7, 8])
+    }
     func testOptionalFieldsAndUnknownStatusesDoNotBreakDecoding() throws {
         let result = try JSONDecoder().decode(SessionResult.self, from: Data(#"{"session":{"id":"x","status":"future","title":null,"model":null,"unknown":true},"events":null}"#.utf8))
         XCTAssertEqual(result.session.displayTitle, "New conversation")
@@ -203,6 +208,10 @@ final class CoreTests: XCTestCase {
         XCTAssertNil(try session(#","prStatus":null,"startedOnPr":null"#).pullNumber)
         XCTAssertEqual(try session(#","startedOnPr":4"#).pullNumber, 4)
         XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open"},"startedOnPr":4"#).pullNumber, 9)
+    }
+    func testActiveRunsAreCountedPerPullRequest() throws {
+        let data = Data(#"[{"id":"a","status":"running","startedOnPr":4},{"id":"b","status":"queued","prStatus":{"number":4}},{"id":"c","status":"idle","startedOnPr":4},{"id":"d","status":"closed","startedOnPr":7},{"id":"e","status":"preparing","startedOnPr":9},{"id":"f","status":"running"}]"#.utf8)
+        XCTAssertEqual(Session.activeRuns(try JSONDecoder().decode([Session].self, from: data)), [4: 2, 9: 1])
     }
     func testRetryAfterHTTPDate() {
         let now = Date(timeIntervalSince1970: 0)
@@ -277,7 +286,7 @@ final class CoreTests: XCTestCase {
         var transcript = Transcript()
         transcript.append(await cache.lines("transcript:s/1"))
         XCTAssertEqual(transcript.events.map(\.seq), [1, 2, 3]); XCTAssertEqual(transcript.cursor, 3)
-        XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].detail, "ls")
+        XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].summary, "ls")
         XCTAssertEqual(transcript.events[2].costUsd, 0.5)
         let timed = try JSONDecoder().decode(Event.self, from: Data(#"{"seq":4,"kind":"text","t":"2026-09-28T15:55:49.120Z","text":"Hi"}"#.utf8))
         XCTAssertEqual(timed.time.map { Int($0.timeIntervalSince1970) }, 1790610949)
@@ -391,19 +400,22 @@ final class CoreTests: XCTestCase {
     func testBoardOffersTheErrandsAPullRequestIsInAStateFor() throws {
         let pulls = try board()["pulls"].array.compactMap(PullSummary.init)
         XCTAssertEqual(BoardAction.offered(pull: pulls[0]).map(\.id),
-                       ["run", "review", "solve-conflicts", "fix-checks", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+                       ["run", "review", "solve-conflicts", "fix-checks", "custom-feedback", "pr-body-summary", "delete-self-comments"])
         XCTAssertEqual(BoardAction.offered(pull: pulls[1]).map(\.id),
-                       ["run", "review", "solve-conflicts", "implement-feedback", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+                       ["run", "review", "solve-conflicts", "implement-feedback", "custom-feedback", "pr-body-summary", "delete-self-comments"])
         XCTAssertFalse(BoardAction.offered(pull: pulls[2]).contains { ["solve-conflicts", "fix-checks", "implement-feedback"].contains($0.id) })
         XCTAssertTrue(BoardAction.offered(pull: pulls[2], failedChecks: 1).contains { $0.id == "fix-checks" })
         // Off the board nothing is known about its state, so the errands that answer one stay on offer.
         XCTAssertTrue(BoardAction.offered(pull: nil).contains { $0.id == "solve-conflicts" })
         let catalog = try JSONDecoder().decode(JSONValue.self, from: Data(#"""
         [{"id":"custom-feedback","label":"Give feedback","hint":"h","input":{"label":"Tell it","placeholder":"e.g.","required":true}},
-         {"id":"test-run","label":"Run test sheet","icon":"🎬","hint":"Execute it","input":null},{"label":"No id"}]
+         {"id":"qa","label":"QA"},{"id":"test-sheet","label":"Test sheet"},{"id":"test-run","label":"Run test sheet"},
+         {"id":"release-notes","label":"Release notes","icon":"📝","hint":"Draft them","input":null},{"label":"No id"}]
         """#.utf8)).array
         let offered = BoardAction.offered(catalog: catalog, pull: pulls[2])
-        XCTAssertEqual(offered.last?.id, "test-run"); XCTAssertEqual(offered.last?.operation, "test_run")
+        XCTAssertEqual(offered.last?.id, "release-notes"); XCTAssertEqual(offered.last?.operation, "release_notes")
+        // QA and the test sheet are gone from the app, whatever the server still lists.
+        XCTAssertFalse(offered.contains { ["qa", "test-sheet", "test-run"].contains($0.id) })
         let feedback = try XCTUnwrap(offered.first { $0.id == "custom-feedback" })
         XCTAssertEqual(feedback.input?.label, "Tell it")
         XCTAssertEqual(feedback.arguments(repo: "o/r", number: 9, branch: "docs", input: " Use 404 \n"),
@@ -413,8 +425,9 @@ final class CoreTests: XCTestCase {
         XCTAssertNil(BoardAction.suggested(pull: pulls[1]))
         let asking = { (id: String) in try XCTUnwrap(PullSummary(.object(["number": .number(9), "mergeable": .string("mergeable"), "recommended": .string(id)]))) }
         XCTAssertNil(BoardAction.suggested(pull: try asking("solve-conflicts")))
-        XCTAssertNil(BoardAction.suggested(pull: try asking("test-run")))
-        XCTAssertEqual(BoardAction.suggested(catalog: catalog, pull: try asking("test-run"))?.label, "Run test sheet")
+        XCTAssertNil(BoardAction.suggested(pull: try asking("release-notes")))
+        XCTAssertEqual(BoardAction.suggested(catalog: catalog, pull: try asking("release-notes"))?.label, "Release notes")
+        XCTAssertNil(BoardAction.suggested(catalog: catalog, pull: try asking("test-run")))
         let known = Dictionary(uniqueKeysWithValues: BoardAction.known.map { ($0.id, $0) })
         XCTAssertEqual(known["run"]?.operation, "serve_pull"); XCTAssertEqual(known["solve-conflicts"]?.operation, "solve_conflicts")
         XCTAssertEqual(known["review"]?.arguments(repo: "o/r", number: 9, branch: "docs", input: "ignored"),

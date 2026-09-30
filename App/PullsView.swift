@@ -7,6 +7,8 @@ struct PullsView: View {
     @State private var pulls: [PullSummary] = []
     @State private var issues: [IssueSummary] = []
     @State private var board: JSONValue = .null
+    /// How many conversations are at work on each pull request, by its number.
+    @State private var activeRuns: [Int: Int] = [:]
     /// The errands the server lists, which name a suggested one this app predates.
     @State private var catalog: [JSONValue] = []
     @State private var tab = Tab.pulls
@@ -46,14 +48,20 @@ struct PullsView: View {
                     BoardFilterMenu(filter: filter, rows: rows, kinds: tab == .pulls ? BoardFilter.Kind.allCases : [.author, .label])
                 }
             }
-            .refreshable { do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } } }
+            .refreshable {
+                try? await loadRuns()
+                do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } }
+            }
             .foregroundPoll(every: 45, action: { try await load() }) { error = $0.localizedDescription; loaded = true }
+            // Conversations start and finish faster than the board changes, and reading them asks GitHub nothing.
+            // The count is an addition to a row, so a read that fails leaves what was there.
+            .foregroundPoll(every: 7, enabled: store.supports("sessions"), action: loadRuns) { _ in }
     }
     @ViewBuilder private var pullRows: some View {
         ForEach(shownPulls) { pr in
             let stack = StackPosition(pr.raw["stack"], chain: board["stacks"])
             NavigationLink { PullDetailView(project: project, number: pr.number, stack: stack, summary: pr) } label: {
-                PullRow(pr: pr, stack: stack, repo: project.repo, suggested: suggested(on: pr))
+                PullRow(pr: pr, stack: stack, repo: project.repo, activeRuns: activeRuns[pr.number] ?? 0, suggested: suggested(on: pr))
             }
         }.listRowBackground(Theme.row)
         if loaded && shownPulls.isEmpty && error == nil {
@@ -109,7 +117,7 @@ struct PullsView: View {
         let key = "pulls:\(project.repo)"
         if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded { show(saved, saved: true) }
         if catalog.isEmpty, let saved: JSONValue = await store.cache.value("actions"), catalog.isEmpty { catalog = saved["actions"].array }
-        async let listed: JSONValue? = store.canManage && store.supports("actions") ? try? await store.call("actions") : nil
+        async let listed: JSONValue? = actions()
         var result: JSONValue
         do { result = try await store.call("pulls", ["repo": .string(project.repo)].merging(fresh ? ["fresh": .string("1")] : [:]) { $1 }) }
         catch APIError.http(400, _, _) where fresh {
@@ -124,6 +132,15 @@ struct PullsView: View {
             catalog = served["actions"].array
             await store.cache.store(served, for: "actions")
         }
+    }
+    private func actions() async -> JSONValue? {
+        store.canManage && store.supports("actions") ? try? await store.call("actions") : nil
+    }
+    private func loadRuns() async throws {
+        guard store.supports("sessions") else { return }
+        let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
+        try Task.checkCancellation()
+        activeRuns = Session.activeRuns(result.sessions)
     }
 }
 
@@ -437,8 +454,8 @@ struct PullDetailView: View {
     }
     private static let actionIcons = [
         "run": "play", "review": "text.magnifyingglass", "solve-conflicts": "arrow.triangle.merge", "fix-checks": "wrench.and.screwdriver",
-        "implement-feedback": "hammer", "custom-feedback": "square.and.pencil", "test-sheet": "checklist", "qa": "video",
-        "test-run": "play.rectangle", "pr-body-summary": "doc.text", "delete-self-comments": "trash",
+        "implement-feedback": "hammer", "custom-feedback": "square.and.pencil", "pr-body-summary": "doc.text",
+        "delete-self-comments": "trash",
     ]
     private static let mergeTitles = ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"]
     /// Reads what GitHub allows before asking, so the dialog offers only methods the repository accepts.
