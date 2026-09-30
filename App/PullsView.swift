@@ -423,8 +423,8 @@ struct PullDetailView: View {
     }
     private static let actionIcons = [
         "run": "play", "review": "text.magnifyingglass", "solve-conflicts": "arrow.triangle.merge", "fix-checks": "wrench.and.screwdriver",
-        "implement-feedback": "hammer", "custom-feedback": "square.and.pencil", "test-sheet": "checklist", "qa": "video",
-        "test-run": "play.rectangle", "pr-body-summary": "doc.text", "delete-self-comments": "trash",
+        "implement-feedback": "hammer", "custom-feedback": "square.and.pencil", "pr-body-summary": "doc.text",
+        "delete-self-comments": "trash",
     ]
     private static let mergeTitles = ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"]
     /// Reads what GitHub allows before asking, so the dialog offers only methods the repository accepts.
