@@ -316,6 +316,12 @@ public struct BoardAction: Identifiable, Hashable, Sendable {
             }
         }
     }
+
+    /// The errand a row asks for, which the board's list can name without opening the pull request.
+    /// Nil when it asks for none, or for one that would not be offered on it.
+    public static func suggested(catalog: [JSONValue] = [], pull: PullSummary) -> BoardAction? {
+        pull.recommended.flatMap { id in offered(catalog: catalog, pull: pull).first { $0.id == id } }
+    }
 }
 
 public enum MergeState {
