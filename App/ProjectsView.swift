@@ -3,16 +3,25 @@ import SwiftUI
 private struct ActivePolling: ViewModifier {
     @Environment(\.scenePhase) private var phase
     @State private var visible = false
+    @State private var clock = PollClock()
+    @State private var behind = false
     let interval: Double
     let enabled: Bool
     let action: () async throws -> Void
     let failed: (Error) -> Void
     func body(content: Content) -> some View {
+        let watched = visible && phase.isInUse
+        // A Mac window behind another app is still in view, but nobody is waiting on it.
+        let pace = interval * (behind ? 3 : 1)
         content.onAppear { visible = true }.onDisappear { visible = false }
+            .onBehindOtherApps { behind = $0 }
             // The interval is part of what the task is, so a conversation that goes idle slows its polling down.
-            .task(id: visible && phase.isInUse && enabled ? interval : 0) {
-                guard visible && phase.isInUse && enabled else { return }
-                await poll(every: interval, action: action, failed: failed)
+            .task(id: watched && enabled ? pace : 0) {
+                guard watched else { return }
+                // A pause is a dialog or a write, and a write reads what it changed by itself. What is on screen
+                // counts as read when the pause began, so ending it does not ask again at once.
+                guard enabled else { if clock.last != nil { clock.last = Date() }; return }
+                await poll(every: pace, clock: clock, action: action, failed: failed)
             }
     }
 }
@@ -92,15 +101,17 @@ struct ProjectsList: View {
 struct ProjectView: View {
     let project: Project
     @EnvironmentObject private var store: AppStore
-    @State private var sessions: [Session] = []
     @State private var search = ""
     @State private var showClosed = false
     @State private var creating = false
     /// What a phone pushes; beside the list it fills the other side instead.
     @State private var pushed: Pane?
     @State private var error: String?
-    @State private var loaded = false
     @Environment(\.splitPane) private var pane
+    /// The project's conversations, which its board and its findings read too.
+    private var feed: ProjectFeed { store.feed(project.repo) }
+    private var sessions: [Session] { feed.sessions }
+    private var loaded: Bool { feed.sessionsLoaded || error != nil }
     var filtered: [Session] {
         sessions.filter { (showClosed || $0.status != "closed") && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
     }
@@ -148,8 +159,8 @@ struct ProjectView: View {
                 .sheetSize(width: 580, height: 440)
         }
         .navigationDestination(item: $pushed) { $0.screen }
-        .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
-        .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
+        .refreshable { do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } } }
+        .foregroundPoll(every: ProjectFeed.sessionsEvery, enabled: !creating, action: { try await load() }) { error = $0.localizedDescription }
     }
     private var finder: some View {
         HStack(spacing: 8) {
@@ -220,15 +231,10 @@ struct ProjectView: View {
         }
         .accessibilityElement(children: .combine)
     }
-    private func load() async throws {
-        let key = "sessions:\(project.repo)"
-        if !loaded, let saved: [Session] = await store.cache.value(key), !loaded { sessions = saved; loaded = true }
-        let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
+    private func load(fresh: Bool = false) async throws {
+        try await feed.loadSessions(fresh: fresh)
         try Task.checkCancellation()
-        let gone = Set(sessions.map(\.id)).subtracting(result.sessions.map(\.id))
-        sessions = result.sessions; loaded = true; error = nil
-        await store.cache.store(result.sessions, for: key)
-        for id in gone { await store.cache.remove("transcript:\(id)") }
+        error = nil
     }
 }
 

@@ -153,7 +153,8 @@ struct ConversationView: View {
             if route.changes { PullFilesView(project: Project(repo: route.repo), number: route.number) }
             else { PullDetailView(project: Project(repo: route.repo), number: route.number) }
         }
-        .foregroundPoll(every: session.isActive ? 2 : 7, enabled: !busy && !renaming && pendingAction == nil, action: { try await refresh() }) { error = $0.localizedDescription; loaded = true }
+        // Nothing happens in a closed conversation until it is reopened, which is rare and mostly done from here.
+        .foregroundPoll(every: session.isActive ? 2 : session.status == "closed" ? 60 : 7, enabled: !busy && !renaming && pendingAction == nil, action: { try await refresh() }) { error = $0.localizedDescription; loaded = true }
         .confirmationDialog(actionTitle, isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
                             titleVisibility: .visible, presenting: pendingAction) { action in
             Button("Confirm", role: action == "delete" || action == "cancel" ? .destructive : nil) {

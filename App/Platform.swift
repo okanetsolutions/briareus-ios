@@ -70,6 +70,20 @@ extension ScenePhase {
     }
 }
 
+extension View {
+    /// Says whether another app is in front of this one, when the screen appears and whenever that changes.
+    /// Only a Mac has a window that stays in view behind another app's.
+    func onBehindOtherApps(_ change: @escaping (Bool) -> Void) -> some View {
+        #if os(macOS)
+        onAppear { change(!NSApplication.shared.isActive) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in change(true) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in change(false) }
+        #else
+        self
+        #endif
+    }
+}
+
 enum Platform {
     static var name: String {
         #if os(macOS)

@@ -4,20 +4,18 @@ struct PullsView: View {
     enum Tab: String { case pulls, issues }
     let project: Project
     @EnvironmentObject private var store: AppStore
-    @State private var pulls: [PullSummary] = []
-    @State private var issues: [IssueSummary] = []
-    @State private var board: JSONValue = .null
-    /// How many conversations are at work on each pull request, by its number.
-    @State private var activeRuns: [Int: Int] = [:]
-    /// The errands the server lists, which name a suggested one this app predates.
-    @State private var catalog: [JSONValue] = []
     @State private var tab = Tab.pulls
     @State private var pullFilter = BoardFilter()
     @State private var issueFilter = BoardFilter()
-    @State private var loaded = false
     /// The filter the board last opened on, until the server has answered once and the picks are the user's.
     @State private var opening: BoardFilter? = BoardFilter()
     @State private var error: String?
+    /// The project's board and conversations, which its other screens read too.
+    private var feed: ProjectFeed { store.feed(project.repo) }
+    private var pulls: [PullSummary] { feed.pulls }
+    private var issues: [IssueSummary] { feed.issues }
+    private var board: JSONValue { feed.board }
+    private var loaded: Bool { feed.boardLoaded || error != nil }
     private var filter: Binding<BoardFilter> { tab == .pulls ? $pullFilter : $issueFilter }
     private var rows: [BoardRow] { tab == .pulls ? pulls : issues }
     private var shownPulls: [PullSummary] { pulls.filter { pullFilter.passes($0) } }
@@ -49,15 +47,17 @@ struct PullsView: View {
                 }
             }
             .refreshable {
-                try? await loadRuns()
+                try? await feed.loadSessions(fresh: true)
                 do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } }
             }
-            .foregroundPoll(every: 45, action: { try await load() }) { error = $0.localizedDescription; loaded = true }
+            .foregroundPoll(every: ProjectFeed.boardEvery, action: { try await load() }) { error = $0.localizedDescription }
             // Conversations start and finish faster than the board changes, and reading them asks GitHub nothing.
             // The count is an addition to a row, so a read that fails leaves what was there.
-            .foregroundPoll(every: 7, enabled: store.supports("sessions"), action: loadRuns) { _ in }
+            .foregroundPoll(every: ProjectFeed.sessionsEvery, enabled: store.supports("sessions"), action: { try await feed.loadSessions() }) { _ in }
     }
     @ViewBuilder private var pullRows: some View {
+        // How many conversations are at work on each pull request, by its number.
+        let activeRuns = Session.activeRuns(feed.sessions)
         ForEach(shownPulls) { pr in
             let stack = StackPosition(pr.raw["stack"], chain: board["stacks"])
             NavigationLink { PullDetailView(project: project, number: pr.number, stack: stack, summary: pr) } label: {
@@ -95,52 +95,30 @@ struct PullsView: View {
     }
     /// Only an errand the pull request's own screen would offer, so the row never names one that cannot be started there.
     private func suggested(on pr: PullSummary) -> BoardAction? {
-        guard store.canManage, let action = BoardAction.suggested(catalog: catalog, pull: pr), store.supports(action.operation) else { return nil }
+        guard store.canManage, let action = BoardAction.suggested(catalog: store.errands, pull: pr), store.supports(action.operation) else { return nil }
         return action
     }
-    private func show(_ result: JSONValue, saved: Bool = false) {
-        board = result
-        pulls = result["pulls"].array.compactMap(PullSummary.init)
-        issues = result["issues"].array.compactMap(IssueSummary.init)
-        // A saved board may be out of date about who has something open, so the server's first answer
-        // opens the board again, unless the pickers were touched meanwhile.
+    /// Opens the board that is on screen. One shown before the server answered may be out of date about who
+    /// has something open, so the server's answer opens it again, unless the pickers were touched meanwhile.
+    private func opened(answered: Bool) {
+        guard feed.boardLoaded else { return }
         if let last = opening {
-            let filter = BoardFilter(opening: result["author"].string, rows: pulls)
+            let filter = BoardFilter(opening: board["author"].string, rows: pulls)
             if pullFilter == last { pullFilter = filter }
-            opening = saved ? filter : nil
+            opening = answered ? nil : filter
         }
-        if issues.isEmpty && !result["issuesError"].isSet { tab = .pulls }
-        loaded = true
+        if issues.isEmpty && !board["issuesError"].isSet { tab = .pulls }
     }
     /// `fresh` has the server ask GitHub again instead of answering from its own short cache.
     private func load(fresh: Bool = false) async throws {
-        let key = "pulls:\(project.repo)"
-        if !loaded, let saved: JSONValue = await store.cache.value(key), !loaded { show(saved, saved: true) }
-        if catalog.isEmpty, let saved: JSONValue = await store.cache.value("actions"), catalog.isEmpty { catalog = saved["actions"].array }
-        async let listed: JSONValue? = actions()
-        var result: JSONValue
-        do { result = try await store.call("pulls", ["repo": .string(project.repo)].merging(fresh ? ["fresh": .string("1")] : [:]) { $1 }) }
-        catch APIError.http(400, _, _) where fresh {
-            // A server from before `fresh` refuses the argument it does not know.
-            result = try await store.call("pulls", ["repo": .string(project.repo)])
-        }
-        try Task.checkCancellation()
-        show(result); error = nil
-        await store.cache.store(result, for: key)
+        await feed.restoreBoard()
+        opened(answered: false)
         // The rows do not wait for the catalog: all it adds is the name of an errand newer than this app.
-        if let served = await listed, !Task.isCancelled {
-            catalog = served["actions"].array
-            await store.cache.store(served, for: "actions")
-        }
-    }
-    private func actions() async -> JSONValue? {
-        store.canManage && store.supports("actions") ? try? await store.call("actions") : nil
-    }
-    private func loadRuns() async throws {
-        guard store.supports("sessions") else { return }
-        let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
+        async let listed: Void = store.loadErrands()
+        try await feed.loadBoard(fresh: fresh)
         try Task.checkCancellation()
-        activeRuns = Session.activeRuns(result.sessions)
+        opened(answered: true); error = nil
+        await listed
     }
 }
 
@@ -152,11 +130,10 @@ struct PullDetailView: View {
     var summary: PullSummary? = nil
     @EnvironmentObject private var store: AppStore
     @State private var pr: JSONValue = .null
+    /// The row this screen saved, shown until the board is read.
     @State private var row: PullSummary?
     /// True once the board answered, after which a missing row means the pull request left it.
     @State private var rowRead = false
-    @State private var catalog: [JSONValue] = []
-    @State private var runs: [Session] = []
     @State private var findings: [JSONValue] = []
     @State private var error: String?
     @State private var findingsError: String?
@@ -173,12 +150,18 @@ struct PullDetailView: View {
     @State private var deciding: String?
     private var canDecide: Bool { store.supports("finding_decision") }
     private static let decisions = [(id: "fix", title: "Fix"), (id: "optional", title: "Optional"), (id: "dismissed", title: "Dismiss")]
-    private var board: PullSummary? { rowRead ? row : row ?? summary }
+    /// The project's board and conversations, read once for every screen that shows them.
+    private var feed: ProjectFeed { store.feed(project.repo) }
+    private var board: PullSummary? {
+        let listed = feed.pulls.first { $0.number == number }
+        return rowRead ? listed : listed ?? row ?? summary
+    }
+    private var runs: [Session] { feed.sessions.filter { $0.pullNumber == number } }
     /// Until the pull request itself answers, being on the board says it is open.
     private var isOpen: Bool { pr == .null ? board != nil : pr["state"].string == "open" }
     private var actions: [BoardAction] {
         guard store.canManage, isOpen, pr["headRef"].string != nil else { return [] }
-        return BoardAction.offered(catalog: catalog, pull: board, failedChecks: Int(pr["checks"]["failed"].double ?? 0))
+        return BoardAction.offered(catalog: store.errands, pull: board, failedChecks: Int(pr["checks"]["failed"].double ?? 0))
             .filter { store.supports($0.operation) }
     }
     private var canMerge: Bool {
@@ -419,9 +402,9 @@ struct PullDetailView: View {
         .navigationDestination(item: $started) { ConversationView(initial: $0) }
         .refreshable {
             // Pulling down is how an uncertain start is checked: its conversation is listed below if it began.
-            do { try await load(); uncertain = false; writeError = nil } catch { if let said = failure(error) { self.error = said } }
+            do { try await load(fresh: true); uncertain = false; writeError = nil } catch { if let said = failure(error) { self.error = said } }
         }
-        .foregroundPoll(every: 30, enabled: !busy && !merging && deciding == nil && pendingAction == nil && asking == nil && mergeMethod == nil, action: load) { error = $0.localizedDescription }
+        .foregroundPoll(every: ProjectFeed.boardEvery, enabled: !busy && !merging && deciding == nil && pendingAction == nil && asking == nil && mergeMethod == nil, action: { try await load() }) { error = $0.localizedDescription }
         .confirmationDialog("Start a paid \(pendingAction?.label ?? "") session on #\(String(number))?",
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
                             titleVisibility: .visible, presenting: pendingAction) { action in
@@ -474,15 +457,16 @@ struct PullDetailView: View {
             if case .http(400..<500, _, _)? = error as? APIError { mergeError = error.localizedDescription }
             else { mergeError = "\(error.localizedDescription) The merge may still have completed; check on GitHub before trying again." }
         }
-        do { try await load() } catch { self.error = error.localizedDescription }
+        // The board still lists what was just merged until GitHub is asked again.
+        do { try await load(fresh: true) } catch { self.error = error.localizedDescription }
     }
-    private func load() async throws {
+    /// `fresh` reads the board and the conversations again too, whatever was read a moment ago.
+    private func load(fresh: Bool = false) async throws {
         let args: [String: JSONValue] = ["repo": .string(project.repo), "pr": .number(Double(number))]
         let key = "pull:\(project.repo)#\(String(number))"
         if pr == .null, let saved: JSONValue = await store.cache.value(key), pr == .null {
             pr = saved["pr"]; findings = saved["findings"].array
             if row == nil { row = PullSummary(saved["row"]) }
-            if let saved: JSONValue = await store.cache.value("actions"), catalog.isEmpty { catalog = saved["actions"].array }
         }
         defer {
             if pr != .null {
@@ -490,42 +474,34 @@ struct PullDetailView: View {
                 Task { await store.cache.store(saved, for: key) }
             }
         }
-        async let around: Void = loadAround()
+        async let around: Void = loadAround(fresh: fresh)
+        // The findings are read beside the pull request, not after it, so the screen is whole a round trip sooner.
+        async let found = readFindings(args)
         let result: JSONValue = try await store.call("pull", args)
-        await around
+        let (_, listed) = await (around, found)
         try Task.checkCancellation()
         pr = result["pr"]; error = nil
-        if store.supports("findings") {
-            do {
-                let result: JSONValue = try await store.call("findings", args)
-                try Task.checkCancellation()
-                findings = result["findings"].array; findingsError = nil
-            } catch {
-                if Task.isCancelled { throw error }
-                findingsError = error.localizedDescription
-            }
+        switch listed {
+        case .success(let result)?: findings = result["findings"].array; findingsError = nil
+        case .failure(let error)?: findingsError = error.localizedDescription
+        case nil: break
         }
+    }
+    /// Nil from a server that reports no findings.
+    private func readFindings(_ args: [String: JSONValue]) async -> Result<JSONValue, Error>? {
+        guard store.supports("findings") else { return nil }
+        do { return .success(try await store.call("findings", args)) } catch { return .failure(error) }
     }
     /// What the board knows about this pull request beyond its own details: its row (labels, conflicts,
     /// the errand it asks for), the errands the server offers and the conversations already run on it.
     /// Each is an addition to the screen, so one that cannot be read leaves what was there.
-    private func loadAround() async {
-        let repo: [String: JSONValue] = ["repo": .string(project.repo)]
-        async let rows: JSONValue? = read("pulls", repo)
-        async let listed: JSONValue? = read(store.canManage ? "actions" : "", [:])
-        async let sessions: SessionList? = read("sessions", repo)
-        let (pulls, served, all) = await (rows, listed, sessions)
-        guard !Task.isCancelled else { return }
+    private func loadAround(fresh: Bool) async {
+        async let rows = (try? await feed.loadBoard(fresh: fresh)) != nil
+        async let sessions: Void? = try? feed.loadSessions(fresh: fresh)
+        async let listed: Void = store.loadErrands()
+        let (read, _, _) = await (rows, sessions, listed)
         // A pull request the board no longer lists has been merged or closed, and its row went with it.
-        if let pulls { row = pulls["pulls"].array.compactMap(PullSummary.init).first { $0.number == number }; rowRead = true }
-        if let served {
-            catalog = served["actions"].array
-            await store.cache.store(served, for: "actions")
-        }
-        if let all { runs = all.sessions.filter { $0.pullNumber == number } }
-    }
-    private func read<T: Decodable>(_ name: String, _ args: [String: JSONValue]) async -> T? {
-        store.supports(name) ? try? await store.call(name, args) : nil
+        if read, !Task.isCancelled { rowRead = true }
     }
     /// Records a verdict on one finding (nil clears it) and shows the list the server returns.
     private func decide(_ key: String, _ decision: String?) async {

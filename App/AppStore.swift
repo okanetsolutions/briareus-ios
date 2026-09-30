@@ -9,12 +9,19 @@ final class AppStore: ObservableObject {
     @Published private(set) var operations: [Operation] = []
     /// What the server last said about transcribing; nil from a server that predates voice notes.
     @Published private(set) var transcribes: Bool?
+    /// The errands the server lists, which word a suggested one this app predates.
+    @Published private(set) var errands: [JSONValue] = []
     @Published var connecting = false
     @Published var connectionError: String?
     @Published var server = UserDefaults.standard.string(forKey: "serverOrigin") ?? ""
     /// What screens showed last, read before the network answers. It belongs to one device token and goes with it.
     let cache = DiskCache(directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Responses", isDirectory: true))
+
+    /// What the screens of each project share, kept for as long as the connection is.
+    private var feeds: [String: ProjectFeed] = [:]
+    private var errandsRead: Date?
+    private var errandsRestored = false
 
     var canManage: Bool { device?.canManage == true }
     /// The microphone shows for any device allowed to write the message a note becomes;
@@ -36,6 +43,34 @@ final class AppStore: ObservableObject {
     }
     func supports(_ name: String) -> Bool {
         operations.contains { $0.name == name && ($0.readOnly || canManage) }
+    }
+    func feed(_ repo: String) -> ProjectFeed {
+        if let feed = feeds[repo] { return feed }
+        let feed = ProjectFeed(repo: repo, store: self)
+        feeds[repo] = feed
+        return feed
+    }
+    /// The errands change with the server's settings, not with a project's work, so a board that polls
+    /// asks for them once in a while rather than every time. What this device saved shows meanwhile.
+    func loadErrands() async {
+        if !errandsRestored {
+            errandsRestored = true
+            if let saved: JSONValue = await cache.value("actions"), errands.isEmpty { errands = saved["actions"].array }
+        }
+        guard canManage, supports("actions"), errandsRead.map({ abs(Date().timeIntervalSince($0)) > 600 }) ?? true else { return }
+        let api = client, before = errandsRead
+        errandsRead = Date()
+        guard let served: JSONValue = try? await call("actions"), client === api else {
+            if client === api { errandsRead = before }
+            return
+        }
+        if errands != served["actions"].array { errands = served["actions"].array }
+        await cache.store(served, for: "actions")
+    }
+    /// Leaves the server: nothing read from it outlives the token it was read with.
+    private func disconnect() {
+        client?.invalidate(); client = nil; device = nil; operations = []; transcribes = nil
+        feeds = [:]; errands = []; errandsRead = nil; errandsRestored = false
     }
     func restore() async {
         guard client == nil, !server.isEmpty else { return }
@@ -64,7 +99,7 @@ final class AppStore: ObservableObject {
             guard client === api, let error = error as? APIError else { return }
             if error.isUnauthorized { await invalidateCredentials(error) }
             else if error == .incompatibleVersion {
-                client?.invalidate(); client = nil; device = nil; operations = []; transcribes = nil
+                disconnect()
                 connectionError = error.localizedDescription
             }
             // Anything else is a server out of reach: saved screens stay readable and report their own errors.
@@ -110,7 +145,7 @@ final class AppStore: ObservableObject {
         }
     }
     private func invalidateCredentials(_ error: Error) async {
-        client?.invalidate(); client = nil; device = nil; operations = []; transcribes = nil
+        disconnect()
         await cache.removeAll()
         // Keep the origin so a replacement token is easy to enter. A failed deletion is reported.
         do {
@@ -120,7 +155,7 @@ final class AppStore: ObservableObject {
     }
     func forget() async throws {
         try Keychain.remove(try ServerAddress(server).origin)
-        client?.invalidate(); client = nil; device = nil; operations = []; transcribes = nil; connectionError = nil
+        disconnect(); connectionError = nil
         await cache.removeAll()
         UserDefaults.standard.removeObject(forKey: "serverOrigin")
         server = ""
@@ -139,13 +174,25 @@ func failure(_ error: Error) -> String? {
     return error.localizedDescription
 }
 
+/// What a screen's polling remembers from one task to the next: when the server last answered it,
+/// or when it last stopped asking.
+final class PollClock {
+    var last: Date?
+}
+
 // The task is canceled by SwiftUI when its screen disappears or the scene becomes inactive.
 @MainActor
-func poll(every seconds: Double, action: () async throws -> Void, failed: (Error) -> Void) async {
+func poll(every seconds: Double, clock: PollClock, action: () async throws -> Void, failed: (Error) -> Void) async {
+    // A task begun soon after the last answer waits out the rest of the interval: closing a dialog or a
+    // glance at another app is no reason to ask again.
+    if let last = clock.last {
+        let wait = min(seconds, seconds - Date().timeIntervalSince(last))
+        if wait > 0 { do { try await Task.sleep(for: .seconds(wait)) } catch { return } }
+    }
     var failures = 0
     while !Task.isCancelled {
         var delay = seconds
-        do { try await action(); failures = 0 }
+        do { try await action(); failures = 0; clock.last = Date() }
         catch {
             if Task.isCancelled || error is CancellationError { return }
             failed(error); failures += 1
