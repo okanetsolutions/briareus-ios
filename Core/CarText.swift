@@ -45,25 +45,11 @@ public enum CarText {
         return parts.joined(separator: " · ")
     }
 
-    /// Whether a pull request is open, a draft, merged or closed, and whether it conflicts.
-    public static func state(row: PullSummary?, details pr: JSONValue) -> String {
-        let open = pr == .null ? row != nil : pr["state"].string == "open"
-        var parts = [!open ? (pr["merged"].bool == true ? "Merged" : (pr["state"].string ?? "closed").capitalized)
-                     : (pr["draft"].bool ?? row?.draft) == true ? "Draft" : "Open"]
-        if open, let row { parts.append(row.hasConflicts ? "Conflicts" : row.mergeable == "mergeable" ? "No conflicts" : "Checking conflicts") }
-        return parts.joined(separator: " · ")
-    }
     /// The counts of a pull request's checks.
     public static func checks(_ checks: JSONValue) -> String {
         let passed = Int(checks["passed"].double ?? 0), failed = Int(checks["failed"].double ?? 0), pending = Int(checks["pending"].double ?? 0)
         guard passed + failed + pending > 0 else { return "None" }
         return "\(passed) passed · \(failed) failed · \(pending) running"
-    }
-    /// The checks that failed, by name.
-    public static func failing(_ checks: JSONValue) -> [String] {
-        checks["runs"].array.filter { run in
-            ["failure", "failed", "timed_out", "action_required", "error"].contains((run["conclusion"].string ?? run["status"].string ?? "").lowercased())
-        }.compactMap { $0["name"].string }
     }
     /// Who reviewed and what each said.
     public static func reviews(_ pr: JSONValue) -> [(user: String, state: String)] {

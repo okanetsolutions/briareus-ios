@@ -176,9 +176,7 @@ final class CarAssistant: NSObject, CPInterfaceControllerDelegate {
             guard let session else { return ["Conversation"] }
             return ["\(session.displayTitle) · \(CarText.status(session, asking: CarText.openQuestion(transcript.events) != nil))", session.displayTitle, "Conversation"]
         case .pull(let number):
-            let title = row?.title ?? pull["title"].string ?? "Pull request #\(number)"
-            let state = pull == .null && row == nil ? [] : ["\(title) · \(CarText.state(row: row, details: pull))"]
-            return state + [title, "Pull request #\(number)", "#\(number)"]
+            return [row?.title ?? pull["title"].string ?? "Pull request #\(number)", "Pull request #\(number)", "#\(number)"]
         case .issue(let issue): return [issue.title, "Issue #\(issue.number)", "#\(issue.number)"]
         case .nothing: return [project?.title ?? "Choose a project in Browse", "Briareus"]
         }

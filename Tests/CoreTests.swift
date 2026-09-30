@@ -488,15 +488,9 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(CarText.inline("a_b_c and *this* and 2 * 3 * 4"), "a_b_c and this and 2 * 3 * 4")
     }
     func testTheCarShowsAPullRequestInAFewWords() throws {
-        let row = PullSummary(try JSONDecoder().decode(JSONValue.self, from: Data(#"{"number":7,"title":"Add cache","mergeable":"conflicting","draft":true}"#.utf8)))
-        XCTAssertEqual(CarText.state(row: row, details: .null), "Draft · Conflicts")
-        XCTAssertEqual(CarText.state(row: nil, details: .null), "Closed")
-        XCTAssertEqual(CarText.state(row: nil, details: .object(["state": .string("closed"), "merged": .bool(true)])), "Merged")
-        XCTAssertEqual(CarText.state(row: nil, details: .object(["state": .string("open")])), "Open")
         let pr = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"checks":{"passed":2,"failed":1,"pending":0,"runs":[{"name":"lint","conclusion":"failure"},{"name":"test","conclusion":"success"}]},"reviews":[{"user":"bo","state":"CHANGES_REQUESTED"},{"state":"APPROVED"}]}"#.utf8))
         XCTAssertEqual(CarText.checks(pr["checks"]), "2 passed · 1 failed · 0 running")
         XCTAssertEqual(CarText.checks(.null), "None")
-        XCTAssertEqual(CarText.failing(pr["checks"]), ["lint"])
         XCTAssertEqual(CarText.reviews(pr).map { "\($0.user): \($0.state)" }, ["bo: Changes requested"])
         let finding = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"title":"Leak","severity":"high","file":"src/io/file.swift"}"#.utf8))
         XCTAssertEqual(CarText.finding(finding, verdict: "Fix"), "Fix · high · file.swift")

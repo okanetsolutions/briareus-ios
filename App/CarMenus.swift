@@ -404,12 +404,9 @@ extension CarAssistant {
     }
 
     private func actions(onPull number: Int) -> [CPListSection] {
-        var about = [fact("State", CarText.state(row: row, details: pull), symbol: "arrow.triangle.pull")]
+        var about: [CPListItem] = []
         if pull != .null {
-            let failing = CarText.failing(pull["checks"])
-            about.append(item("Checks", CarText.checks(pull["checks"]), symbol: failing.isEmpty ? "checkmark.circle" : "xmark.circle") { [weak self] in
-                if !failing.isEmpty { self?.warn("Failing: " + failing.prefix(6).joined(separator: ", ")) }
-            })
+            about.append(fact("Checks", CarText.checks(pull["checks"]), symbol: (pull["checks"]["failed"].double ?? 0) > 0 ? "xmark.circle" : "checkmark.circle"))
             let said = CarText.reviews(pull).map { "\($0.user): \($0.state)" }
             about.append(item("Review", review ?? "No reviews yet", symbol: "person.2") { [weak self] in
                 if !said.isEmpty { self?.warn(said.prefix(6).joined(separator: ", ")) }
