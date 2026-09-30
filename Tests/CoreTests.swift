@@ -209,6 +209,15 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try session(#","startedOnPr":4"#).pullNumber, 4)
         XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open"},"startedOnPr":4"#).pullNumber, 9)
     }
+    func testPullBadgeReadsAsTheDashboards() throws {
+        func session(_ extra: String) throws -> Session {
+            try JSONDecoder().decode(Session.self, from: Data(#"{"id":"s","status":"idle"\#(extra)}"#.utf8))
+        }
+        XCTAssertNil(try session(#","startedOnPr":4"#).pullBadge)
+        XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"merged","checks":null}"#).pullBadge, "PR #9 merged")
+        XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open","checks":{"passed":4,"failed":1,"pending":0}}"#).pullBadge,
+                       "PR #9 open · ✓4 ✗1")
+    }
     func testActiveRunsAreCountedPerPullRequest() throws {
         let data = Data(#"[{"id":"a","status":"running","startedOnPr":4},{"id":"b","status":"queued","prStatus":{"number":4}},{"id":"c","status":"idle","startedOnPr":4},{"id":"d","status":"closed","startedOnPr":7},{"id":"e","status":"preparing","startedOnPr":9},{"id":"f","status":"running"}]"#.utf8)
         XCTAssertEqual(Session.activeRuns(try JSONDecoder().decode([Session].self, from: data)), [4: 2, 9: 1])

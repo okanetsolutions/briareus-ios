@@ -24,7 +24,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 
 **Conversations**
 
-- Lists the projects and conversations the device token permits, with search and status updates.
+- Lists the projects and conversations the device token permits, with search and status updates, and under each conversation its pull request, state and checks as the dashboard's badge shows them.
 - Shows incremental transcripts with the time of each message, agent questions and queued messages. The tools, commands and git steps an agent runs are left out, as are workspace setup steps.
 - Starts conversations on a chosen branch, provider, model and effort, or on the project default.
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.

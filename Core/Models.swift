@@ -122,6 +122,16 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
     public var pullNumber: Int? {
         (prStatus?["number"].double ?? startedOnPr?.double).flatMap { $0 >= 1 ? Int($0) : nil }
     }
+    /// "PR #123 open · ✓4 ✗1 ●2", as the dashboard's badge reads, once the server has synced the pull request.
+    public var pullBadge: String? {
+        guard let pr = prStatus, let number = pr["number"].double, number >= 1 else { return nil }
+        let checks = [("✓", "passed"), ("✗", "failed"), ("●", "pending")].compactMap { mark, key in
+            pr["checks"][key].double.flatMap { $0 > 0 ? "\(mark)\(Int($0))" : nil }
+        }
+        return (["PR #\(Int(number)) \(pullState)"] + (checks.isEmpty ? [] : [checks.joined(separator: " ")])).joined(separator: " · ")
+    }
+    /// The synced pull request's state: open, merged or closed.
+    public var pullState: String { prStatus?["state"].string ?? "open" }
     /// The conversations with a round waiting, the one held longest first, as the dashboard's queue orders them.
     public static func holdingFindings(_ sessions: [Session]) -> [Session] {
         sessions.filter { $0.heldTriage != nil }
