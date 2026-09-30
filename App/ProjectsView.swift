@@ -226,10 +226,22 @@ struct ProjectView: View {
                         .foregroundStyle(session.status == "closed" ? .secondary : .primary)
                     Text([session.status.capitalized, session.model].compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if let badge = session.pullBadge {
+                        Label(badge, systemImage: "arrow.triangle.pull").font(.caption.monospacedDigit()).lineLimit(1)
+                            .foregroundStyle(pullColor(session.pullState))
+                    }
                 }
             }.padding(.vertical, 3)
         }
         .accessibilityElement(children: .combine)
+    }
+    /// The dashboard's colours: green while open, purple once merged, red when closed unmerged.
+    private func pullColor(_ state: String) -> Color {
+        switch state {
+        case "merged": return .purple
+        case "closed": return Theme.danger
+        default: return Theme.success
+        }
     }
     private func load(fresh: Bool = false) async throws {
         try await feed.loadSessions(fresh: fresh)
