@@ -264,10 +264,10 @@ public struct BoardAction: Identifiable, Hashable, Sendable {
     public var operation: String { id == "run" ? "serve_pull" : id.replacingOccurrences(of: "-", with: "_") }
     /// Run answers only once the workspace is prepared and serving, which takes longer than a request is given.
     public var timeout: TimeInterval? { id == "run" ? 170 : nil }
-    /// Review and QA check the branch out themselves; the rest look the pull request up by number.
+    /// Review checks the branch out itself; the rest look the pull request up by number.
     public func arguments(repo: String, number: Int, branch: String?, input: String? = nil) -> [String: JSONValue] {
         var args: [String: JSONValue] = ["repo": .string(repo), "prNumber": .number(Double(number))]
-        if ["review", "qa"].contains(id), let branch { args["branch"] = .string(branch) }
+        if id == "review", let branch { args["branch"] = .string(branch) }
         if self.input != nil, let input = input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty {
             args["input"] = .string(input)
         }
@@ -283,11 +283,11 @@ public struct BoardAction: Identifiable, Hashable, Sendable {
         .init(id: "implement-feedback", label: "Implement feedback", hint: "Address the review findings on this pull request, push the fixes, and have those changes reviewed automatically"),
         .init(id: "custom-feedback", label: "Give feedback", hint: "Say in your own words what to change on this pull request, and it is implemented and pushed",
               input: Input(label: "Your feedback", placeholder: "What should change on this pull request?", required: true)),
-        .init(id: "test-sheet", label: "Test sheet", hint: "Derive the manual QA checklist from this pull request’s diff and post it as one editable comment"),
-        .init(id: "qa", label: "QA", hint: "Write the test sheet for this pull request and execute it in a session of its own"),
         .init(id: "pr-body-summary", label: "PR body", hint: "Rewrite this pull request’s description from its own diff, following the team template"),
         .init(id: "delete-self-comments", label: "Delete my comments", hint: "Remove every comment and review the configured GitHub account left on this pull request"),
     ]
+    /// Errands the app no longer offers, even from a server that still lists them.
+    static let retired: Set<String> = ["test-sheet", "test-run", "qa"]
 
     /// The errands worth offering on one pull request. Three answer a state it is actually in (conflicts, red
     /// checks, a review waiting) and come and go with it; without the board's row nothing is known, so they stay.
@@ -306,7 +306,7 @@ public struct BoardAction: Identifiable, Hashable, Sendable {
         let listed = known.map { action in
             served[action.id].map { BoardAction(id: action.id, label: action.label, hint: action.hint, input: $0.input) } ?? action
         }
-        let added = order.filter { id in !known.contains { $0.id == id } }.compactMap { served[$0] }
+        let added = order.filter { id in !retired.contains(id) && !known.contains { $0.id == id } }.compactMap { served[$0] }
         return (listed + added).filter { action in
             switch action.id {
             case "solve-conflicts": return pull?.hasConflicts ?? true

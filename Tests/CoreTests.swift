@@ -400,19 +400,22 @@ final class CoreTests: XCTestCase {
     func testBoardOffersTheErrandsAPullRequestIsInAStateFor() throws {
         let pulls = try board()["pulls"].array.compactMap(PullSummary.init)
         XCTAssertEqual(BoardAction.offered(pull: pulls[0]).map(\.id),
-                       ["run", "review", "solve-conflicts", "fix-checks", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+                       ["run", "review", "solve-conflicts", "fix-checks", "custom-feedback", "pr-body-summary", "delete-self-comments"])
         XCTAssertEqual(BoardAction.offered(pull: pulls[1]).map(\.id),
-                       ["run", "review", "solve-conflicts", "implement-feedback", "custom-feedback", "test-sheet", "qa", "pr-body-summary", "delete-self-comments"])
+                       ["run", "review", "solve-conflicts", "implement-feedback", "custom-feedback", "pr-body-summary", "delete-self-comments"])
         XCTAssertFalse(BoardAction.offered(pull: pulls[2]).contains { ["solve-conflicts", "fix-checks", "implement-feedback"].contains($0.id) })
         XCTAssertTrue(BoardAction.offered(pull: pulls[2], failedChecks: 1).contains { $0.id == "fix-checks" })
         // Off the board nothing is known about its state, so the errands that answer one stay on offer.
         XCTAssertTrue(BoardAction.offered(pull: nil).contains { $0.id == "solve-conflicts" })
         let catalog = try JSONDecoder().decode(JSONValue.self, from: Data(#"""
         [{"id":"custom-feedback","label":"Give feedback","hint":"h","input":{"label":"Tell it","placeholder":"e.g.","required":true}},
-         {"id":"test-run","label":"Run test sheet","icon":"🎬","hint":"Execute it","input":null},{"label":"No id"}]
+         {"id":"qa","label":"QA"},{"id":"test-sheet","label":"Test sheet"},{"id":"test-run","label":"Run test sheet"},
+         {"id":"release-notes","label":"Release notes","icon":"📝","hint":"Draft them","input":null},{"label":"No id"}]
         """#.utf8)).array
         let offered = BoardAction.offered(catalog: catalog, pull: pulls[2])
-        XCTAssertEqual(offered.last?.id, "test-run"); XCTAssertEqual(offered.last?.operation, "test_run")
+        XCTAssertEqual(offered.last?.id, "release-notes"); XCTAssertEqual(offered.last?.operation, "release_notes")
+        // QA and the test sheet are gone from the app, whatever the server still lists.
+        XCTAssertFalse(offered.contains { ["qa", "test-sheet", "test-run"].contains($0.id) })
         let feedback = try XCTUnwrap(offered.first { $0.id == "custom-feedback" })
         XCTAssertEqual(feedback.input?.label, "Tell it")
         XCTAssertEqual(feedback.arguments(repo: "o/r", number: 9, branch: "docs", input: " Use 404 \n"),
