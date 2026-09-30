@@ -5,13 +5,14 @@ import SwiftUI
 struct FindingsView: View {
     let project: Project
     @EnvironmentObject private var store: AppStore
-    @State private var sessions: [Session] = []
-    @State private var loaded = false
     @State private var error: String?
     @State private var sending: String?
     /// Conversations whose last send failed without saying whether it was recorded.
     @State private var uncertain: [String: String] = [:]
-    private var held: [Session] { Session.holdingFindings(sessions) }
+    /// The project's conversations, which its list reads too.
+    private var feed: ProjectFeed { store.feed(project.repo) }
+    private var loaded: Bool { feed.sessionsLoaded || error != nil }
+    private var held: [Session] { Session.holdingFindings(feed.sessions) }
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
@@ -45,8 +46,8 @@ struct FindingsView: View {
         }
         .background(Theme.background)
         .navigationTitle("Findings").navigationBarTitleDisplayMode(.inline)
-        .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
-        .foregroundPoll(every: 7, enabled: sending == nil, action: load) { error = $0.localizedDescription; loaded = true }
+        .refreshable { do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } } }
+        .foregroundPoll(every: ProjectFeed.sessionsEvery, enabled: sending == nil, action: { try await load() }) { error = $0.localizedDescription }
     }
     private func unsure(_ message: String, session: Session) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -54,7 +55,7 @@ struct FindingsView: View {
             Text("The triage may have been recorded. Check before sending it again.").font(.caption).foregroundStyle(.secondary)
             Button("Refresh and check outcome") {
                 Task {
-                    do { try await load(); uncertain[session.id] = nil }
+                    do { try await load(fresh: true); uncertain[session.id] = nil }
                     catch { self.error = error.localizedDescription }
                 }
             }.buttonStyle(.bordered).controlSize(.small).disabled(sending != nil)
@@ -62,13 +63,10 @@ struct FindingsView: View {
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
-    private func load() async throws {
-        let key = "sessions:\(project.repo)"
-        if !loaded, let saved: [Session] = await store.cache.value(key), !loaded { sessions = saved; loaded = true }
-        let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
+    private func load(fresh: Bool = false) async throws {
+        try await feed.loadSessions(fresh: fresh)
         try Task.checkCancellation()
-        sessions = result.sessions; loaded = true; error = nil
-        await store.cache.store(result.sessions, for: key)
+        error = nil
     }
     private func complete(_ session: Session, verdicts: [JSONValue], note: String) async {
         guard sending == nil, uncertain[session.id] == nil else { return }
@@ -83,6 +81,6 @@ struct FindingsView: View {
             // A write is never sent twice by itself: what happened is checked first.
             uncertain[session.id] = error.localizedDescription; return
         }
-        do { try await load() } catch { self.error = error.localizedDescription }
+        do { try await load(fresh: true) } catch { self.error = error.localizedDescription }
     }
 }
