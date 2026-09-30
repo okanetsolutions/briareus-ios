@@ -163,7 +163,6 @@ struct PullDetailView: View {
             }
             Section {
                 Text(pr["title"].string ?? board?.title ?? "Pull request #\(number)").font(.title3.bold())
-                LabeledContent("State", value: (pr["draft"].bool ?? board?.draft) == true && isOpen ? "Draft" : pr["state"].string?.capitalized ?? (board == nil ? "Loading…" : "Open"))
                 if isOpen, let board {
                     LabeledContent("Merge") {
                         switch board.mergeable {
@@ -186,10 +185,7 @@ struct PullDetailView: View {
                         else { Text("No reviews yet") }
                     }
                 }
-                if let author = board?.author { LabeledContent("Author", value: "@\(author)") }
                 if let board, !board.assignees.isEmpty { LabeledContent("Assigned", value: board.assignees.map { "@\($0)" }.joined(separator: ", ")) }
-                LabeledContent("Branch", value: pr["headRef"].string ?? board?.branch ?? "—")
-                LabeledContent("Target", value: pr["baseRef"].string ?? board?.baseBranch ?? "—")
                 if let updated = board?.updatedAt { LabeledContent("Updated") { Updated(date: updated) } }
                 if let additions = pr["additions"].double, let deletions = pr["deletions"].double {
                     HStack { Text("+\(Int(additions))").foregroundStyle(Theme.success); Text("−\(Int(deletions))").foregroundStyle(Theme.danger) }.font(.callout.monospaced())
@@ -248,16 +244,6 @@ struct PullDetailView: View {
                     .font(.subheadline.weight(.semibold).monospacedDigit())
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(Int(pr["checks"]["passed"].double ?? 0)) passed, \(Int(pr["checks"]["failed"].double ?? 0)) failed, \(Int(pr["checks"]["pending"].double ?? 0)) pending")
-                    ForEach(Array(pr["checks"]["runs"].array.enumerated()), id: \.offset) { _, check in
-                        let result = check["conclusion"].string ?? check["status"].string ?? "Pending"
-                        let line = LabeledContent {
-                            Text(result.replacingOccurrences(of: "_", with: " ").capitalized)
-                        } label: {
-                            Label { Text(check["name"].string ?? "Check") } icon: { checkIcon(result) }
-                        }
-                        if let url = safeWebURL(check["url"].string) { Link(destination: url) { line }.foregroundStyle(.primary) }
-                        else { line }
-                    }
                 }.listRowBackground(Theme.row)
                 Section("Reviews") {
                     ForEach(Array(pr["reviews"].array.enumerated()), id: \.offset) { _, review in
@@ -458,18 +444,9 @@ struct PullDetailView: View {
         } catch {
             // A 4xx is a definite refusal; anything else may have merged, which the reload below shows.
             if case .http(400..<500, _, _)? = error as? APIError { mergeError = error.localizedDescription }
-            else { mergeError = "\(error.localizedDescription) The merge may still have completed; check the state above before trying again." }
+            else { mergeError = "\(error.localizedDescription) The merge may still have completed; check on GitHub before trying again." }
         }
         do { try await load() } catch { self.error = error.localizedDescription }
-    }
-    private func checkIcon(_ result: String) -> some View {
-        switch result.lowercased() {
-        case "success", "passed", "neutral", "skipped": return Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
-        case "failure", "failed", "timed_out", "action_required", "error": return Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.danger)
-        // Neither passed nor failed, as the counts above have it.
-        case "cancelled", "stale": return Image(systemName: "minus.circle.fill").foregroundStyle(Color.secondary)
-        default: return Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
-        }
     }
     private func load() async throws {
         let args: [String: JSONValue] = ["repo": .string(project.repo), "pr": .number(Double(number))]
