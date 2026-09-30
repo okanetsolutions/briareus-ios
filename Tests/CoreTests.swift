@@ -190,6 +190,11 @@ final class CoreTests: XCTestCase {
         let events = try JSONDecoder().decode([Event].self, from: data)
         XCTAssertEqual(events.filter(\.visible).map(\.seq), [2])
     }
+    func testOnlyWhatWasSaidIsShown() throws {
+        let data = Data(#"[{"seq":1,"kind":"user","text":"Go"},{"seq":2,"kind":"tool","name":"Bash","summary":"ls"},{"seq":3,"kind":"tool_error","text":"No such file"},{"seq":4,"kind":"cmd","text":"npm test"},{"seq":5,"kind":"git","text":"git push"},{"seq":6,"kind":"text","text":"Done"},{"seq":7,"kind":"ask","question":"Ship it?"},{"seq":8,"kind":"result"}]"#.utf8)
+        let events = try JSONDecoder().decode([Event].self, from: data)
+        XCTAssertEqual(events.filter(\.visible).map(\.seq), [1, 6, 7, 8])
+    }
     func testOptionalFieldsAndUnknownStatusesDoNotBreakDecoding() throws {
         let result = try JSONDecoder().decode(SessionResult.self, from: Data(#"{"session":{"id":"x","status":"future","title":null,"model":null,"unknown":true},"events":null}"#.utf8))
         XCTAssertEqual(result.session.displayTitle, "New conversation")
@@ -277,7 +282,7 @@ final class CoreTests: XCTestCase {
         var transcript = Transcript()
         transcript.append(await cache.lines("transcript:s/1"))
         XCTAssertEqual(transcript.events.map(\.seq), [1, 2, 3]); XCTAssertEqual(transcript.cursor, 3)
-        XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].detail, "ls")
+        XCTAssertEqual(transcript.events[0].text, "Hi\nthere"); XCTAssertEqual(transcript.events[1].summary, "ls")
         XCTAssertEqual(transcript.events[2].costUsd, 0.5)
         let timed = try JSONDecoder().decode(Event.self, from: Data(#"{"seq":4,"kind":"text","t":"2026-09-28T15:55:49.120Z","text":"Hi"}"#.utf8))
         XCTAssertEqual(timed.time.map { Int($0.timeIntervalSince1970) }, 1790610949)

@@ -7,8 +7,8 @@ struct ConversationView: View {
     @Environment(\.splitPane) private var pane
     @State private var snapshot: Session?
     @State private var transcript = Transcript()
-    /// The transcript as it is drawn, grouped once when events arrive rather than each time the screen is redrawn.
-    @State private var rows: [TranscriptRow] = []
+    /// The transcript as it is drawn, picked out once when events arrive rather than each time the screen is redrawn.
+    @State private var rows: [Event] = []
     @State private var loaded = false
     @State private var restored = false
     /// Set when a write to the saved transcript failed, so the next one rewrites it whole and leaves no gap.
@@ -41,13 +41,8 @@ struct ConversationView: View {
                             Text(loaded ? "No messages yet" : "Waiting for the conversation…").font(.callout).foregroundStyle(.secondary)
                         }.frame(maxWidth: .infinity).padding(.top, 80)
                     }
-                    ForEach(rows) { row in
-                        switch row {
-                        case .event(let event):
-                            EventView(event: event, canAnswer: canMessage) { draft.text = $0; composerFocused = true }
-                        case .tools(let events):
-                            VStack(alignment: .leading, spacing: 2) { ForEach(events) { ToolRow(event: $0) } }
-                        }
+                    ForEach(rows) { event in
+                        EventView(event: event, canAnswer: canMessage) { draft.text = $0; composerFocused = true }
                     }
                     ForEach(Array((session.queued ?? []).enumerated()), id: \.offset) { index, queued in
                         QueuedBubble(text: queued["text"].string ?? "Message", removable: store.supports("drop_message") && !busy && !uncertain) {
@@ -274,7 +269,7 @@ struct ConversationView: View {
         guard replacing || !events.isEmpty else { return }
         if replacing { transcript = Transcript() }
         transcript.append(events)
-        rows = TranscriptRow.group(transcript.events.filter(\.visible))
+        rows = transcript.events.filter(\.visible)
     }
     private func mutate(_ name: String, extra: [String: JSONValue] = [:]) async {
         guard !busy && !uncertain else { return }
@@ -293,29 +288,6 @@ struct ConversationView: View {
             writeError = error.localizedDescription; uncertain = true; return
         }
         do { try await refresh() } catch { self.error = error.localizedDescription }
-    }
-}
-
-/// Consecutive tool activity collapses into one tight cluster, like a terminal log.
-enum TranscriptRow: Identifiable {
-    case event(Event), tools([Event])
-    static let toolKinds: Set<String> = ["tool", "tool_error", "cmd", "git"]
-    var id: Int {
-        switch self {
-        case .event(let event): return event.seq
-        case .tools(let events): return events.first?.seq ?? 0
-        }
-    }
-    static func group(_ events: [Event]) -> [TranscriptRow] {
-        var rows: [TranscriptRow] = []
-        var tools: [Event] = []
-        for event in events {
-            if toolKinds.contains(event.kind) { tools.append(event); continue }
-            if !tools.isEmpty { rows.append(.tools(tools)); tools = [] }
-            rows.append(.event(event))
-        }
-        if !tools.isEmpty { rows.append(.tools(tools)) }
-        return rows
     }
 }
 
@@ -416,77 +388,6 @@ struct EventView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
-        }
-    }
-}
-
-struct ToolRow: View {
-    let event: Event
-    @State private var expanded = false
-    private var isError: Bool { event.kind == "tool_error" }
-    private var details: String? { event.detail.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } }
-    private var summary: String {
-        details?.split(separator: "\n").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-    }
-    private var title: String {
-        if let name = event.name, !name.isEmpty { return name }
-        switch event.kind {
-        case "cmd": return "Command"
-        case "git": return "Git"
-        case "tool_error": return "Tool error"
-        default: return "Tool"
-        }
-    }
-    private var icon: String {
-        if isError { return "exclamationmark.triangle.fill" }
-        switch event.kind {
-        case "cmd": return "terminal"
-        case "git": return "arrow.triangle.branch"
-        default: break
-        }
-        switch (event.name ?? "").lowercased() {
-        case let n where n.contains("bash") || n.contains("shell") || n.contains("exec"): return "terminal"
-        case let n where n.contains("read") || n.contains("view"): return "doc.text"
-        case let n where n.contains("edit") || n.contains("write") || n.contains("patch"): return "pencil"
-        case let n where n.contains("grep") || n.contains("glob") || n.contains("search") || n.contains("find"): return "magnifyingglass"
-        case let n where n.contains("web") || n.contains("fetch"): return "globe"
-        case let n where n.contains("todo") || n.contains("plan"): return "checklist"
-        case let n where n.contains("task") || n.contains("agent"): return "person.2"
-        default: return "wrench.and.screwdriver"
-        }
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                if details != nil { withAnimation(.snappy(duration: 0.2)) { expanded.toggle() } }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: icon).font(.caption2.weight(.semibold))
-                        .foregroundStyle(isError ? Theme.danger : .secondary)
-                        .frame(width: 22, height: 22)
-                        .background((isError ? Theme.danger : Color.secondary).opacity(0.12), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(isError ? Theme.danger : .primary)
-                    Text(summary).font(.footnote.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                    Spacer(minLength: 0)
-                    if details != nil {
-                        Image(systemName: "chevron.right").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(expanded ? 90 : 0))
-                    }
-                }
-                .padding(.vertical, 5).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(title): \(summary)").accessibilityHint(details == nil ? "" : expanded ? "Collapse details" : "Show details")
-            if expanded, let details {
-                ScrollView {
-                    Text(details).font(.caption.monospaced()).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(10)
-                }
-                .frame(maxHeight: 280).fixedSize(horizontal: false, vertical: true)
-                .background(Theme.code, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-                .padding(.leading, 30)
             }
         }
     }
