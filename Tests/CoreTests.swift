@@ -469,7 +469,6 @@ final class CoreTests: XCTestCase {
         let pr = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"checks":{"passed":2,"failed":1,"pending":0,"runs":[{"name":"lint","conclusion":"failure"},{"name":"test","conclusion":"success"}]},"reviews":[{"user":"bo","state":"CHANGES_REQUESTED"},{"state":"APPROVED"}]}"#.utf8))
         XCTAssertEqual(CarText.checks(pr["checks"]), "2 passed · 1 failed · 0 running")
         XCTAssertEqual(CarText.checks(.null), "None")
-        XCTAssertEqual(CarText.failing(pr["checks"]), ["lint"])
         XCTAssertEqual(CarText.reviews(pr).map { "\($0.user): \($0.state)" }, ["bo: Changes requested"])
         let finding = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"title":"Leak","severity":"high","file":"src/io/file.swift"}"#.utf8))
         XCTAssertEqual(CarText.finding(finding, verdict: "Fix"), "Fix · high · file.swift")

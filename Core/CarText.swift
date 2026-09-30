@@ -60,12 +60,6 @@ public enum CarText {
         guard passed + failed + pending > 0 else { return "None" }
         return "\(passed) passed · \(failed) failed · \(pending) running"
     }
-    /// The checks that failed, by name.
-    public static func failing(_ checks: JSONValue) -> [String] {
-        checks["runs"].array.filter { run in
-            ["failure", "failed", "timed_out", "action_required", "error"].contains((run["conclusion"].string ?? run["status"].string ?? "").lowercased())
-        }.compactMap { $0["name"].string }
-    }
     /// Who reviewed and what each said.
     public static func reviews(_ pr: JSONValue) -> [(user: String, state: String)] {
         pr["reviews"].array.compactMap { review in
