@@ -7,6 +7,8 @@ struct PullsView: View {
     @State private var pulls: [PullSummary] = []
     @State private var issues: [IssueSummary] = []
     @State private var board: JSONValue = .null
+    /// How many conversations are at work on each pull request, by its number.
+    @State private var activeRuns: [Int: Int] = [:]
     @State private var tab = Tab.pulls
     @State private var pullFilter = BoardFilter()
     @State private var issueFilter = BoardFilter()
@@ -44,14 +46,20 @@ struct PullsView: View {
                     BoardFilterMenu(filter: filter, rows: rows, kinds: tab == .pulls ? BoardFilter.Kind.allCases : [.author, .label])
                 }
             }
-            .refreshable { do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } } }
+            .refreshable {
+                try? await loadRuns()
+                do { try await load(fresh: true) } catch { if let said = failure(error) { self.error = said } }
+            }
             .foregroundPoll(every: 45, action: { try await load() }) { error = $0.localizedDescription; loaded = true }
+            // Conversations start and finish faster than the board changes, and reading them asks GitHub nothing.
+            // The count is an addition to a row, so a read that fails leaves what was there.
+            .foregroundPoll(every: 7, enabled: store.supports("sessions"), action: loadRuns) { _ in }
     }
     @ViewBuilder private var pullRows: some View {
         ForEach(shownPulls) { pr in
             let stack = StackPosition(pr.raw["stack"], chain: board["stacks"])
             NavigationLink { PullDetailView(project: project, number: pr.number, stack: stack, summary: pr) } label: {
-                PullRow(pr: pr, stack: stack, repo: project.repo)
+                PullRow(pr: pr, stack: stack, repo: project.repo, activeRuns: activeRuns[pr.number] ?? 0)
             }
         }.listRowBackground(Theme.row)
         if loaded && shownPulls.isEmpty && error == nil {
@@ -110,6 +118,12 @@ struct PullsView: View {
         try Task.checkCancellation()
         show(result); error = nil
         await store.cache.store(result, for: key)
+    }
+    private func loadRuns() async throws {
+        guard store.supports("sessions") else { return }
+        let result: SessionList = try await store.call("sessions", ["repo": .string(project.repo)])
+        try Task.checkCancellation()
+        activeRuns = Session.activeRuns(result.sessions)
     }
 }
 

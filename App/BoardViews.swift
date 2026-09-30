@@ -113,6 +113,8 @@ struct PullRow: View {
     let pr: PullSummary
     let stack: StackPosition?
     let repo: String
+    /// The conversations at work on it right now.
+    var activeRuns = 0
     private var review: ReviewStatus? {
         ReviewStatus(decision: pr.reviewDecision, reviews: pr.reviewers.map { .object(["state": .string($0.state)]) })
     }
@@ -130,8 +132,11 @@ struct PullRow: View {
                     Spacer(minLength: 4)
                     Updated(date: pr.updatedAt)
                 }
-                if pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft {
+                if activeRuns > 0 || pr.conflicting || pr.checks != nil || stack != nil || review != nil || pr.draft {
                     FlowLayout(spacing: 5) {
+                        if activeRuns > 0 {
+                            Badge(text: "\(activeRuns) active run\(activeRuns == 1 ? "" : "s")", systemImage: "bolt.fill", color: Theme.statusColor("running"))
+                        }
                         if pr.conflicting { ConflictBadge() }
                         if let checks = pr.checks { ChecksBadge(state: checks) }
                         if let stack { StackBadge(stack: stack) }
