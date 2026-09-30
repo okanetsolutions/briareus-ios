@@ -105,6 +105,20 @@ struct ProjectView: View {
         sessions.filter { (showClosed || $0.status != "closed") && (search.isEmpty || $0.displayTitle.localizedCaseInsensitiveContains(search)) }
     }
     var body: some View {
+        #if os(macOS)
+        // A Mac's toolbar would put these at the far end of the window, away from the list they act on.
+        list.safeAreaInset(edge: .top, spacing: 0) { finder }
+        #else
+        // Beside a conversation the list's column is too narrow for a bar holding them and the project's name.
+        if pane != nil { list.safeAreaInset(edge: .top, spacing: 0) { finder } }
+        else {
+            list.searchable(text: $search, prompt: "Find a conversation")
+                // One item rather than three, which would leave the project's name little room.
+                .toolbar { ToolbarItem(placement: .topBarTrailing) { HStack(spacing: 0) { actions } } }
+        }
+        #endif
+    }
+    private var list: some View {
         List {
             if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.row) }
             let active = filtered.filter(\.isActive)
@@ -129,13 +143,6 @@ struct ProjectView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
         .navigationTitle(project.title).navigationBarTitleDisplayMode(.inline)
-        #if os(macOS)
-        // A Mac's toolbar would put these at the far end of the window, away from the list they act on.
-        .safeAreaInset(edge: .top, spacing: 0) { finder }
-        #else
-        .searchable(text: $search, prompt: "Find a conversation")
-        .toolbar { actions }
-        #endif
         .sheet(isPresented: $creating) {
             NewConversationView(project: project) { open(.conversation($0)) }
                 .sheetSize(width: 580, height: 440)
@@ -162,7 +169,7 @@ struct ProjectView: View {
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
         .background(Theme.background)
     }
-    /// The project's other screens and a new conversation, as icons above the list.
+    /// The project's other screens and a new conversation, as icons above the list in either layout.
     @ViewBuilder private var actions: some View {
         if store.supports("pulls") {
             action("Pull requests", symbol: "arrow.triangle.pull", opens: .pulls(project))
@@ -184,18 +191,17 @@ struct ProjectView: View {
     }
     private func icon(_ symbol: String, count: Int = 0, selected: Bool = false) -> some View {
         Image(systemName: symbol)
+            // The count sits inside the button's own bounds: a navigation bar cuts off what hangs outside them.
+            .padding(.horizontal, count > 0 ? 8 : 0).padding(.vertical, count > 0 ? 6 : 0)
             .overlay(alignment: .topTrailing) {
                 if count > 0 {
                     Text(String(count)).font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
                         .padding(.horizontal, 4).frame(minWidth: 15, minHeight: 15).background(Theme.warning, in: Capsule())
-                        .offset(x: 9, y: -7)
                 }
             }
-            #if os(macOS)
-            .font(.body.weight(.medium)).foregroundStyle(Theme.accent).frame(width: 32, height: 32)
+            .font(.body.weight(.medium)).foregroundStyle(Theme.accent).frame(width: 34, height: 34)
             .background(selected ? Theme.accent.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
-            #endif
     }
     private func open(_ target: Pane) {
         if let pane { pane.wrappedValue = target } else { pushed = target }
