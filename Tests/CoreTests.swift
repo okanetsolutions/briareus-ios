@@ -448,6 +448,13 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(MergeState.warnings(mergeable: .bool(true), state: "behind")[0].contains("behind"))
         XCTAssertTrue(MergeState.warnings(mergeable: .bool(true), state: "blocked")[0].contains("blocked"))
     }
+    func testMergeIsASquashUnlessTheRepositoryRefusesIt() {
+        XCTAssertEqual(MergeState.method(allowed: []), "squash")
+        XCTAssertEqual(MergeState.method(allowed: ["merge", "squash", "rebase"]), "squash")
+        XCTAssertEqual(MergeState.method(allowed: ["rebase", "merge"]), "merge")
+        XCTAssertEqual(MergeState.method(allowed: ["rebase"]), "rebase")
+        XCTAssertEqual(MergeState.title("squash"), "Squash and merge")
+    }
     private func body(of request: URLRequest) -> Data {
         if let data = request.httpBody { return data }
         guard let stream = request.httpBodyStream else { return Data() }

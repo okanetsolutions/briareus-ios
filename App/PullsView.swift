@@ -149,7 +149,7 @@ struct PullDetailView: View {
     @State private var uncertain = false
     @State private var writeError: String?
     @State private var started: Session?
-    @State private var mergeMethods: [String]?
+    @State private var mergeMethod: String?
     @State private var mergeNote: String?
     @State private var mergeError: String?
     @State private var merging = false
@@ -418,7 +418,7 @@ struct PullDetailView: View {
             // Pulling down is how an uncertain start is checked: its conversation is listed below if it began.
             do { try await load(); uncertain = false; writeError = nil } catch { if let said = failure(error) { self.error = said } }
         }
-        .foregroundPoll(every: 30, enabled: !busy && !merging && deciding == nil && pendingAction == nil && asking == nil && mergeMethods == nil, action: load) { error = $0.localizedDescription }
+        .foregroundPoll(every: 30, enabled: !busy && !merging && deciding == nil && pendingAction == nil && asking == nil && mergeMethod == nil, action: load) { error = $0.localizedDescription }
         .confirmationDialog("Start a paid \(pendingAction?.label ?? "") session on #\(String(number))?",
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
                             titleVisibility: .visible, presenting: pendingAction) { action in
@@ -428,29 +428,26 @@ struct PullDetailView: View {
             ActionInputView(action: action, number: number) { input in Task { await start(action, input: input) } }
                 .sheetSize(height: 360)
         }
-        .confirmationDialog("Merge #\(String(number)) into \(pr["baseRef"].string ?? "its base")?",
-                            isPresented: Binding(get: { mergeMethods != nil }, set: { if !$0 { mergeMethods = nil } }), titleVisibility: .visible) {
-            ForEach(mergeMethods ?? [], id: \.self) { method in
-                Button(Self.mergeTitles[method] ?? method.capitalized) { Task { await merge(method) } }
-            }
-        } message: { if let mergeNote { Text(mergeNote) } }
+        .confirmationDialog("Are you sure you want to merge #\(String(number)) into \(pr["baseRef"].string ?? "its base")?",
+                            isPresented: Binding(get: { mergeMethod != nil }, set: { if !$0 { mergeMethod = nil } }),
+                            titleVisibility: .visible, presenting: mergeMethod) { method in
+            Button(MergeState.title(method)) { Task { await merge(method) } }
+        } message: { _ in if let mergeNote { Text(mergeNote) } }
     }
     private static let actionIcons = [
         "run": "play", "review": "text.magnifyingglass", "solve-conflicts": "arrow.triangle.merge", "fix-checks": "wrench.and.screwdriver",
         "implement-feedback": "hammer", "custom-feedback": "square.and.pencil", "pr-body-summary": "doc.text",
         "delete-self-comments": "trash",
     ]
-    private static let mergeTitles = ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"]
-    /// Reads what GitHub allows before asking, so the dialog offers only methods the repository accepts.
+    /// Reads what GitHub allows before asking, so the dialog can say what stands in the way of the squash.
     private func prepareMerge() async {
         guard !merging else { return }
         merging = true; mergeError = nil; defer { merging = false }
-        var methods = ["squash", "merge", "rebase"]
+        var allowed: [String] = []
         var notes: [String] = []
         if store.supports("pull_files"),
            let page: PullFilesPage = try? await store.call("pull_files", ["repo": .string(project.repo), "pr": .number(Double(number))]) {
-            let allowed = page.pr["mergeMethods"].array.compactMap(\.string)
-            if !allowed.isEmpty { methods = methods.filter(allowed.contains) }
+            allowed = page.pr["mergeMethods"].array.compactMap(\.string)
             notes += MergeState.warnings(mergeable: page.pr["mergeable"], state: page.pr["mergeableState"].string)
             if let head = page.pr["headSha"].string, head != pr["headSha"].string {
                 do { try await load() } catch { mergeError = error.localizedDescription; return }
@@ -461,7 +458,7 @@ struct PullDetailView: View {
         if failed > 0 { notes.append("\(failed) check\(failed == 1 ? " is" : "s are") failing.") }
         if pending > 0 { notes.append("\(pending) check\(pending == 1 ? " is" : "s are") still running.") }
         mergeNote = notes.isEmpty ? nil : notes.joined(separator: " ")
-        mergeMethods = methods
+        mergeMethod = MergeState.method(allowed: allowed)
     }
     private func merge(_ method: String) async {
         guard !merging, let head = pr["headSha"].string, let base = pr["baseRef"].string else { return }
