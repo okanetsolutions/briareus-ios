@@ -16,8 +16,7 @@ public enum CarText {
 
     /// The question still waiting for an answer, which is one nothing was said after.
     public static func openQuestion(_ events: [Event]) -> Event? {
-        events.filter(\.visible).last { !["result", "tool", "tool_error", "cmd", "git"].contains($0.kind) }
-            .flatMap { $0.kind == "ask" ? $0 : nil }
+        events.filter(\.visible).last { $0.kind != "result" }.flatMap { $0.kind == "ask" ? $0 : nil }
     }
     /// What a question offers as answers.
     public static func options(_ event: Event) -> [String] { (event.options ?? []).compactMap { $0["label"].string } }

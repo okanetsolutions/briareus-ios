@@ -25,7 +25,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 **Conversations**
 
 - Lists the projects and conversations the device token permits, with search and status updates.
-- Shows incremental transcripts with the time of each message, agent questions, tool activity and queued messages. Workspace setup steps are left out.
+- Shows incremental transcripts with the time of each message, agent questions and queued messages. The tools, commands and git steps an agent runs are left out, as are workspace setup steps.
 - Starts conversations on a chosen branch, provider, model and effort, or on the project default.
 - Sends follow-ups, renames, stops, closes, reopens and deletes sessions.
 - Turns the review loop on or off from inside a conversation.
@@ -281,9 +281,10 @@ Manual acceptance with a deployed test project:
 
 - Pair with a Read-only token; verify only its projects appear and mutation controls are absent.
 - Pair with Manage, start a conversation, send a follow-up and check the dashboard sees it once.
+- Open a conversation whose agent ran tools, commands and git steps; verify the transcript shows only the messages, questions and turn endings.
 - Background/foreground and leave/reopen the conversation; verify it opens at once on the saved transcript, then shows incremental updates and no duplicate events.
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
-- Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
+- Test a question, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
 - Triage a round of findings from the project's Findings section and toggle the review loop from a conversation; verify the dashboard shows the same state.
 - Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
