@@ -454,16 +454,15 @@ extension CarAssistant {
             }
         })]))
     }
-    /// Reads what GitHub allows before asking, so that only methods the repository accepts are offered.
+    /// Reads what GitHub allows before asking, so that what stands in the way of the squash is said first.
     private func prepareMerge(_ number: Int) {
         guard let project else { return }
         Task {
-            var methods = ["squash", "merge", "rebase"]
+            var allowed: [String] = []
             var notes: [String] = []
             if store.supports("pull_files"),
                let page: PullFilesPage = try? await store.call("pull_files", ["repo": .string(project.repo), "pr": .number(Double(number))]) {
-                let allowed = page.pr["mergeMethods"].array.compactMap(\.string)
-                if !allowed.isEmpty { methods = methods.filter(allowed.contains) }
+                allowed = page.pr["mergeMethods"].array.compactMap(\.string)
                 notes += MergeState.warnings(mergeable: page.pr["mergeable"], state: page.pr["mergeableState"].string)
                 if let head = page.pr["headSha"].string, head != pull["headSha"].string {
                     guard (try? await load(pull: number)) != nil else { warn("The pull request changed and could not be read again."); return }
@@ -473,10 +472,10 @@ extension CarAssistant {
             let failed = Int(pull["checks"]["failed"].double ?? 0), pending = Int(pull["checks"]["pending"].double ?? 0)
             if failed > 0 { notes.append("\(failed) check\(failed == 1 ? " is" : "s are") failing.") }
             if pending > 0 { notes.append("\(pending) check\(pending == 1 ? " is" : "s are") still running.") }
-            let titles = ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"]
             guard case .pull(number) = focus else { return }
-            choose("Merge #\(number) into \(pull["baseRef"].string ?? "its base")?", notes.isEmpty ? nil : notes.joined(separator: " "),
-                   methods.map { method in (titles[method] ?? method.capitalized, false, { [weak self] in self?.merge(method) }) })
+            let method = MergeState.method(allowed: allowed)
+            choose("Are you sure you want to merge #\(number) into \(pull["baseRef"].string ?? "its base")?", notes.isEmpty ? nil : notes.joined(separator: " "),
+                   [(MergeState.title(method), false, { [weak self] in self?.merge(method) })])
         }
     }
 

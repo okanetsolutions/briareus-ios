@@ -332,4 +332,12 @@ public enum MergeState {
         }
         return notes
     }
+    /// A merge is always a squash, unless the repository refuses squashes: then the first method it accepts.
+    /// Nothing `allowed` means GitHub did not say, and a squash is tried.
+    public static func method(allowed: [String]) -> String {
+        allowed.isEmpty || allowed.contains("squash") ? "squash" : ["merge", "rebase"].first(where: allowed.contains) ?? "squash"
+    }
+    public static func title(_ method: String) -> String {
+        ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"][method] ?? method.capitalized
+    }
 }
