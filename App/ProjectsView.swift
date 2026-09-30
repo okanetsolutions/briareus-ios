@@ -96,7 +96,8 @@ struct ProjectView: View {
     @State private var search = ""
     @State private var showClosed = false
     @State private var creating = false
-    @State private var created: Session?
+    /// What a phone pushes; beside the list it fills the other side instead.
+    @State private var pushed: Pane?
     @State private var error: String?
     @State private var loaded = false
     @Environment(\.splitPane) private var pane
@@ -105,25 +106,6 @@ struct ProjectView: View {
     }
     var body: some View {
         List {
-            if store.supports("pulls") {
-                Section {
-                    PaneLink(pane: .pulls(project)) { PullsView(project: project) } label: { Label("Pull requests", systemImage: "arrow.triangle.pull") }
-                }.listRowBackground(Theme.row)
-            }
-            let waiting = Session.holdingFindings(sessions).count
-            if waiting > 0 && store.supports("complete_findings") {
-                Section {
-                    PaneLink(pane: .findings(project)) { FindingsView(project: project) } label: {
-                        HStack {
-                            Label("Findings", systemImage: "flag")
-                            Spacer()
-                            Text(String(waiting)).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(.white)
-                                .padding(.horizontal, 7).padding(.vertical, 2).background(Theme.warning, in: Capsule())
-                        }
-                    }
-                    .accessibilityLabel("Findings, \(waiting) waiting")
-                }.listRowBackground(Theme.row)
-            }
             if let error { Section { ErrorNotice(message: error) }.listRowBackground(Theme.row) }
             let active = filtered.filter(\.isActive)
             if !active.isEmpty {
@@ -152,19 +134,13 @@ struct ProjectView: View {
         .safeAreaInset(edge: .top, spacing: 0) { finder }
         #else
         .searchable(text: $search, prompt: "Find a conversation")
-        .toolbar {
-            if store.supports("start_session") {
-                Button { creating = true } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
-            }
-        }
+        .toolbar { actions }
         #endif
         .sheet(isPresented: $creating) {
-            NewConversationView(project: project) { session in
-                if let pane { pane.wrappedValue = .conversation(session) } else { created = session }
-            }
-            .sheetSize(width: 580, height: 440)
+            NewConversationView(project: project) { open(.conversation($0)) }
+                .sheetSize(width: 580, height: 440)
         }
-        .navigationDestination(item: $created) { ConversationView(initial: $0) }
+        .navigationDestination(item: $pushed) { $0.screen }
         .refreshable { do { try await load() } catch { if let said = failure(error) { self.error = said } } }
         .foregroundPoll(every: 7, enabled: !creating, action: load) { error = $0.localizedDescription; loaded = true }
     }
@@ -181,16 +157,48 @@ struct ProjectView: View {
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-            if store.supports("start_session") {
-                Button { creating = true } label: {
-                    Image(systemName: "square.and.pencil").font(.body.weight(.medium)).foregroundStyle(Theme.accent)
-                        .frame(width: 32, height: 32).contentShape(Rectangle())
-                }
-                .help("New conversation").accessibilityLabel("New conversation")
-            }
+            HStack(spacing: 2) { actions }
         }
         .padding(.horizontal, 12).padding(.top, 4).padding(.bottom, 8)
         .background(Theme.background)
+    }
+    /// The project's other screens and a new conversation, as icons above the list.
+    @ViewBuilder private var actions: some View {
+        if store.supports("pulls") {
+            action("Pull requests", symbol: "arrow.triangle.pull", opens: .pulls(project))
+        }
+        let waiting = Session.holdingFindings(sessions).count
+        if waiting > 0 && store.supports("complete_findings") {
+            action("Findings", symbol: "flag", count: waiting, opens: .findings(project))
+                .accessibilityLabel("Findings, \(waiting) waiting")
+        }
+        if store.supports("start_session") {
+            Button { creating = true } label: { icon("square.and.pencil") }
+                .help("New conversation").accessibilityLabel("New conversation")
+        }
+    }
+    private func action(_ name: String, symbol: String, count: Int = 0, opens target: Pane) -> some View {
+        let selected = pane?.wrappedValue?.id == target.id
+        return Button { open(target) } label: { icon(symbol, count: count, selected: selected) }
+            .help(name).accessibilityLabel(name).accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    private func icon(_ symbol: String, count: Int = 0, selected: Bool = false) -> some View {
+        Image(systemName: symbol)
+            .overlay(alignment: .topTrailing) {
+                if count > 0 {
+                    Text(String(count)).font(.caption2.weight(.bold).monospacedDigit()).foregroundStyle(.white)
+                        .padding(.horizontal, 4).frame(minWidth: 15, minHeight: 15).background(Theme.warning, in: Capsule())
+                        .offset(x: 9, y: -7)
+                }
+            }
+            #if os(macOS)
+            .font(.body.weight(.medium)).foregroundStyle(Theme.accent).frame(width: 32, height: 32)
+            .background(selected ? Theme.accent.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+            #endif
+    }
+    private func open(_ target: Pane) {
+        if let pane { pane.wrappedValue = target } else { pushed = target }
     }
     private func row(_ session: Session) -> some View {
         PaneLink(pane: .conversation(session)) { ConversationView(initial: session) } label: {

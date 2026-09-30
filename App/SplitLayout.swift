@@ -11,6 +11,13 @@ enum Pane: Hashable {
         case .findings(let project): return "findings:\(project.repo)"
         }
     }
+    @ViewBuilder var screen: some View {
+        switch self {
+        case .conversation(let session): ConversationView(initial: session)
+        case .pulls(let project): PullsView(project: project)
+        case .findings(let project): FindingsView(project: project)
+        }
+    }
 }
 
 private struct SplitPaneKey: EnvironmentKey {
@@ -73,11 +80,7 @@ struct SplitLayout: View {
     }
     private var detail: some View {
         NavigationStack {
-            switch pane {
-            case .conversation(let session): ConversationView(initial: session)
-            case .pulls(let project): PullsView(project: project)
-            case .findings(let project): FindingsView(project: project)
-            case nil:
+            if let pane { pane.screen } else {
                 ContentUnavailableView("No conversation selected", systemImage: "bubble.left.and.text.bubble.right",
                                        description: Text("Choose a conversation from the list to read it here."))
                     .frame(maxWidth: .infinity, maxHeight: .infinity).background(Theme.background)

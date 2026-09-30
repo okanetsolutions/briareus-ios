@@ -285,7 +285,7 @@ Manual acceptance with a deployed test project:
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, tools, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
 - Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
-- Triage a round of findings from the project's Findings section and toggle the review loop from a conversation; verify the dashboard shows the same state.
+- Triage a round of findings from the project's Findings button and toggle the review loop from a conversation; verify the dashboard shows the same state.
 - Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh and check the outcome before submitting it again.
