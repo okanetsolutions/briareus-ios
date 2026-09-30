@@ -132,6 +132,15 @@ public struct Session: Codable, Identifiable, Hashable, Sendable {
     }
     /// The synced pull request's state: open, merged or closed.
     public var pullState: String { prStatus?["state"].string ?? "open" }
+    /// What the pull request's mark in the list says: merged or closed, or while open, failing, pending or passing checks.
+    public var pullTone: String? {
+        guard pullBadge != nil else { return nil }
+        if pullState != "open" { return pullState }
+        let checks = prStatus?["checks"] ?? .null
+        if (checks["failed"].double ?? 0) > 0 { return "failing" }
+        if (checks["pending"].double ?? 0) > 0 { return "pending" }
+        return "passing"
+    }
     /// The conversations with a round waiting, the one held longest first, as the dashboard's queue orders them.
     public static func holdingFindings(_ sessions: [Session]) -> [Session] {
         sessions.filter { $0.heldTriage != nil }

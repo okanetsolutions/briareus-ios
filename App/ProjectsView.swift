@@ -220,26 +220,35 @@ struct ProjectView: View {
     private func row(_ session: Session) -> some View {
         PaneLink(pane: .conversation(session)) { ConversationView(initial: session) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                StatusDot(status: session.status).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                mark(session)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(session.displayTitle).font(.body.weight(.medium)).lineLimit(2)
                         .foregroundStyle(session.status == "closed" ? .secondary : .primary)
                     Text([session.status.capitalized, session.model].compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }.joined(separator: " · "))
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    if let badge = session.pullBadge {
-                        Label(badge, systemImage: "arrow.triangle.pull").font(.caption.monospacedDigit()).lineLimit(1)
-                            .foregroundStyle(pullColor(session.pullState))
-                    }
                 }
             }.padding(.vertical, 3)
         }
+        .help(session.pullBadge ?? "")
         .accessibilityElement(children: .combine)
+        .accessibilityValue(session.pullBadge ?? "")
     }
-    /// The dashboard's colours: green while open, purple once merged, red when closed unmerged.
-    private func pullColor(_ state: String) -> Color {
-        switch state {
+    /// A pull request takes the dot's place, as Claude's list shows it; a conversation at work keeps its pulsing dot.
+    @ViewBuilder private func mark(_ session: Session) -> some View {
+        if let tone = session.pullTone, !session.isActive {
+            Image(systemName: "arrow.triangle.pull").font(.caption.weight(.semibold)).foregroundStyle(pullColor(tone))
+                .frame(width: 14).accessibilityHidden(true)
+        } else {
+            StatusDot(status: session.status).frame(width: 14).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+        }
+    }
+    /// Purple once merged, grey when closed unmerged; while open, the checks' colour.
+    private func pullColor(_ tone: String) -> Color {
+        switch tone {
         case "merged": return .purple
-        case "closed": return Theme.danger
+        case "closed": return .secondary
+        case "failing": return Theme.danger
+        case "pending": return Theme.warning
         default: return Theme.success
         }
     }
