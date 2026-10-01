@@ -32,7 +32,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Keeps the review findings waiting for a decision in a section of their own in each project, as the dashboard does; the conversation they came from only says they are waiting.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
 - On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
-- On a Mac, runs as a Mac app built from the same sources: projects, a project's conversations and the chosen conversation each in a column of their own, which goes on updating while another app is in front.
+- On a Mac, runs as a Mac app of its own (`Mac/`), the twin of [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows): the same screens, layout and features, on the client API (`/api/v1`). See [The Mac app](#the-mac-app).
 
 **Project board**
 
@@ -58,6 +58,10 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 - Saves projects, conversations, transcripts and pull requests on the device. A screen opens on what it last showed and then asks the server only for what changed; a saved transcript resumes from its last event, and pulling down reads it again in full.
 - Pauses polling in the background and covers the app switcher snapshot.
 
+## The Mac app
+
+The Mac app is built from `Mac/` by the **Briareus Mac** scheme and does what [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows) does, screen for screen: the sidebar with the ＋ New session strip (WhatsApp, Slack, 📊 Dashboard, ⚑ Findings, ⚙ Settings) and the player for what Spotify or Music is playing; conversations with Markdown replies, tool clusters, attachments and voice notes, beside the pull request panel; the project board with pull requests, issues, errands, the pull request page and its Run tab in an embedded browser; the Findings queue; the usage Dashboard; ⚙ Settings for projects, providers, the database pool, SSH servers and devices; and SSH and SFTP sessions on a project's servers, run by this Mac's own `ssh` and `sftp`, so `~/.ssh` applies. It talks to the client API (`/api/v1`) with a device token, as the Windows client does, and is not sandboxed, since the SSH and SFTP sessions read `~/.ssh`. Its core (`Mac/Core`) is tested with `swift test --filter BriareusMacCoreTests`.
+
 ## Requirements
 
 | To | You need |
@@ -75,7 +79,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 1. Clone this repository.
 2. Open `Briareus.xcodeproj` and select the **Briareus** scheme.
 3. Select an iPhone or iPad simulator and Run. The simulator needs no signing team.
-4. For the Mac app, select **My Mac** and Run. It is sandboxed and keeps its token in the keychain under the team's access group, so it needs a signing team.
+4. For the Mac app, select the **Briareus Mac** scheme and **My Mac**, and Run. It keeps its token in the keychain under the team's access group, so it needs a signing team.
 
 The checked-in project works without installing a generator. After adding or removing source files, regenerate it and commit the result:
 

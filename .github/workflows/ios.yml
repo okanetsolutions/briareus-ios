@@ -50,8 +50,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Build for Mac (unsigned)
-        run: xcodebuild -project Briareus.xcodeproj -scheme Briareus -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath MacBuild CODE_SIGNING_ALLOWED=NO build
+      - name: Build the Mac app (unsigned)
+        run: xcodebuild -project Briareus.xcodeproj -scheme "Briareus Mac" -configuration Debug -destination 'generic/platform=macOS' -derivedDataPath MacBuild CODE_SIGNING_ALLOWED=NO build
   pairing:
     name: Pairing UI test
     runs-on: macos-15
