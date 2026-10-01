@@ -10,21 +10,6 @@ func isSafeWebURL(_ url: String?) -> Bool {
     return true
 }
 
-/// The right click's menu over text: Copy the selection, Copy text (the whole paragraph), Select all.
-struct CopyTextMenu: ViewModifier {
-    var text: String
-    func body(content: Content) -> some View {
-        content.contextMenu {
-            Button("Copy") { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) }
-            Button("Copy text") { Clipboard.copy(text) }
-            Button("Select all") { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
-        }
-    }
-}
-extension View {
-    func copyTextMenu(_ text: String) -> some View { modifier(CopyTextMenu(text: text)) }
-}
-
 /// The transcript's column. Its inputs are compared, so typing in the composer or a poll that changed nothing does not
 /// lay it out again.
 struct TranscriptColumn: View, Equatable {
@@ -56,8 +41,8 @@ struct TranscriptColumn: View, Equatable {
             if let writeError {
                 DangerBox(bottom: 10) {
                     DangerText(writeError)
-                    Text("The action may have completed. Check the latest conversation before trying again.")
-                        .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                    SelectableText("The action may have completed. Check the latest conversation before trying again.",
+                                   font: SelectableFont.system(12), color: Theme.muted)
                         .padding(.top, 4)
                     Button("Refresh and check outcome") { model.refreshOutcome() }
                         .dashButton(.bordered).disabled(loading || busy).padding(.top, 8)
@@ -65,7 +50,7 @@ struct TranscriptColumn: View, Equatable {
                 .padding(.bottom, 12)
             }
             if blocks.isEmpty && error == nil {
-                Text(loaded ? "No messages yet." : "Waiting for the conversation\u{2026}").font(Theme.footnote).foregroundStyle(Theme.muted)
+                SelectableText(loaded ? "No messages yet." : "Waiting for the conversation\u{2026}", font: SelectableFont.system(13), color: Theme.muted)
             }
             ForEach(blocks, id: \.seq) { block in blockView(block) }
             // Why the session failed: the dashboard's `⚠ error` in the head, said where the transcript stops.
@@ -105,14 +90,12 @@ struct TranscriptColumn: View, Equatable {
         ForEach(Array(items.enumerated()), id: \.offset) { q, item in
             let text = item["text"].string ?? "Message"
             VStack(alignment: .leading, spacing: 0) {
-                Text(text).font(Theme.body).foregroundStyle(Theme.muted).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                SelectableText(text, font: SelectableFont.system(15), color: Theme.muted)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [1, 2])))
-                    .copyTextMenu(text)
                 HStack(spacing: 0) {
-                    Text("Queued for the next turn").font(Theme.caption2).foregroundStyle(Theme.muted)
+                    SelectableText("Queued for the next turn", font: SelectableFont.system(11), color: Theme.muted)
                     Spacer(minLength: 0)
                     if removable {
                         Button { model.mutate("drop_message", ["index": JSON(q)]) } label: {
@@ -120,6 +103,7 @@ struct TranscriptColumn: View, Equatable {
                         }
                         .buttonStyle(.plain)
                         .onHover { $0 ? NSCursor.pointingHand.push() : NSCursor.pop() }
+                        .fixedSize()
                     }
                 }
                 .frame(height: 18)
@@ -148,8 +132,8 @@ private struct DangerText: View {
     var text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(Theme.footnote).foregroundStyle(Theme.danger).textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+        SelectableText(text, font: SelectableFont.system(13), color: Theme.danger)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -158,10 +142,9 @@ private struct LogLine: View {
     var text: String
     var color: Color
     var body: some View {
-        Text(text).font(Theme.monoSmall).foregroundStyle(color).textSelection(.enabled)
-            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+        SelectableText(text, font: SelectableFont.mono(12), color: color)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 1)
-            .copyTextMenu(text)
     }
 }
 
@@ -207,7 +190,6 @@ private struct ToolStep: View {
         }
         .frame(height: 19)
         .padding(.vertical, 3)
-        .copyTextMenu(event.detail ?? "")
     }
 }
 
@@ -217,7 +199,7 @@ private struct EventTime: View {
     var trailing = false
     var body: some View {
         if let when = event.time {
-            Text(formatEventTime(when)).font(Theme.caption2).foregroundStyle(Theme.muted).lineLimit(1)
+            SelectableText(formatEventTime(when), font: SelectableFont.system(11), color: Theme.muted, align: trailing ? .right : .left)
                 .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
                 .padding(.top, 6)
         }
@@ -237,8 +219,8 @@ private struct EventView: View, Equatable {
         case "user":
             // `rounded-xl border border-line bg-raise px-3.5 py-2.5`, the time right-aligned under the text.
             VStack(alignment: .leading, spacing: 0) {
-                Text(event.text ?? "").font(Theme.body).foregroundStyle(Theme.ink).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                SelectableText(event.text ?? "", font: SelectableFont.system(15), color: Theme.ink)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(Array((event.attachments?.items ?? []).enumerated()), id: \.offset) { _, a in
                     Text(verbatim: "\u{1F4CE} \(a["name"].string ?? "Attachment")").font(Theme.caption).foregroundStyle(Theme.muted)
                         .lineLimit(1).truncationMode(.tail).padding(.top, 6)
@@ -248,18 +230,16 @@ private struct EventView: View, Equatable {
             .padding(.horizontal, 14).padding(.vertical, 10)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.raise))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line, lineWidth: 1))
-            .copyTextMenu(event.text ?? "")
             .padding(.top, 18).padding(.bottom, 14)
         case "text":
             VStack(alignment: .leading, spacing: 0) {
                 MarkdownView(source: event.text ?? "")
                 EventTime(event: event)
             }
-            .copyTextMenu(event.text ?? "")
             .padding(.vertical, 10)
         case "ask":
             VStack(alignment: .leading, spacing: 0) {
-                Text("Your input is needed").font(Theme.caption).foregroundStyle(Theme.accent).lineLimit(1)
+                SelectableText("Your input is needed", font: SelectableFont.system(12), color: Theme.accent)
                 MarkdownView(source: event.question ?? event.text ?? "").padding(.top, 8)
                 if canMessage {
                     let labels = (event.options?.items ?? []).compactMap { $0["label"].string }
@@ -277,7 +257,6 @@ private struct EventView: View, Equatable {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.raise))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.accent, lineWidth: 1))
-            .copyTextMenu(event.question ?? event.text ?? "")
             .padding(.vertical, 10)
         case "result":
             // "— $2.9565 · 455s · 57 turns · …", under a dashed rule.
@@ -285,10 +264,9 @@ private struct EventView: View, Equatable {
             VStack(alignment: .leading, spacing: 0) {
                 Line().stroke(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])).frame(height: 1)
                 Text(text).font(Theme.caption).foregroundStyle(event.isError == true ? Theme.danger : Theme.muted)
-                    .lineLimit(1).truncationMode(.tail).textSelection(.enabled)
+                    .lineLimit(1).truncationMode(.tail)
                     .frame(height: 20).padding(.top, 8)
             }
-            .copyTextMenu(text)
             .padding(.top, 10).padding(.bottom, 4)
         default:
             if event.text != nil {
@@ -376,14 +354,14 @@ private struct TriageBox: View {
             .buttonStyle(.plain)
             .onHover { $0 ? NSCursor.pointingHand.push() : NSCursor.pop() }
         } else {
-            Text(title).font(Theme.footnote).foregroundStyle(Theme.ink).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+            SelectableText(title, font: SelectableFont.system(13), color: Theme.ink)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         if let location = findingLocation(f) {
-            Text(location).font(Theme.monoCaption2).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle).padding(.top, 3)
+            Text(location).font(Theme.monoCaption2).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail).padding(.top, 3)
         }
         if let why = f["parkedWhy"].string {
-            Text(why).font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true).padding(.top, 3)
+            SelectableText(why, font: SelectableFont.system(12), color: Theme.muted).padding(.top, 3)
         }
         if takes && f["key"].string != nil {
             Segments(titles: findingDecisionTitles, selected: findingDecisionIndex(triageDecision(triage, f, picked: decisions))) { i in

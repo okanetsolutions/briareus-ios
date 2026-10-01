@@ -23,12 +23,14 @@ final class NewSessionModel: ObservableObject {
     let files = Attachments(call: "start_session")
     let voice = VoiceNote()
     private var choicesTask: Task<Void, Never>?
+    private var startTask: Task<Void, Never>?
     private var projectsAsked = false
 
     init(repo: String?) {
         var list = ProjectsModel.shared.projects
-        if list.isEmpty, let saved = Store.shared.cache.value("projects").flatMap(Project.parseList) { list = saved }
         if list.isEmpty, let repo { list = [Project(repo: repo)] }
+        // Opened before the sidebar has its list: what was saved serves until the server answers.
+        if list.isEmpty, let saved = Store.shared.cache.value("projects").flatMap(Project.parseList) { list = saved }
         projects = list
         chosen = list.firstIndex { $0.repo == repo } ?? 0
         voice.onText = { [weak self] text in
@@ -60,6 +62,8 @@ final class NewSessionModel: ObservableObject {
     func disappeared() {
         voice.drop()
         choicesTask?.cancel(); choicesTask = nil
+        // Gone from the screen: a start still under way does not pull the window back to its conversation.
+        startTask?.cancel(); startTask = nil
     }
 
     // MARK: What the chips offer
@@ -173,10 +177,11 @@ final class NewSessionModel: ObservableObject {
         if let runtime { args.merge(runtime.arguments) }
         busy = true; error = nil
         let loop = reviewLoop
-        Task {
+        startTask = Task {
             do {
                 let answer = try await Store.shared.call("start_session", args)
                 busy = false
+                if Task.isCancelled { return }
                 guard let started = Session(answer["session"]) else { error = "The server returned an unexpected response."; return }
                 composer.text = ""
                 files.sent(args["attachments"].isNull ? nil : args["attachments"])
@@ -188,6 +193,7 @@ final class NewSessionModel: ObservableObject {
                 Navigator.shared.show(.conversation(id: started.id, session: started.raw))
             } catch {
                 busy = false
+                if error.isCancellation { return }
                 self.error = errorText(error)
                 if !((error as? APIError)?.isRefusal ?? false) { uncertain = true }
             }
@@ -280,7 +286,7 @@ private struct NewSessionFooter: View {
                         AttachButton(enabled: !model.busy && files.count < attachmentsMax) { if !model.busy { files.pick() } }
                     }
                     if store.canTranscribe {
-                        MicButton(voice: voice)
+                        MicButton(voice: voice, showsWait: false)
                         VoiceClock(voice: voice).padding(.leading, 2)
                     }
                 } trailing: {

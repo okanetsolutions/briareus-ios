@@ -15,7 +15,8 @@ struct SessionPanel: View {
     @State private var findingsOpen = true
     /// The pull request read: its project and number, nil until the session has one.
     @State private var pull: PullKey?
-    @State private var loadTick = 0
+    /// Bumped by each read, so a slower earlier answer (a poll overtaken by F5) does not land over a newer one.
+    @State private var loadSeq = 0
 
     struct PullKey: Equatable { var repo: String; var number: Int }
 
@@ -77,15 +78,17 @@ struct SessionPanel: View {
 
     private func load() async -> APIError? {
         guard let p = pull, deciding == nil else { return nil }
+        loadSeq += 1
+        let seq = loadSeq
         if pr.isNull, let saved = store.cache.value(cacheKey(p)) {
             pr = saved["pr"]; findings = saved["findings"].isArray ? saved["findings"] : []
         }
         do {
             let answer = try await store.call("pull", ["repo": .string(p.repo), "pr": JSON(p.number)])
-            guard pull == p else { return nil }
+            guard pull == p, seq == loadSeq else { return nil }
             pr = answer["pr"]; error = nil
             if store.supports("findings") {
-                if let f = try? await store.call("findings", ["repo": .string(p.repo), "pr": JSON(p.number)]), pull == p {
+                if let f = try? await store.call("findings", ["repo": .string(p.repo), "pr": JSON(p.number)]), pull == p, seq == loadSeq {
                     findings = f["findings"].isArray ? f["findings"] : []
                 }
             }
@@ -93,6 +96,7 @@ struct SessionPanel: View {
             return nil
         } catch {
             if error.isCancellation { return APIError(.cancelled) }
+            guard pull == p, seq == loadSeq else { return nil }
             self.error = errorText(error)
             save()
             return error as? APIError
@@ -112,9 +116,10 @@ struct SessionPanel: View {
             do {
                 let answer = try await store.call("finding_decision", ["repo": .string(p.repo), "pr": JSON(p.number), "key": .string(key),
                                                                        "decision": .string(orNull: decision)])
+                guard pull == p else { deciding = nil; return }
                 findings = answer["findings"].isArray ? answer["findings"] : findings
                 save()
-            } catch { if !error.isCancellation { self.error = errorText(error) } }
+            } catch { if !error.isCancellation && pull == p { self.error = errorText(error) } }
             deciding = nil
         }
     }
@@ -150,7 +155,7 @@ struct SessionPanel: View {
         Text("Pull request").font(Theme.caption).foregroundStyle(Theme.muted).lineLimit(1).padding(.bottom, 12)
         if let error, pr.isNull { Text(error).font(Theme.footnote).foregroundStyle(Theme.danger).fixedSize(horizontal: false, vertical: true).padding(.bottom, 8) }
         if pr.isNull {
-            if error == nil { Text("Loading\u{2026}").font(Theme.footnote).foregroundStyle(Theme.muted).padding(.vertical, 8) }
+            if error == nil { LoadingNote() }
         } else {
             prDetails(p)
         }

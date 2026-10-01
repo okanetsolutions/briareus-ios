@@ -49,6 +49,8 @@ final class ConversationModel: ObservableObject {
     var dialogOpen = false
 
     let composer = ComposerState()
+    /// The transcript's text selection, across its messages.
+    let selection = TextSelectionGroup()
     let files = Attachments(call: "message")
     let voice = VoiceNote()
 
@@ -343,6 +345,7 @@ struct ConversationScreen: View {
                                          error: model.error, writeError: model.writeError, busy: model.busy, loading: model.loading,
                                          uncertain: model.uncertain, canMessage: model.canMessage)
                             .equatable()
+                            .textSelectionScope(model.selection)
                         Color.clear.frame(height: 1).id("end")
                             .background(GeometryReader { g in
                                 Color.clear.preference(key: TranscriptEndKey.self, value: g.frame(in: .named("transcript")).maxY)

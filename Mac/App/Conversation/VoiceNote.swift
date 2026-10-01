@@ -121,12 +121,16 @@ final class VoiceNote: NSObject, ObservableObject, AVAudioRecorderDelegate {
 /// The microphone button: 🎤, ■ while recording on the danger colour, … while starting or transcribing.
 struct MicButton: View {
     @ObservedObject var voice: VoiceNote
+    /// Whether … stands in for 🎤 while the note starts or is transcribed: the conversation's composer shows it, the new
+    /// session screen's keeps the 🎤.
+    var showsWait = true
     var body: some View {
         let rec = voice.state == .recording
+        let waiting = showsWait && (voice.state == .transcribing || voice.state == .starting)
         Button {
             if rec { voice.stop() } else if voice.state == .idle { voice.record() }
         } label: {
-            Text(rec ? "\u{25A0}" : (voice.state == .transcribing || voice.state == .starting) ? "\u{2026}" : "\u{1F3A4}")
+            Text(rec ? "\u{25A0}" : waiting ? "\u{2026}" : "\u{1F3A4}")
                 .font(.system(size: 15)).foregroundStyle(rec ? Color.white : Theme.muted)
                 .frame(width: 32, height: 30)
                 .background(RoundedRectangle(cornerRadius: 8).fill(rec ? Theme.danger : Theme.raise))

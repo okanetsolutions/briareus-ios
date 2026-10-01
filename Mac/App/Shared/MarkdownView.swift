@@ -1,5 +1,6 @@
 // Markdown as doc.c lays it out: paragraphs, headings, bullets and task lists, quotes, code with a copy button, tables and
-// rules, with bold, italic, strikethrough, inline code and links inline. Text is selectable.
+// rules, with bold, italic, strikethrough, inline code and links inline. Its text selects across blocks (SelectableText.swift).
+import AppKit
 import SwiftUI
 
 enum MarkdownSize {
@@ -30,27 +31,24 @@ func richText(_ source: String, size: MarkdownSize = .body, color: Color = Theme
     return out
 }
 
-/// Inline Markdown, wrapped.
+/// Inline Markdown, wrapped and selectable with the rest of the page (`doc_rich`).
 struct RichText: View {
     var source: String
     var size: MarkdownSize = .body
     var color: Color = Theme.ink
     var bold = false
     var body: some View {
-        Text(richText(source, size: size, color: color, bold: bold))
-            .lineSpacing(3)
-            .fixedSize(horizontal: false, vertical: true)
+        SelectableText(selectableRich(source, size: size, color: color, bold: bold))
             .frame(maxWidth: .infinity, alignment: .leading)
-            .textSelection(.enabled)
-            .tint(Theme.accent)
-            .environment(\.openURL, OpenURLAction { url in openWebURL(url.absoluteString); return .handled })
     }
 }
 
-/// Block Markdown; blocks 6px apart.
+/// Block Markdown (`doc_markdown`); blocks 6px apart. Its texts select as one, and with the page's when it is on one.
 struct MarkdownView: View {
     var source: String
     var size: MarkdownSize = .body
+    @Environment(\.textSelectionGroup) private var pageSelection
+    @State private var ownSelection = TextSelectionGroup()
 
     var body: some View {
         let blocks = Markdown.parse(source)
@@ -58,6 +56,7 @@ struct MarkdownView: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, b in block(b) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .environment(\.textSelectionGroup, pageSelection ?? ownSelection)
     }
 
     @ViewBuilder private func block(_ b: MdBlock) -> some View {
@@ -67,12 +66,13 @@ struct MarkdownView: View {
         case .heading:
             HeadingText(text: b.text)
         case .bullet:
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 if b.task != .none {
-                    TaskBox(checked: b.task == .checked).frame(width: 22, alignment: .leading)
+                    TaskBox(checked: b.task == .checked).padding(.leading, 1).padding(.top, 2).frame(width: 22, alignment: .leading)
                 } else {
-                    Text(b.marker ?? "•").font(.system(size: size.size)).foregroundStyle(Theme.muted)
-                        .frame(minWidth: 18, alignment: .leading).padding(.trailing, 8)
+                    // The marker takes its width and 8px, at least 18px.
+                    Text(verbatim: b.marker ?? "\u{2022}").font(.system(size: size.size)).foregroundStyle(Theme.muted)
+                        .padding(.trailing, 8).frame(minWidth: 18, alignment: .leading)
                 }
                 RichText(source: b.text, size: size, color: b.task == .checked ? Theme.muted : Theme.ink)
             }
@@ -95,13 +95,8 @@ struct MarkdownView: View {
 private struct HeadingText: View {
     var text: String
     var body: some View {
-        Text(richTextHeading(text)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        SelectableText(selectableRich(text, size: .body, font: SelectableFont.system(17, .semibold)))
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 6)
-    }
-    private func richTextHeading(_ s: String) -> AttributedString {
-        var a = richText(s, size: .body, bold: true)
-        for run in a.runs where a[run.range].backgroundColor == nil { a[run.range].font = Theme.title3 }
-        return a
     }
 }
 
@@ -113,11 +108,10 @@ private struct TaskBox: View {
             .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(checked ? Theme.accent : Theme.ink.opacity(0.35), lineWidth: 1))
             .overlay { if checked { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) } }
             .frame(width: 14, height: 14)
-            .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 3 }
     }
 }
 
-/// A code block: its language over a line with a copy button, then the code, on the sunken colour.
+/// A code block: its language over a line, the whole line copying the code, then the code, on the sunken colour.
 struct CodeBlock: View {
     var language: String?
     var code: String
@@ -125,24 +119,30 @@ struct CodeBlock: View {
     @State private var hovered = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(language?.isEmpty == false ? language! : "code").font(Theme.monoCaption2).foregroundStyle(Theme.muted).lineLimit(1)
-                Spacer()
-                Button {
-                    Clipboard.copy(code)
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
-                } label: {
+            Button {
+                Clipboard.copy(code)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+            } label: {
+                HStack(spacing: 0) {
+                    Text(verbatim: language?.isEmpty == false ? language! : "code").font(Theme.monoCaption2).foregroundStyle(Theme.muted)
+                        .lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 6)
                     Image(systemName: copied ? Glyph.symbol(0xE73E) : Glyph.symbol(0xE8C8)).font(.system(size: 11)).foregroundStyle(Theme.muted)
                         .frame(width: 28, height: 22)
                         .background(RoundedRectangle(cornerRadius: 6).fill(hovered ? Theme.ink.opacity(0.06) : .clear))
                 }
-                .buttonStyle(.plain).onHover { hovered = $0 }.help("Copy")
+                .padding(.leading, 12).padding(.trailing, 6).frame(height: 25)
+                .contentShape(Rectangle())
             }
-            .padding(.leading, 12).padding(.trailing, 6).frame(height: 25)
+            .buttonStyle(.plain)
+            .onHover { on in
+                hovered = on
+                if on { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+            .help("Copy")
             .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
-            Text(code).font(Theme.mono).foregroundStyle(Theme.ink).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            SelectableText(expandTabs(code), font: SelectableFont.mono(13), color: Theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 10)
         }
