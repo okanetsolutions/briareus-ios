@@ -199,9 +199,9 @@ final class BoardModel: ObservableObject {
         var f = filter
         let options = f.options(kind, rows: rows)
         let current = f[kind]
-        var items = [PopupMenu.Item(title: "All \(kind.name)s", checked: current.isEmpty)]
-        for o in options { items.append(PopupMenu.Item(title: "\(o.text) (\(o.count))", checked: current == o.value)) }
-        guard let chosen = PopupMenu.show(items, rightAligned: true) else { return }
+        var items = [BoardPopupMenu.Item(title: "All \(kind.name)s", checked: current.isEmpty)]
+        for o in options { items.append(BoardPopupMenu.Item(title: "\(o.text) (\(o.count))", checked: current == o.value)) }
+        guard let chosen = BoardPopupMenu.show(items, rightAligned: true) else { return }
         f.set(kind, chosen == 0 ? "" : options[chosen - 1].value)
         filter = f
         hasOpening = false
@@ -237,7 +237,7 @@ struct BoardScreen: View {
                     tabs.padding(.horizontal, Theme.paneMargin)
                     Spacer().frame(height: 14)
                     Group {
-                        if model.tab == .ssh { ProjectSSHTab(repo: repo) } else { ProjectSFTPTab(repo: repo) }
+                        if model.tab == .ssh { ProjectSSHTab(repo: repo, showsHeader: false) } else { ProjectSFTPTab(repo: repo, showsHeader: false) }
                     }
                     .padding(.horizontal, Theme.paneMargin)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -318,7 +318,7 @@ struct BoardScreen: View {
                 ForEach(labels, id: \.0) { tab, label in BoardTabButton(label: label, active: model.tab == tab) { select(tab) } }
                 Spacer(minLength: 0)
             }
-            Rule().padding(.horizontal, -Theme.paneMargin)
+            BoardRule().padding(.horizontal, -Theme.paneMargin)
         }
     }
     private func select(_ tab: BoardTab) {

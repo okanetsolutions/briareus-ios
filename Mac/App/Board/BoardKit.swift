@@ -78,7 +78,7 @@ func actionPrompt(_ action: BoardAction, number: Int) -> String?? {
 
 /// A menu at the pointer that answers which item was chosen, as TrackPopupMenu with TPM_RETURNCMD.
 @MainActor
-enum PopupMenu {
+enum BoardPopupMenu {
     struct Item {
         var title: String
         var checked = false
@@ -140,7 +140,7 @@ enum ActionInputDialog {
 private final class InputState: ObservableObject {
     @Published var text = ""
     var confirmed = false
-    let voice = VoiceNote()
+    let voice = BoardVoiceNote()
 }
 
 private struct ActionInputView: View {
@@ -148,7 +148,7 @@ private struct ActionInputView: View {
     var number: Int
     @ObservedObject var state: InputState
     var finish: (Bool) -> Void
-    @ObservedObject private var voice: VoiceNote
+    @ObservedObject private var voice: BoardVoiceNote
 
     init(action: BoardAction, number: Int, state: InputState, finish: @escaping (Bool) -> Void) {
         self.action = action; self.number = number; self.state = state; self.finish = finish
@@ -191,7 +191,7 @@ private struct ActionInputView: View {
 
 /// A voice note for a dialog's box (voice.c): recorded to a file, sent to the server to be written out, its text added.
 @MainActor
-final class VoiceNote: NSObject, ObservableObject {
+final class BoardVoiceNote: NSObject, ObservableObject {
     enum State { case idle, starting, recording, transcribing }
     @Published private(set) var state = State.idle
     @Published private(set) var elapsed = 0
@@ -280,7 +280,7 @@ final class VoiceNote: NSObject, ObservableObject {
 // MARK: - Drawn pieces
 
 /// A 1px rule in the line colour.
-struct Rule: View {
+struct BoardRule: View {
     var body: some View { Rectangle().fill(Theme.line).frame(height: 1) }
 }
 
@@ -374,7 +374,7 @@ struct CommentHead: View {
         }
         .padding(.horizontal, 16).frame(height: 38)
         .background(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7).fill(Theme.accent.opacity(0.10)))
-        .overlay(alignment: .bottom) { Rule() }
+        .overlay(alignment: .bottom) { BoardRule() }
     }
 }
 

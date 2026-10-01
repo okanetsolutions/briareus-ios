@@ -115,9 +115,9 @@ final class IssueModel: ObservableObject {
     /// The ▾ menu: why it is closed, and whether a comment goes first. Then a confirmation naming what stays open.
     func close() {
         guard !closing, !closed else { return }
-        let items = [PopupMenu.Item(title: "Close as completed"), PopupMenu.Item(title: "Close as not planned"), .divider,
-                     PopupMenu.Item(title: "Close as completed with a comment…"), PopupMenu.Item(title: "Close as not planned with a comment…")]
-        guard let chosen = PopupMenu.show(items) else { return }
+        let items = [BoardPopupMenu.Item(title: "Close as completed"), BoardPopupMenu.Item(title: "Close as not planned"), .divider,
+                     BoardPopupMenu.Item(title: "Close as completed with a comment…"), BoardPopupMenu.Item(title: "Close as not planned with a comment…")]
+        guard let chosen = BoardPopupMenu.show(items) else { return }
         let notPlanned = chosen == 1 || chosen == 4
         var comment: String?
         if chosen >= 3 {
@@ -259,7 +259,7 @@ struct IssueScreen: View {
         return BoardBox {
             Text(issue.title).font(Theme.title3).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-                Rule().padding(.vertical, 6)
+                BoardRule().padding(.vertical, 6)
                 r
             }
         }
@@ -302,7 +302,7 @@ struct IssueScreen: View {
         if !thin.isEmpty || issue.pulls.isEmpty {
             BoardBox {
                 ForEach(Array(thin.enumerated()), id: \.offset) { i, link in
-                    if i > 0 { Rule().padding(.vertical, 6) }
+                    if i > 0 { BoardRule().padding(.vertical, 6) }
                     let foreign = link.isForeign(repo) || !store.supports("pull")
                     LinkedRow(link: link, repo: repo, action: !foreign || safeWebURL(link.url) ? { model.openPull(link) } : nil)
                 }

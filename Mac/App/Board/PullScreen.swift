@@ -232,7 +232,7 @@ private struct StackOverview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Stack · \(stack.label(model.number))").font(Theme.footnoteSemibold).foregroundStyle(Theme.ink).lineLimit(1).padding(.horizontal, 4)
-            Rule().padding(.vertical, 6)
+            BoardRule().padding(.vertical, 6)
             ForEach(stack.topFirst, id: \.self) { i in
                 let item = stack.chain[i]
                 StackRow(item: item, current: item.number == model.number) {
@@ -330,7 +330,7 @@ private struct PullTabs: View {
                     DiffStat(additions: Int(add), deletions: Int(del)).frame(height: 40)
                 }
             }
-            Rule().padding(.horizontal, -4)
+            BoardRule().padding(.horizontal, -4)
         }
     }
 
@@ -572,7 +572,7 @@ private struct ThreadBox: View {
             Text(line.map { "\(path):\(Int($0))" } ?? path).font(Theme.monoSmall).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .onTapGesture { if safeWebURL(first["url"].string) { openWebURL(first["url"].string) } }
-            Rule()
+            BoardRule()
             ForEach(convThread(lines: lines, root: root), id: \.self) { i in
                 let cm = lines[i]
                 VStack(alignment: .leading, spacing: 4) {
@@ -603,7 +603,7 @@ private struct ColumnBox<Content: View>: View {
     var body: some View { BoardBox(padding: 12, radius: 8) { content } }
 }
 private struct RowGap: View {
-    var body: some View { Rule().padding(.vertical, 6) }
+    var body: some View { BoardRule().padding(.vertical, 6) }
 }
 
 private struct ChecksTab: View {
@@ -778,7 +778,7 @@ private struct PullSidebar: View {
         if !issues.isEmpty { items.append(AnyView(development(issues))) }
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.offset) { i, item in
-                if i > 0 { Spacer().frame(height: 14); Rule() }
+                if i > 0 { Spacer().frame(height: 14); BoardRule() }
                 Spacer().frame(height: 14)
                 item
             }

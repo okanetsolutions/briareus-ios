@@ -281,7 +281,7 @@ private struct DiffBox: View {
         }
         .padding(.horizontal, 12).frame(height: 40)
         .background(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7).fill(Theme.accent.opacity(0.06)))
-        .overlay(alignment: .bottom) { Rule() }
+        .overlay(alignment: .bottom) { BoardRule() }
     }
 }
 

@@ -10,7 +10,7 @@ struct BriareusApp: App {
 
     init() {
         // Started by ssh as its SSH_ASKPASS: asks, answers and exits before the app proper starts.
-        Askpass.runIfRequested()
+        Askpass.runIfRequested(); RemoteBoardHooks.install()
     }
 
     var body: some Scene {

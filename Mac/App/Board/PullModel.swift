@@ -533,8 +533,8 @@ final class PullModel: ObservableObject {
     func pickProfile() {
         guard !profiles.isEmpty else { return }
         let shown = shownProfile
-        let items = profiles.enumerated().map { i, p in PopupMenu.Item(title: i == 0 ? "\(p) (default)" : p, checked: p == shown) }
-        guard let chosen = PopupMenu.show(items), profiles[chosen] != shown else { return }
+        let items = profiles.enumerated().map { i, p in BoardPopupMenu.Item(title: i == 0 ? "\(p) (default)" : p, checked: p == shown) }
+        guard let chosen = BoardPopupMenu.show(items), profiles[chosen] != shown else { return }
         runWant = profiles[chosen]
         // While a request is out, its answer switches to the new pick.
         if !runBusy { runStart() }
