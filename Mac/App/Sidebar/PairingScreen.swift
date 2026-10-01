@@ -9,13 +9,13 @@ struct PairingScreen: View {
     private enum Field { case server, token }
 
     private var canConnect: Bool {
-        !store.connecting && !server.trimmingCharacters(in: .whitespaces).isEmpty && !token.trimmingCharacters(in: .whitespaces).isEmpty
+        !store.connecting && !server.isEmpty && !token.isEmpty
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Image(systemName: Glyph.symbol(0xE81E)).font(.system(size: 30)).foregroundStyle(Theme.accent)
+                Image(systemName: Glyph.symbol(0xE81E)).font(.system(size: 34)).foregroundStyle(Theme.accent)
                     .frame(width: 52, height: 52)
                     .background(RoundedRectangle(cornerRadius: 14).fill(Theme.accent.opacity(0.14)))
                     .padding(.bottom, 14)
@@ -48,7 +48,7 @@ struct PairingScreen: View {
                 }
             }
             .frame(maxWidth: 520)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, Theme.paneMargin)
             .padding(.top, 48).padding(.bottom, 40)
             .frame(maxWidth: .infinity)
         }

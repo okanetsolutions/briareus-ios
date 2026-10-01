@@ -55,15 +55,61 @@ private struct SidebarScreenFrame<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) { content() }
-                    .padding(.horizontal, Theme.sidebarMargin)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(.automatic)
+            SidebarScroll { content() }
             SidebarFooter(sessions: sessions, signOut: SidebarCommon.signOut)
         }
     }
+}
+
+/// The sidebar pane's scrolling (pane.c): the rows between 10px margins, 12px more to scroll past the end, and the
+/// dashboard's own 10px scrollbar (`::-webkit-scrollbar`, the palette's thumb, no track) in place of the system's. Once the
+/// rows overflow, the bar takes its own 10px of width instead of covering the ⚑ badge and the rows' edges.
+struct SidebarScroll<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+    @State private var contentHeight: CGFloat = 0
+    @State private var offset: CGFloat = 0
+    private let space = "sidebarScroll"
+
+    var body: some View {
+        GeometryReader { outer in
+            let visible = outer.size.height
+            let overflows = contentHeight > visible + 0.5
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    content()
+                    Color.clear.frame(height: 12)
+                }
+                .padding(.leading, Theme.sidebarMargin)
+                .padding(.trailing, Theme.sidebarMargin + (overflows ? 10 : 0))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: SidebarScrollMetrics.self, value: g.frame(in: .named(space)))
+                })
+            }
+            .coordinateSpace(name: space)
+            .scrollIndicators(.never)
+            .onPreferenceChange(SidebarScrollMetrics.self) { r in
+                if abs(r.height - contentHeight) > 0.5 { contentHeight = r.height }
+                if abs(-r.minY - offset) > 0.5 { offset = -r.minY }
+            }
+            .overlay(alignment: .topTrailing) {
+                if overflows {
+                    let total = contentHeight, maxScroll = max(total - visible, 1)
+                    let thumb = max(28, visible * visible / max(total, 1))
+                    let y = (visible - thumb) * min(max(offset, 0), maxScroll) / maxScroll
+                    RoundedRectangle(cornerRadius: 6).fill(Theme.thumb)
+                        .frame(width: 10, height: thumb)
+                        .offset(y: y)
+                        .allowsHitTesting(false)
+                }
+            }
+        }
+    }
+}
+
+private struct SidebarScrollMetrics: PreferenceKey {
+    static let defaultValue = CGRect.zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
 }
 
 /// A line of text in the sidebar (doc_text), 8px in, with the copy menu a right click on text has.

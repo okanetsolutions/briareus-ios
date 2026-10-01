@@ -14,10 +14,14 @@ struct SidebarStrip: View {
 
     var body: some View {
         HStack(spacing: Self.gap) {
+            // The label 6px in, as C draws it. The Mac's system font sets it about 6% wider than Segoe UI does, so it may
+            // use the right inset and tighten a little rather than lose "on" to an ellipsis in the 103px the icons leave.
             StripButton(active: false, action: { action(.newSession) }) {
                 Text("＋ New session").font(Theme.footnote).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
-                    .padding(.horizontal, 6).frame(maxWidth: .infinity, alignment: .leading)
+                    .allowsTightening(true).minimumScaleFactor(0.85)
+                    .padding(.leading, 6).padding(.trailing, 2).frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity)
             .help("New session")
             StripButton(active: selected == "whatsapp", action: { action(.whatsapp) }) { WhatsAppMark() }
                 .frame(width: Self.iconWidth).help("WhatsApp")
@@ -86,7 +90,7 @@ struct WhatsAppMark: View {
                 ctx.stroke(tail, with: .color(Self.green), style: StrokeStyle(lineWidth: 4, lineCap: .butt))
                 ctx.fill(Path(ellipseIn: CGRect(x: 0, y: 0, width: d, height: d)), with: .color(Self.green))
             }
-            Image(systemName: "phone.fill").font(.system(size: 9)).foregroundStyle(.white)
+            Image(systemName: "phone.fill").font(.system(size: 11)).foregroundStyle(.white)
         }
         .frame(width: d, height: d)
     }

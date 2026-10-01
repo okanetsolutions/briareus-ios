@@ -69,6 +69,8 @@ final class Navigator: ObservableObject {
     @Published var panelSession: JSON?
     /// In one column, whether the detail is the visible pane.
     @Published var narrowShowsDetail = false
+    /// The window is below the dashboard's `lg` breakpoint, one column at a time (set by the main window).
+    var isNarrow = false
 
     /// A form with unsaved changes registers here; it answers whether another screen may replace it (asking first).
     var leaveGuard: (() -> Bool)?
@@ -102,6 +104,13 @@ final class Navigator: ObservableObject {
             if top.id.hasPrefix("conversation:") { panelSession = nil }
             stack.removeLast()
         } else { narrowShowsDetail = false }
+    }
+    /// Backspace, Escape or ⌥← in the detail pane (pane.c WM_KEYDOWN): a pushed screen goes back, and in one column the
+    /// root goes back to the sidebar. False when there is nowhere to go.
+    func goBack() -> Bool {
+        if stack.count > 1 { pop(); return true }
+        if isNarrow && narrowShowsDetail && root != .placeholder { narrowShowsDetail = false; return true }
+        return false
     }
     /// Empties the detail pane after its conversation was deleted, unless a form there keeps its unsaved changes.
     func clear() {
@@ -152,7 +161,9 @@ struct PaneHeader: View {
             row(labels: false)
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
-        .frame(minHeight: subtitle != nil ? 61 : 53)
+        // pane.c refresh_header: a 40px title and subtitle, 32px buttons (or the back button), or a 22px title alone, plus
+        // `py-2.5` and the border.
+        .frame(minHeight: subtitle != nil ? 61 : !buttons.isEmpty || back != nil ? 53 : 43)
         .background(sidebar ? Theme.sidebar : Theme.canvas)
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.line).frame(height: 1) }
     }
@@ -163,10 +174,14 @@ struct PaneHeader: View {
                 Button(action: back) { Text("‹").font(Theme.body) }.buttonStyle(IconButtonStyle())
             }
             VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 4) {
+                HStack(spacing: 0) {
                     Text(title).font(Theme.headline).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
                     if let titleAction {
-                        Button(action: titleAction) { Text("✎").font(Theme.footnote) }.buttonStyle(HoverInkStyle()).help("Rename")
+                        // `#btn-edit-title`: 8px either side of the ✎, from 2px after the title.
+                        Button(action: titleAction) {
+                            Text("✎").font(Theme.footnote).padding(.horizontal, 8).frame(height: 22).contentShape(Rectangle())
+                        }
+                        .buttonStyle(HoverInkStyle()).padding(.leading, 2).help("Rename")
                     }
                 }
                 .frame(minHeight: 22)
