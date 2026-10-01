@@ -26,6 +26,10 @@ final class DashboardModel: ObservableObject {
 
     init() { restore() }
 
+    /// The screen's model while the Dashboard is on the stack, so the picks survive a session opened from it.
+    private static let keeper = FDKit.Keeper<DashboardModel>(.dashboard)
+    static func kept() -> DashboardModel { keeper.obtain(DashboardModel.init) { $0.stop() } }
+
     /// The payload drawn: only the one that answered the current window and picks.
     var shown: JSON? { data != nil && dataKey == query.key ? data : nil }
 
@@ -77,7 +81,7 @@ final class DashboardModel: ObservableObject {
 
     func pickPeriod() {
         let items = Usage.periods.enumerated().map { FDKit.Menu.Item(title: $0.element.label, checked: $0.offset == query.period) }
-        guard let chosen = FDKit.Menu.show(items), chosen != query.period else { return }
+        guard let chosen = FDKit.Menu.show(items, rightAligned: true), chosen != query.period else { return }
         DashboardModel.period = chosen
         query.period = chosen
         repick()
@@ -118,7 +122,7 @@ final class DashboardModel: ObservableObject {
 // MARK: - Screen
 
 struct DashboardScreen: View {
-    @StateObject private var model = DashboardModel()
+    @StateObject private var model = DashboardModel.kept()
     @ObservedObject private var store = Store.shared
     @State private var width: CGFloat = 0
 

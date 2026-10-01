@@ -1,6 +1,7 @@
 // What the Findings and Dashboard screens share: the width a pane's content is laid out at, text that works as a link
 // (the hand cursor of a clickable doc item), a popup menu at the pointer (TrackPopupMenu) and measured text widths.
 import AppKit
+import Combine
 import SwiftUI
 
 /// The pieces live under one name, so they cannot meet another area's own.
@@ -29,6 +30,33 @@ extension View {
 }
 
 extension FDKit {
+/// A screen's model, kept while its screen is on the navigator's stack: the Windows client keeps a screen alive under the
+/// one pushed over it (a conversation opened from it), so what was typed or picked there is still there on the way back.
+/// The SwiftUI view is rebuilt on the way back; its model is not. Released (and `release` called) once the screen leaves the
+/// stack.
+@MainActor
+final class Keeper<Model: AnyObject> {
+    private let screen: Screen
+    private var model: Model?
+    private var watch: AnyCancellable?
+    init(_ screen: Screen) { self.screen = screen }
+
+    func obtain(_ make: () -> Model, release: @escaping @MainActor (Model) -> Void) -> Model {
+        if let model { return model }
+        let made = make()
+        model = made
+        watch = Navigator.shared.$stack.sink { [weak self] stack in
+            MainActor.assumeIsolated {
+                guard let self, !stack.contains(self.screen), let kept = self.model else { return }
+                self.model = nil
+                self.watch = nil
+                release(kept)
+            }
+        }
+        return made
+    }
+}
+
 /// Text that is clicked as a link: drawn as given, with the hand cursor.
 struct LinkStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -50,7 +78,8 @@ enum Menu {
         var chosen: Int?
         @objc func pick(_ sender: NSMenuItem) { chosen = sender.tag }
     }
-    static func show(_ items: [Item]) -> Int? {
+    /// `rightAligned` puts the menu's right edge at the pointer (TPM_RIGHTALIGN), as a header button's menu opens.
+    static func show(_ items: [Item], rightAligned: Bool = false) -> Int? {
         let menu = NSMenu()
         menu.autoenablesItems = false
         let target = Target()
@@ -64,7 +93,8 @@ enum Menu {
             menu.addItem(m)
         }
         guard let window = NSApp.keyWindow ?? NSApp.mainWindow, let view = window.contentView else { return nil }
-        let point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        var point = view.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        if rightAligned { point.x = max(point.x - menu.size.width, 0) }
         menu.popUp(positioning: nil, at: point, in: view)
         return target.chosen
     }

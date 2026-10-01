@@ -47,6 +47,10 @@ final class FindingsModel: ObservableObject {
 
     init() { restore() }
 
+    /// The screen's model while the Findings screen is on the stack, so drafts survive a conversation opened from it.
+    private static let keeper = FDKit.Keeper<FindingsModel>(.findings)
+    static func kept() -> FindingsModel { keeper.obtain(FindingsModel.init) { $0.destroy() } }
+
     // MARK: Rounds and their drafts
 
     func session(_ r: Int) -> Session { all[rounds[r].index] }
@@ -151,10 +155,15 @@ final class FindingsModel: ObservableObject {
         generation += 1
         cycleStart()
     }
-    func stop() {
+    /// findings_visible(false): the reads stop; a write under way still lands, as on Windows.
+    func hide() {
         cycle?.cancel(); cycle = nil
         generation += 1
-        writeTask?.cancel()
+    }
+    /// findings_destroy: the screen left the stack, and its write goes too.
+    func destroy() {
+        hide()
+        writeTask?.cancel(); writeTask = nil
     }
 
     private func runCycle(_ gen: Int) async -> APIError? {
@@ -207,12 +216,8 @@ final class FindingsModel: ObservableObject {
         }
         recount()
     }
-    /// projects_recount_findings: the sidebar's ⚑ counts what was saved again.
-    private func recount() {
-        let list = ProjectsModel.shared.projects.isEmpty ? projects : ProjectsModel.shared.projects
-        ProjectsModel.shared.findingsWaiting = Findings.waiting(projects: list) { store.cache.value($0) }
-        post(.findingsRecount)
-    }
+    /// projects_recount_findings: the sidebar counts what was saved again, its ⚑ among it.
+    private func recount() { ProjectsModel.shared.recount() }
     /// What was saved opens at once; the server is asked for the rest.
     private func restore() {
         guard let saved = store.cache.value("projects"), let items = Project.parseList(saved) else { return }
@@ -402,7 +407,7 @@ final class FindingsModel: ObservableObject {
 // MARK: - Screen
 
 struct FindingsScreen: View {
-    @StateObject private var model = FindingsModel()
+    @StateObject private var model = FindingsModel.kept()
     @ObservedObject private var store = Store.shared
 
     var body: some View {
@@ -428,7 +433,7 @@ struct FindingsScreen: View {
             }
         }
         .task { await poll(every: 7) { await model.tick() } }
-        .onDisappear { model.stop() }
+        .onDisappear { model.hide() }
         .onReceive(NotificationCenter.default.publisher(for: .refreshScreen)) { _ in model.cycleNow() }
     }
 }
@@ -452,7 +457,7 @@ private struct OutcomeBox: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button { model.dismissOutcome(outcome.id) } label: {
-                Image(systemName: Glyph.symbol(0xE711)).font(.system(size: 10)).foregroundStyle(Theme.muted).frame(width: 18, height: 16)
+                Image(systemName: Glyph.symbol(0xE711)).font(.system(size: 12)).foregroundStyle(Theme.muted).frame(width: 18, height: 16)
             }
             .buttonStyle(FDKit.LinkStyle())
         }
@@ -714,7 +719,7 @@ private struct FindingView: View {
         if reply || delete {
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 if reply {
-                    GlyphButton(glyph: "arrowshape.turn.up.left", title: model.writing(.reply, sid, key) ? "Replying\u{2026}" : "Reply") {
+                    GlyphButton(glyph: Glyph.symbol(0xE97A), title: model.writing(.reply, sid, key) ? "Replying\u{2026}" : "Reply") {
                         model.reply(sid, round, key: key, title: title)
                     }
                 }
