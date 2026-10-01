@@ -15,7 +15,7 @@ struct SettingsSidebar: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 8)
-                    BackRow { back() }
+                    SettingsBackRow { back() }
                     Color.clear.frame(height: 16)
                     content
                 }
@@ -185,7 +185,7 @@ struct SettingsSidebar: View {
 // MARK: - Rows
 
 /// "← Back to sessions", 12px, muted until hovered.
-private struct BackRow: View {
+private struct SettingsBackRow: View {
     var action: () -> Void
     @State private var hovered = false
     var body: some View {
