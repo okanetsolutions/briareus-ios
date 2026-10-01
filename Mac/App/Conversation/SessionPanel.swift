@@ -127,7 +127,7 @@ struct SessionPanel: View {
         Group {
             if let fold {
                 Button(action: fold) {
-                    Text("\(open ? "\u{25BE}" : "\u{25B8}") \(text)").font(Theme.caption).foregroundStyle(Theme.muted).lineLimit(1)
+                    Text(verbatim: "\(open ? "\u{25BE}" : "\u{25B8}") \(text)").font(Theme.caption).foregroundStyle(Theme.muted).lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -168,7 +168,7 @@ struct SessionPanel: View {
         let draft = pr["draft"].is(true)
         let stateColor = state == "merged" ? Theme.accent : state == "closed" ? Theme.danger : draft ? Theme.muted : Theme.ok
         HStack(spacing: 8) {
-            link(url) { Text("#\(p.number)").font(Theme.caption).foregroundStyle(Theme.muted) }
+            link(url) { Text(verbatim: "#\(p.number)").font(Theme.caption).foregroundStyle(Theme.muted) }
             Badge(text: panelStateText(pr), color: stateColor, background: Theme.sidebar)
             Spacer(minLength: 0)
         }
@@ -178,9 +178,9 @@ struct SessionPanel: View {
         let files = pr["changedFiles"].number ?? 0, commits = pr["commits"].number ?? 0
         if add != nil || del != nil {
             HStack(spacing: 0) {
-                Text("+\(Int((add ?? 0).rounded(.towardZero)))").foregroundStyle(Theme.ok).padding(.trailing, 4)
-                Text("\u{2212}\(Int((del ?? 0).rounded(.towardZero)))").foregroundStyle(Theme.danger)
-                Text(" \u{00B7} \(Int(files.rounded(.towardZero))) files \u{00B7} \(Int(commits.rounded(.towardZero))) commits")
+                Text(verbatim: "+\(Int((add ?? 0).rounded(.towardZero)))").foregroundStyle(Theme.ok).padding(.trailing, 4)
+                Text(verbatim: "\u{2212}\(Int((del ?? 0).rounded(.towardZero)))").foregroundStyle(Theme.danger)
+                Text(verbatim: " \u{00B7} \(Int(files.rounded(.towardZero))) files \u{00B7} \(Int(commits.rounded(.towardZero))) commits")
                     .foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
             }
@@ -211,7 +211,7 @@ struct SessionPanel: View {
         ForEach(Array(reviews.enumerated()), id: \.offset) { _, r in
             let st = r["state"].string
             let mark = st == "approved" ? "\u{2713}" : st == "changes_requested" ? "\u{2717}" : "\u{25CB}"
-            Text("\(mark) \((st ?? "").replacingOccurrences(of: "_", with: " "))").font(Theme.caption).foregroundStyle(Theme.muted)
+            Text(verbatim: "\(mark) \((st ?? "").replacingOccurrences(of: "_", with: " "))").font(Theme.caption).foregroundStyle(Theme.muted)
                 .lineLimit(1).truncationMode(.tail).padding(.bottom, 2)
         }
         if reviews.isEmpty { Text("\u{25CB} none yet").font(Theme.caption).foregroundStyle(Theme.muted).lineLimit(1) }
@@ -312,7 +312,7 @@ struct SessionPanel: View {
                                 .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(on ? Theme.accent : Theme.lineStrong, lineWidth: 1))
                                 .overlay { if on { Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.onAccent) } }
                                 .frame(width: 12, height: 12)
-                            Text("Auto-compact \(Int((at / 1000 + 0.5).rounded(.down)))k").font(Theme.caption).foregroundStyle(Theme.muted)
+                            Text(verbatim: "Auto-compact \(Int((at / 1000 + 0.5).rounded(.down)))k").font(Theme.caption).foregroundStyle(Theme.muted)
                         }
                         .contentShape(Rectangle())
                     }

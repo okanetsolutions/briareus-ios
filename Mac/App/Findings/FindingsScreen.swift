@@ -479,7 +479,7 @@ private struct GroupView: View {
                     let r = group.rounds[0]
                     openWebURL(model.session(r).heldRoundPRURL(model.rounds[r].held))
                 } label: {
-                    Text("\(group.repo) \u{00B7} PR #\(group.pr) \u{2197}").font(Theme.bodySemibold).foregroundStyle(Theme.ink)
+                    Text(verbatim: "\(group.repo) \u{00B7} PR #\(group.pr) \u{2197}").font(Theme.bodySemibold).foregroundStyle(Theme.ink)
                         .lineLimit(1).truncationMode(.tail)
                 }
                 .buttonStyle(FDKit.LinkStyle())
@@ -630,7 +630,7 @@ private struct RoundCard: View {
             }
             .padding(.top, 6)
         } else if let at = boardDateParse(held["drafts"]["savedAt"].nonEmpty) {
-            Text("Comments saved \(formatEventTime(at))").font(Theme.caption).foregroundStyle(Theme.muted)
+            Text(verbatim: "Comments saved \(formatEventTime(at))").font(Theme.caption).foregroundStyle(Theme.muted)
                 .lineLimit(1).truncationMode(.tail).padding(.top, 6)
         }
     }
@@ -731,7 +731,7 @@ private struct FindingView: View {
         if let rp = model.repliedOn(sid, key) {
             Group {
                 if let e = rp.error {
-                    Text("Not replied: \(e)").font(Theme.caption).foregroundStyle(Theme.danger).fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: "Not replied: \(e)").font(Theme.caption).foregroundStyle(Theme.danger).fixedSize(horizontal: false, vertical: true)
                 } else if let url = rp.url {
                     Button { openWebURL(url) } label: {
                         Text("Replied \u{00B7} on the pull request \u{2197}").font(Theme.caption).foregroundStyle(Theme.muted).lineLimit(1)

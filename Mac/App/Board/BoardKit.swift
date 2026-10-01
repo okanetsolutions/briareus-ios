@@ -167,14 +167,14 @@ private struct ActionInputView: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line, lineWidth: 1))
                 .frame(minHeight: 110)
-            Text("\(action.hint). This runs a paid agent on pull request #\(number) and may write to GitHub.")
+            Text(verbatim: "\(action.hint). This runs a paid agent on pull request #\(number) and may write to GitHub.")
                 .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 if Store.shared.canTranscribe {
                     Button(voice.buttonLabel) { voice.toggle { state.text += ($0.isEmpty || state.text.isEmpty ? "" : " ") + $0 } }
                         .dashButton(.bordered).disabled(!(voice.state == .idle || voice.state == .recording))
                     if voice.state == .recording {
-                        Text("Recording \(formatClock(voice.elapsed)) · Esc discards").font(Theme.caption).foregroundStyle(Theme.muted)
+                        Text(verbatim: "Recording \(formatClock(voice.elapsed)) · Esc discards").font(Theme.caption).foregroundStyle(Theme.muted)
                     }
                 }
                 Spacer(minLength: 8)
@@ -394,7 +394,7 @@ struct CheckCounts: View {
     private func part(_ glyph: UInt32, _ n: Int, _ color: Color) -> some View {
         HStack(spacing: 2) {
             Image(systemName: Glyph.symbol(glyph)).font(.system(size: 12)).foregroundStyle(color).frame(width: 18)
-            Text("\(n)").font(Theme.subheadlineSemibold).foregroundStyle(color)
+            Text(verbatim: "\(n)").font(Theme.subheadlineSemibold).foregroundStyle(color)
         }
     }
 }

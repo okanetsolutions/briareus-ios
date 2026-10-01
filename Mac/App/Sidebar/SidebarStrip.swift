@@ -63,7 +63,7 @@ private struct StripButton<Label: View>: View {
         .onDisappear { if hovered { NSCursor.pop(); hovered = false } }
         .overlay(alignment: .topTrailing) {
             if badge > 0 {
-                Text("\(badge)").font(Theme.tinySemibold).foregroundStyle(Theme.onAccent)
+                Text(verbatim: "\(badge)").font(Theme.tinySemibold).foregroundStyle(Theme.onAccent)
                     .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16, maxHeight: 16)
                     .background(Capsule().fill(Theme.accent))
                     .offset(x: 6, y: -6)

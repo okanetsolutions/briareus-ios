@@ -155,7 +155,7 @@ struct PullFilesView: View {
 
     private func treeList(_ tree: FileTree, _ rows: [FileTree.Row]) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text("\(model.list.files.count) file\(model.list.files.count == 1 ? "" : "s")").font(Theme.captionSemibold).foregroundStyle(Theme.muted)
+            Text(verbatim: "\(model.list.files.count) file\(model.list.files.count == 1 ? "" : "s")").font(Theme.captionSemibold).foregroundStyle(Theme.muted)
                 .lineLimit(1).padding(.horizontal, 6).padding(.bottom, 5)
             ForEach(rows, id: \.node) { row in
                 let node = tree.nodes[row.node]
@@ -271,13 +271,13 @@ private struct DiffBox: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(file.filename).font(Theme.monoSmall).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
                 if let from = file.previousFilename {
-                    Text("renamed from \(from)").font(Theme.monoCaption2).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
+                    Text(verbatim: "renamed from \(from)").font(Theme.monoCaption2).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 12)
-            Text("+\(file.additions ?? 0)").font(Theme.monoSmall).foregroundStyle(Theme.ok)
+            Text(verbatim: "+\(file.additions ?? 0)").font(Theme.monoSmall).foregroundStyle(Theme.ok)
             Spacer().frame(width: 6)
-            Text("\u{2212}\(file.deletions ?? 0)").font(Theme.monoSmall).foregroundStyle(Theme.danger)
+            Text(verbatim: "\u{2212}\(file.deletions ?? 0)").font(Theme.monoSmall).foregroundStyle(Theme.danger)
         }
         .padding(.horizontal, 12).frame(height: 40)
         .background(UnevenRoundedRectangle(topLeadingRadius: 7, topTrailingRadius: 7).fill(Theme.accent.opacity(0.06)))

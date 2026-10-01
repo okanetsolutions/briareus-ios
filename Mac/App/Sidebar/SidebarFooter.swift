@@ -131,7 +131,7 @@ private struct BulkBar: View {
                 Color.clear.frame(height: 10)
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
-                        Text("\(model.picked.count) selected").font(Theme.footnote).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
+                        Text(verbatim: "\(model.picked.count) selected").font(Theme.footnote).foregroundStyle(Theme.muted).lineLimit(1).truncationMode(.tail)
                             .frame(height: 18)
                         Spacer(minLength: 8)
                         FootText(text: "Select all", font: Theme.footnote, color: model.sessions.isEmpty ? dim : Theme.muted) { model.selectAll() }

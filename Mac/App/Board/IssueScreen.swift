@@ -282,7 +282,7 @@ struct IssueScreen: View {
         }
         if open > 0 && subs.count < open && model.boardRead {
             let missing = open - subs.count
-            Text("\(missing) open sub-issue\(missing == 1 ? "" : "s") \(missing == 1 ? "is" : "are") in another repository or past the issues the board reads; GitHub lists them all.")
+            Text(verbatim: "\(missing) open sub-issue\(missing == 1 ? "" : "s") \(missing == 1 ? "is" : "are") in another repository or past the issues the board reads; GitHub lists them all.")
                 .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true).padding(.top, subs.isEmpty ? 6 : 0)
         }
     }
@@ -329,7 +329,7 @@ struct IssueScreen: View {
                 }
             }
             if let cost = runsCost(model.runs) {
-                Text("\(formatCost(cost)) spent across \(model.runs.count) session\(model.runs.count == 1 ? "" : "s"), their workers included")
+                Text(verbatim: "\(formatCost(cost)) spent across \(model.runs.count) session\(model.runs.count == 1 ? "" : "s"), their workers included")
                     .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
             }
         }

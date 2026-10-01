@@ -342,7 +342,7 @@ struct BoardScreen: View {
         let shown = rows.filter { filter.passes($0) }.count
         if filter.isOn {
             HStack {
-                Text("Showing \(shown) of \(rows.count)").font(Theme.caption).foregroundStyle(Theme.muted)
+                Text(verbatim: "Showing \(shown) of \(rows.count)").font(Theme.caption).foregroundStyle(Theme.muted)
                 Spacer(minLength: 8)
                 Button("Clear filters") { model.clearFilters() }.buttonStyle(.plain).font(Theme.caption).foregroundStyle(Theme.accent).handCursor()
             }
@@ -380,7 +380,7 @@ struct BoardScreen: View {
                         .help(a.hint)
                 }
                 if runs > 0 {
-                    Button("\(runs) run\(runs == 1 ? "" : "s") ›") { model.openRuns(pull) }.dashButton(.plain)
+                    Button(String("\(runs) run\(runs == 1 ? "" : "s") ›")) { model.openRuns(pull) }.dashButton(.plain)
                 }
             }
             .padding(.top, 8)

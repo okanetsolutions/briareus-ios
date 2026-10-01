@@ -175,7 +175,7 @@ private struct Folded<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: toggle) {
-                Text("\(open ? "\u{25BE}" : "\u{25B8}") \(summary)").font(Theme.footnote).foregroundStyle(hovered ? Theme.ink : Theme.muted)
+                Text(verbatim: "\(open ? "\u{25BE}" : "\u{25B8}") \(summary)").font(Theme.footnote).foregroundStyle(hovered ? Theme.ink : Theme.muted)
                     .lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, minHeight: 18, maxHeight: 18, alignment: .leading)
                     .contentShape(Rectangle())
@@ -240,7 +240,7 @@ private struct EventView: View, Equatable {
                 Text(event.text ?? "").font(Theme.body).foregroundStyle(Theme.ink).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(Array((event.attachments?.items ?? []).enumerated()), id: \.offset) { _, a in
-                    Text("\u{1F4CE} \(a["name"].string ?? "Attachment")").font(Theme.caption).foregroundStyle(Theme.muted)
+                    Text(verbatim: "\u{1F4CE} \(a["name"].string ?? "Attachment")").font(Theme.caption).foregroundStyle(Theme.muted)
                         .lineLimit(1).truncationMode(.tail).padding(.top, 6)
                 }
                 EventTime(event: event, trailing: true)
@@ -311,7 +311,7 @@ private struct WorkingLine: View {
             let verb = status == "queued" ? "Queued" : (status == "preparing" || status == "starting") ? "Starting up" : workingVerb(tick)
             HStack(spacing: 8) {
                 Text(workingGlyph(tick)).font(Theme.bodySemibold).foregroundStyle(Theme.accent).frame(width: 16)
-                Text("\(verb)\u{2026}").font(Theme.footnote).foregroundStyle(Theme.muted)
+                Text(verbatim: "\(verb)\u{2026}").font(Theme.footnote).foregroundStyle(Theme.muted)
             }
             .frame(height: 24)
         }

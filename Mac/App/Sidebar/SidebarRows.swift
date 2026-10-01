@@ -23,7 +23,7 @@ struct ProjectRow: View {
                 Text(name).font(Theme.subheadline).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if busy { StatusDot(status: "running") }
-                Text("\(count)").font(Theme.caption).foregroundStyle(Theme.muted)
+                Text(verbatim: "\(count)").font(Theme.caption).foregroundStyle(Theme.muted)
                 if chevron { Text("›").font(Theme.caption2).foregroundStyle(Theme.muted).frame(width: 6, alignment: .trailing) }
             }
             .padding(.horizontal, 8)

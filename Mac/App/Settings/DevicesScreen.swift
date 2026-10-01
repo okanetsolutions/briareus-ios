@@ -134,7 +134,7 @@ struct DevicesScreen: View {
     private func issuedCard(_ t: (label: String, token: String)) -> some View {
         Card(padding: 16, border: Theme.accentDim) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(t.label) is issued. Copy its token now: it is shown only this once.").font(Theme.footnote).foregroundStyle(Theme.ink)
+                Text(verbatim: "\(t.label) is issued. Copy its token now: it is shown only this once.").font(Theme.footnote).foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 14) {
                     Text(t.token).font(Theme.mono).foregroundStyle(Theme.ink).textSelection(.enabled).lineLimit(1).truncationMode(.middle)

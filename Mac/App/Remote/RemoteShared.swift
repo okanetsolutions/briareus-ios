@@ -109,7 +109,7 @@ struct RemoteServerRow: View {
                 Spacer(minLength: 8)
                 if sessions > 0 {
                     StatusDot(status: live ? "idle" : "closed")
-                    Text("\(sessions)").font(Theme.caption).foregroundStyle(Theme.muted).padding(.leading, 5)
+                    Text(verbatim: "\(sessions)").font(Theme.caption).foregroundStyle(Theme.muted).padding(.leading, 5)
                 }
             }
             .padding(.leading, 6).padding(.trailing, 8)

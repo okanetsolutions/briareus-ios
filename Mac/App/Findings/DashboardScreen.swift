@@ -191,7 +191,7 @@ struct DashboardScreen: View {
             if Usage.count(u, "turns") == 0 {
                 // An empty window still lists the projects, at zero: "which projects ran nothing?" is the question left.
                 Color.clear.frame(height: 18)
-                Text("No usage recorded in \(Usage.windowName(u, periodLabel: model.query.periodLabel))\(model.query.anyPick ? " for these filters" : "").")
+                Text(verbatim: "No usage recorded in \(Usage.windowName(u, periodLabel: model.query.periodLabel))\(model.query.anyPick ? " for these filters" : "").")
                     .font(Theme.footnote).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity)
                 Color.clear.frame(height: 18)

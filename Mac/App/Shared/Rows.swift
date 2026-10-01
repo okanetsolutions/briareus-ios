@@ -253,7 +253,7 @@ struct EpicProgress: View {
                 Capsule().fill(Theme.accent).frame(width: 70 * CGFloat(min(done, max(total, 1))) / CGFloat(max(total, 1)))
             }
             .frame(width: 70, height: 6)
-            Text("\(done)/\(total) done").font(Theme.caption2).foregroundStyle(Theme.muted)
+            Text(verbatim: "\(done)/\(total) done").font(Theme.caption2).foregroundStyle(Theme.muted)
         }
         .frame(height: 17)
     }
@@ -284,7 +284,7 @@ struct IssueRowView: View {
             if issue.isEpic { EpicProgress(done: issue.subIssuesDone, total: issue.subIssues).padding(.top, 4) }
             if !issue.labels.isEmpty { LabelChips(labels: issue.labels).padding(.top, 6) }
             if !nested, let parent = issue.parent {
-                Text("Part of \(parent.reference(repo)) \(parent.title)").font(Theme.caption).foregroundStyle(Theme.muted)
+                Text(verbatim: "Part of \(parent.reference(repo)) \(parent.title)").font(Theme.caption).foregroundStyle(Theme.muted)
                     .lineLimit(1).truncationMode(.tail).padding(.top, 4)
             }
             ForEach(Array(issue.pulls.enumerated()), id: \.offset) { _, link in LinkedRow(link: link, repo: repo).padding(.top, 4) }

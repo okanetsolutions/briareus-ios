@@ -148,7 +148,7 @@ private struct PullHeader: View {
 
     private var title: some View {
         let t = model.pr["title"].string ?? model.boardRow?.title ?? "Pull request"
-        return (Text(t + " ").foregroundStyle(Theme.ink) + Text("#\(model.number)").foregroundStyle(Theme.muted))
+        return (Text(t + " ").foregroundStyle(Theme.ink) + Text(verbatim: "#\(model.number)").foregroundStyle(Theme.muted))
             .font(Theme.title).lineSpacing(6).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
     }
 
@@ -231,7 +231,7 @@ private struct StackOverview: View {
     var stack: StackPosition
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Stack · \(stack.label(model.number))").font(Theme.footnoteSemibold).foregroundStyle(Theme.ink).lineLimit(1).padding(.horizontal, 4)
+            Text(verbatim: "Stack · \(stack.label(model.number))").font(Theme.footnoteSemibold).foregroundStyle(Theme.ink).lineLimit(1).padding(.horizontal, 4)
             BoardRule().padding(.vertical, 6)
             ForEach(stack.topFirst, id: \.self) { i in
                 let item = stack.chain[i]
@@ -387,9 +387,9 @@ private struct DiffStat: View {
     var body: some View {
         let blocks = diffstatBlocks(additions: additions, deletions: deletions)
         HStack(spacing: 0) {
-            Text("+\(additions)").font(Theme.captionSemibold).foregroundStyle(Theme.ok)
+            Text(verbatim: "+\(additions)").font(Theme.captionSemibold).foregroundStyle(Theme.ok)
             Spacer().frame(width: 4)
-            Text("\u{2212}\(deletions)").font(Theme.captionSemibold).foregroundStyle(Theme.danger)
+            Text(verbatim: "\u{2212}\(deletions)").font(Theme.captionSemibold).foregroundStyle(Theme.danger)
             Spacer().frame(width: 6)
             HStack(spacing: 2) {
                 ForEach(0..<5, id: \.self) { i in
@@ -800,7 +800,7 @@ private struct PullSidebar: View {
             VStack(spacing: 6) {
                 ForEach(model.actions, id: \.id) { a in
                     let kind: ButtonKind = row?.recommended == a.id ? .prominent : a.id == "delete-self-comments" ? .destructive : .bordered
-                    Button("\(actionIcon(a.id)) \(a.label)") { model.act(a) }
+                    Button(String("\(actionIcon(a.id)) \(a.label)")) { model.act(a) }
                         .dashButton(kind, stretch: true).disabled(model.busy || model.uncertain).help(a.hint)
                 }
             }
