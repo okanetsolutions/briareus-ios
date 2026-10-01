@@ -8,6 +8,11 @@ struct BriareusApp: App {
     @StateObject private var store = Store.shared
     @StateObject private var navigator = Navigator.shared
 
+    init() {
+        // Started by ssh as its SSH_ASKPASS: asks, answers and exits before the app proper starts.
+        Askpass.runIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup("Briareus", id: "main") {
             MainWindow()
