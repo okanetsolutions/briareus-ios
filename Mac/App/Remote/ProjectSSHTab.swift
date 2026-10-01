@@ -12,11 +12,17 @@ import SwiftUI
 struct ProjectSSHTab: View {
     var repo: String
     var showsHeader = true
-    @StateObject private var servers = RemoteServers()
+    @ObservedObject private var servers: RemoteServers
     @ObservedObject private var sessions = SSHSessions.shared
     @ObservedObject private var store = Store.shared
 
     static let listWidth: CGFloat = 260
+
+    init(repo: String, showsHeader: Bool = true) {
+        self.repo = repo
+        self.showsHeader = showsHeader
+        servers = RemoteServers.of(.ssh, repo: repo)
+    }
 
     var body: some View {
         Group {
@@ -28,9 +34,9 @@ struct ProjectSSHTab: View {
                 content
             }
         }
-        .onAppear { servers.load(repo) }
-        .onReceive(NotificationCenter.default.publisher(for: .sshServersChanged)) { _ in servers.serversChanged() }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshScreen)) { _ in servers.refresh() }
+        .onAppear { servers.revisit() }
+        // F5 and ⌘R: the board hosting the tab passes them on itself (RemoteSessions.sshRefresh).
+        .onReceive(NotificationCenter.default.publisher(for: .refreshScreen)) { _ in if showsHeader { servers.refresh() } }
     }
 
     private var content: some View {

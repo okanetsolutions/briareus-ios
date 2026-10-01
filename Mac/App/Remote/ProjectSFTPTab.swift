@@ -14,13 +14,19 @@ import UniformTypeIdentifiers
 struct ProjectSFTPTab: View {
     var repo: String
     var showsHeader = true
-    @StateObject private var servers = RemoteServers()
+    @ObservedObject private var servers: RemoteServers
     @ObservedObject private var sessions = SFTPSessions.shared
     @ObservedObject private var store = Store.shared
     @State private var lastClick: (path: String, at: Date)?
 
     static let rowHeight: CGFloat = 28
     static let indent: CGFloat = 18
+
+    init(repo: String, showsHeader: Bool = true) {
+        self.repo = repo
+        self.showsHeader = showsHeader
+        servers = RemoteServers.of(.sftp, repo: repo)
+    }
 
     var body: some View {
         Group {
@@ -32,9 +38,9 @@ struct ProjectSFTPTab: View {
                 content
             }
         }
-        .onAppear { servers.load(repo) }
-        .onReceive(NotificationCenter.default.publisher(for: .sshServersChanged)) { _ in servers.serversChanged() }
-        .onReceive(NotificationCenter.default.publisher(for: .refreshScreen)) { _ in Self.refresh(repo: repo, servers: servers) }
+        .onAppear { servers.revisit() }
+        // F5 and ⌘R: the board hosting the tab passes them on itself (RemoteSessions.sftpRefresh).
+        .onReceive(NotificationCenter.default.publisher(for: .refreshScreen)) { _ in if showsHeader { Self.refresh(repo: repo, servers: servers) } }
     }
 
     private var content: some View {
@@ -62,6 +68,13 @@ struct ProjectSFTPTab: View {
                     .background(alignment: .topLeading) {
                         Rectangle().fill(Theme.line).frame(width: 1).padding(.leading, lw + 8).padding(.bottom, 14)
                     }
+                }
+                // The whole tab takes files dropped from the Finder: those dropped off the tree's rows go to the selected
+                // folder.
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    guard let s = sessions.shown(group: repo), s.state == .ready else { return false }
+                    Self.dropped(providers, on: s, folder: Self.targetFolder(s))
+                    return true
                 }
             }
         }
@@ -113,12 +126,6 @@ struct ProjectSFTPTab: View {
                     Notice(message: "Could not connect to \(s.display).\(log.map { "\n\($0)" } ?? "")")
                     Button("Connect again") { Self.reconnect(s) }.dashButton(.bordered).padding(.top, 8)
                 }
-            }
-            // Files dropped anywhere else go to the selected folder.
-            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
-                guard s.state == .ready else { return false }
-                Self.dropped(providers, on: s, folder: Self.targetFolder(s))
-                return true
             }
         }
     }
@@ -530,15 +537,15 @@ private struct StatusLine: View {
             Text(text).font(Theme.caption).foregroundStyle(color).lineLimit(1).truncationMode(.tail)
                 .padding(.leading, 6)
             Spacer(minLength: 16)
-            if let local = download {
-                Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: local)]) } label: {
-                    Text("Show in Finder").font(Theme.captionSemibold).foregroundStyle(linkHovered ? Theme.ink : Theme.accent)
-                }
-                .buttonStyle(.plain)
-                .onHover { linkHovered = $0 }
-                .padding(.trailing, 4)
+            if download != nil {
+                Text("Show in Finder").font(Theme.captionSemibold).foregroundStyle(linkHovered ? Theme.ink : Theme.accent)
+                    .padding(.trailing, 4)
             }
         }
+        // After a download the whole line shows the file in the Finder, as on Windows.
+        .contentShape(Rectangle())
+        .onTapGesture { if let local = download { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: local)]) } }
+        .onHover { linkHovered = $0 && download != nil }
         .frame(height: 24)
     }
 }

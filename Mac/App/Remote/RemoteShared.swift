@@ -45,42 +45,84 @@ struct RemoteServer: Identifiable {
     }
 }
 
-/// The project's SSH servers, read from Settings and filtered to the project.
+/// The project's SSH servers, read from Settings and filtered to the project: one list per tab and project, kept while the
+/// app runs (as the Windows client keeps its tab's with the project's screen), so going back to the tab does not read them
+/// again from nothing.
 @MainActor
 final class RemoteServers: ObservableObject {
+    enum Kind: String { case ssh, sftp }
+
     @Published private(set) var rows: [RemoteServer] = []
     @Published private(set) var loaded = false
     @Published private(set) var error: String?
+    let kind: Kind
+    let repo: String
     private var task: Task<Void, Never>?
-    private var repo = ""
+    /// Which read is the latest: an older one's answer, arriving after ⟳ started another, is dropped.
+    private var generation = 0
 
-    func load(_ repo: String) {
-        self.repo = repo
-        if loaded || task != nil { return }
-        guard RemoteRegistry.offered else { loaded = true; return }
-        task = Task { [weak self] in
-            do {
-                let answer = try await Store.shared.call("settings_ssh_servers")
-                guard let self, !Task.isCancelled else { return }
-                self.error = nil
-                self.rows = answer["servers"].items.filter { $0["repo"].string == self.repo }.map { RemoteServer(row: $0) }
-                self.loaded = true
-                self.task = nil
-            } catch {
-                guard let self, !error.isCancellation else { return }
-                self.error = errorText(error)
-                self.loaded = true
-                self.task = nil
-            }
+    private static var all: [String: RemoteServers] = [:]
+
+    /// The list a project's SSH or SFTP sessions tab shows.
+    static func of(_ kind: Kind, repo: String) -> RemoteServers {
+        let key = "\(kind.rawValue):\(repo)"
+        if let s = all[key] { return s }
+        let s = RemoteServers(kind: kind, repo: repo)
+        all[key] = s
+        return s
+    }
+
+    /// The servers changed in Settings (servers_ssh_changed): every tab that has read them reads them again, and an SFTP
+    /// tab its folder on show too.
+    static func serversChanged() {
+        for s in all.values where s.loaded || s.task != nil {
+            if s.kind == .sftp { ProjectSFTPTab.refresh(repo: s.repo, servers: s) } else { s.refresh() }
         }
     }
+
+    private init(kind: Kind, repo: String) {
+        self.kind = kind
+        self.repo = repo
+    }
+
+    /// Reads the servers unless they have been read or are being read.
+    func load() {
+        if loaded || task != nil { return }
+        read()
+    }
+    /// The tab came back on show: what it showed stays while the servers are read again, for changes made elsewhere.
+    func revisit() {
+        if !loaded { load(); return }
+        if task == nil { read() }
+    }
+    /// ⟳: the servers read again from nothing.
     func refresh() {
         task?.cancel(); task = nil
         loaded = false
-        load(repo)
+        load()
     }
-    /// The servers changed in Settings: a tab that has read them reads them again.
-    func serversChanged() { if loaded || task != nil { refresh() } }
+
+    private func read() {
+        guard RemoteRegistry.offered else { loaded = true; return }
+        generation += 1
+        let mine = generation
+        task = Task { [weak self] in
+            let result: Result<JSON, Error>
+            do { result = .success(try await Store.shared.call("settings_ssh_servers")) } catch { result = .failure(error) }
+            guard let self, self.generation == mine else { return }
+            self.task = nil
+            switch result {
+            case .success(let answer):
+                self.error = nil
+                self.rows = answer["servers"].items.filter { $0["repo"].string == self.repo }.map { RemoteServer(row: $0) }
+                self.loaded = true
+            case .failure(let error):
+                if error.isCancellation { return }
+                self.error = errorText(error)
+                self.loaded = true
+            }
+        }
+    }
 }
 
 /// A server down the left: its glyph, its name, user@host:port, and how many sessions are open to it (with a dot, green
