@@ -69,6 +69,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // F5 reads the screen again, as on Windows.
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            // A terminal keeps its own keys, F5 and ⌘S included.
+            if event.window?.firstResponder is TerminalCanvas { return event }
             if event.keyCode == 96 /* F5 */ {
                 NotificationCenter.default.post(name: .refreshScreen, object: nil)
                 return nil
