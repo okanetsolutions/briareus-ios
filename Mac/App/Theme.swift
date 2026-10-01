@@ -180,7 +180,7 @@ enum Glyph {
         case 0xE9D5: return "checklist"
         case 0xE9D9: return "chart.bar"
         case 0xEA39: return "xmark.circle"
-        case 0xE1D3: return "mic"
+        case 0xE1D3: return "cylinder.split.1x2"
         case 0xE721: return "magnifyingglass"
         default: return "circle"
         }
