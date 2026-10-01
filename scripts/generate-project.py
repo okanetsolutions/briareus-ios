@@ -45,27 +45,31 @@ def phase(name, isa, builds): return put(name, f'{{isa = {isa}; buildActionMask 
 appgroup, appfiles, resources = files('App')
 coregroup, corefiles, _ = files('Core')
 testgroup, testfiles, _ = files('UITests')
+macgroup, macfiles, macresources = files('Mac')
 appref = put('appProduct', '{isa = PBXFileReference; explicitFileType = wrapper.application; path = Briareus.app; sourceTree = BUILT_PRODUCTS_DIR;}')
+macref = put('macProduct', '{isa = PBXFileReference; explicitFileType = wrapper.application; path = Briareus.app; sourceTree = BUILT_PRODUCTS_DIR;}')
 testref = put('testProduct', '{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = BriareusUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;}')
-products = put('Products', f'{{isa = PBXGroup; children = ({appref},{testref},); name = Products; sourceTree = "<group>";}}')
-main = put('main', f'{{isa = PBXGroup; children = ({appgroup},{coregroup},{testgroup},{products},); sourceTree = "<group>";}}')
+products = put('Products', f'{{isa = PBXGroup; children = ({appref},{macref},{testref},); name = Products; sourceTree = "<group>";}}')
+main = put('main', f'{{isa = PBXGroup; children = ({appgroup},{coregroup},{macgroup},{testgroup},{products},); sourceTree = "<group>";}}')
 base = {'IPHONEOS_DEPLOYMENT_TARGET':'17.0', 'MACOSX_DEPLOYMENT_TARGET':'14.0', 'SDKROOT':'iphoneos', 'SWIFT_VERSION':'5.0', 'CLANG_ENABLE_MODULES':'YES', 'CLANG_ENABLE_OBJC_ARC':'YES', 'ENABLE_USER_SCRIPT_SANDBOXING':'YES', 'GCC_C_LANGUAGE_STANDARD':'gnu17'}
 projectconfigs = config_list('project', base)
-appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator macosx', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks',
-    # The Mac app is its own build of the same sources, not the iPad app in a window.
+appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks',
+    # The iPhone and iPad app only: the Mac has an app of its own (Mac/), the Windows client's twin.
     'SUPPORTS_MACCATALYST':'NO', 'SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD':'NO',
     'CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]':'App/Briareus-CarPlay.entitlements',
-    **({'CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]':'App/Briareus-CarPlay.entitlements'} if CARPLAY_ON_DEVICE else {}),
-    'INFOPLIST_FILE[sdk=macosx*]':'App/Info-macOS.plist', 'CODE_SIGN_ENTITLEMENTS[sdk=macosx*]':'App/Briareus-macOS.entitlements',
-    'ENABLE_HARDENED_RUNTIME[sdk=macosx*]':'YES', 'LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]':'$(inherited) @executable_path/../Frameworks'})
+    **({'CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]':'App/Briareus-CarPlay.entitlements'} if CARPLAY_ON_DEVICE else {})})
+# The Mac app: its own sources on the client API (/api/v1), laid out as the Windows client is.
+macconfigs = config_list('mac', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'SDKROOT':'macosx', 'SUPPORTED_PLATFORMS':'macosx', 'INFOPLIST_FILE':'Mac/Info.plist', 'CODE_SIGN_ENTITLEMENTS':'Mac/Briareus.entitlements', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'ENABLE_HARDENED_RUNTIME':'YES', 'COMBINE_HIDPI_IMAGES':'YES', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/../Frameworks'})
 testconfigs = config_list('tests', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus.uitests', 'PRODUCT_NAME':'BriareusUITests', 'GENERATE_INFOPLIST_FILE':'YES', 'TEST_TARGET_NAME':'Briareus', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks @loader_path/Frameworks'})
 phases = [phase('appSources','PBXSourcesBuildPhase',appfiles+corefiles),phase('appFrameworks','PBXFrameworksBuildPhase',[]),phase('appResources','PBXResourcesBuildPhase',resources)]
 apptarget = put('appTarget', f'{{isa = PBXNativeTarget; buildConfigurationList = {appconfigs}; buildPhases = ({",".join(phases)},); buildRules = (); dependencies = (); name = Briareus; productName = Briareus; productReference = {appref}; productType = "com.apple.product-type.application";}}')
+macphases = [phase('macSources','PBXSourcesBuildPhase',macfiles),phase('macFrameworks','PBXFrameworksBuildPhase',[]),phase('macResources','PBXResourcesBuildPhase',macresources)]
+mactarget = put('macTarget', f'{{isa = PBXNativeTarget; buildConfigurationList = {macconfigs}; buildPhases = ({",".join(macphases)},); buildRules = (); dependencies = (); name = "Briareus Mac"; productName = Briareus; productReference = {macref}; productType = "com.apple.product-type.application";}}')
 proxy = put('proxy', f'{{isa = PBXContainerItemProxy; containerPortal = {ident("project")}; proxyType = 1; remoteGlobalIDString = {apptarget}; remoteInfo = Briareus;}}')
 dep = put('dep', f'{{isa = PBXTargetDependency; target = {apptarget}; targetProxy = {proxy};}}')
 phases = [phase('testSources','PBXSourcesBuildPhase',testfiles),phase('testFrameworks','PBXFrameworksBuildPhase',[]),phase('testResources','PBXResourcesBuildPhase',[])]
 testtarget = put('testTarget', f'{{isa = PBXNativeTarget; buildConfigurationList = {testconfigs}; buildPhases = ({",".join(phases)},); buildRules = (); dependencies = ({dep},); name = BriareusUITests; productName = BriareusUITests; productReference = {testref}; productType = "com.apple.product-type.bundle.ui-testing";}}')
-project = put('project', f'{{isa = PBXProject; attributes = {{LastUpgradeCheck = 1600; TargetAttributes = {{{apptarget} = {{CreatedOnToolsVersion = 16.0;}}; {testtarget} = {{CreatedOnToolsVersion = 16.0; TestTargetID = {apptarget};}};}};}}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({apptarget},{testtarget},);}}')
+project = put('project', f'{{isa = PBXProject; attributes = {{LastUpgradeCheck = 1600; TargetAttributes = {{{apptarget} = {{CreatedOnToolsVersion = 16.0;}}; {mactarget} = {{CreatedOnToolsVersion = 16.0;}}; {testtarget} = {{CreatedOnToolsVersion = 16.0; TestTargetID = {apptarget};}};}};}}; buildConfigurationList = {projectconfigs}; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base,); mainGroup = {main}; productRefGroup = {products}; projectDirPath = ""; projectRoot = ""; targets = ({apptarget},{mactarget},{testtarget},);}}')
 folder = root / 'Briareus.xcodeproj'; folder.mkdir(exist_ok=True)
 (folder/'project.pbxproj').write_text('// !$*UTF8*$!\n{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {\n'+ '\n'.join(f'{key} = {value};' for key,value in objects.items())+'\n}; rootObject = '+project+'; }\n')
 schemes = folder/'xcshareddata'/'xcschemes'; schemes.mkdir(parents=True,exist_ok=True)
@@ -77,6 +81,16 @@ appxml = reference(apptarget,'Briareus.app'); testxml = reference(testtarget,'Br
 <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{testxml}</TestableReference></Testables></TestAction>
 <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{appxml}</BuildableProductRunnable></LaunchAction>
 <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0">{appxml}</BuildableProductRunnable></ProfileAction>
+<AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
+</Scheme>
+''')
+macxml = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{mactarget}" BuildableName="Briareus.app" BlueprintName="Briareus Mac" ReferencedContainer="container:Briareus.xcodeproj"/>'
+(schemes/'Briareus Mac.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
+<Scheme LastUpgradeVersion="1600" version="1.3">
+<BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{macxml}</BuildActionEntry></BuildActionEntries></BuildAction>
+<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables></Testables></TestAction>
+<LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{macxml}</BuildableProductRunnable></LaunchAction>
+<ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0">{macxml}</BuildableProductRunnable></ProfileAction>
 <AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>
 </Scheme>
 ''')
