@@ -19,6 +19,9 @@ struct DevicesScreen: View {
     @State private var repos: Set<String> = []
     @State private var creating = false
     @State private var issued: (label: String, token: String)?
+    @State private var scrollToken = 0
+    /// The read under way; an older one's answer is dropped rather than overwriting a newer one's.
+    @State private var generation = 0
     @FocusState private var focus: Field?
     private enum Field: Hashable { case label, days }
 
@@ -28,8 +31,9 @@ struct DevicesScreen: View {
     var body: some View {
         SettingsPage(header: header,
                      unavailable: settingsUnavailable("settings_devices", path: "settings/devices", what: "Devices and clients", manage: "tokens"),
-                     scrollToken: 0) {
-            Color.clear.frame(height: 10)
+                     scrollToken: scrollToken) {
+            // One tab, drawn as the other settings forms draw theirs (the SSH server form's single tab).
+            SettingsTabs(tabs: [SettingsTabs.Tab(id: 0, title: "Devices and clients", glyph: Glyph.symbol(0xE7F4), dot: false)], open: 0) { _ in }
             if let error { NoticeBox(message: error).padding(.bottom, 16) }
             if let issued { issuedCard(issued).padding(.bottom, 16) }
             if composing { newTokenCard.padding(.bottom, 16) }
@@ -66,7 +70,7 @@ struct DevicesScreen: View {
         var facts = [Self.permissionTitle(d["permission"].string), repoList.isEmpty ? "every project" : repoList.joined(separator: ", ")]
         if let created { facts.append("issued \(formatDateAbbrev(created))") }
         if let expires { facts.append(expired ? "expired \(formatDateAbbrev(expires))" : "expires \(formatDateAbbrev(expires))") }
-        return Card {
+        return Card(radius: 6) {
             HStack(alignment: .top, spacing: 10) {
                 StatusDot(status: expired ? "" : "idle").padding(.top, 6)
                 VStack(alignment: .leading, spacing: 3) {
@@ -91,7 +95,7 @@ struct DevicesScreen: View {
     // MARK: A new token
 
     private var newTokenCard: some View {
-        Card(padding: 16) {
+        Card(padding: 16, radius: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("New token").font(Theme.subheadlineSemibold).foregroundStyle(Theme.ink).padding(.bottom, 12)
                 SettingsPair {
@@ -132,7 +136,7 @@ struct DevicesScreen: View {
     }
 
     private func issuedCard(_ t: (label: String, token: String)) -> some View {
-        Card(padding: 16, border: Theme.accentDim) {
+        Card(padding: 16, border: Theme.accentDim, radius: 6) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(verbatim: "\(t.label) is issued. Copy its token now: it is shown only this once.").font(Theme.footnote).foregroundStyle(Theme.ink)
                     .fixedSize(horizontal: false, vertical: true)
@@ -150,23 +154,30 @@ struct DevicesScreen: View {
 
     private func load() async {
         guard store.supports("settings_devices") else { loaded = true; return }
+        generation += 1
+        let mine = generation
         do {
             let r = try await store.call("settings_devices")
+            guard mine == generation else { return }
             devices = r["devices"].items
             projects = r["projects"].items
             error = nil
         } catch {
-            if !error.isCancellation { self.error = errorText(error) }
+            guard mine == generation else { return }
+            if !error.isCancellation { show(errorText(error)) }
         }
         loaded = true
     }
 
+    /// An error above the list, scrolled to, as the other settings forms show theirs.
+    private func show(_ text: String) { error = text; scrollToken += 1 }
+
     private func create() {
         guard !creating, store.supports("create_device") else { return }
         let name = label.cTrimmed
-        guard !name.isEmpty else { error = "Enter a name for the token."; return }
-        guard let n = Int(days), (1...365).contains(n) else { error = "Choose 1–365 days."; return }
-        if permission != "admin" && repos.isEmpty { error = "Select at least one project."; return }
+        guard !name.isEmpty else { show("Enter a name for the token."); return }
+        guard let n = Int(days), (1...365).contains(n) else { show("Choose 1–365 days."); return }
+        if permission != "admin" && repos.isEmpty { show("Select at least one project."); return }
         var body: JSON = ["label": .string(name), "permission": .string(permission), "days": JSON(n)]
         if permission != "admin" { body["repos"] = JSON(repos.sorted()) }
         creating = true
@@ -174,13 +185,13 @@ struct DevicesScreen: View {
             defer { creating = false }
             do {
                 let r = try await store.call("create_device", body)
-                guard let token = r["token"].nonEmpty else { error = unexpectedResponse; return }
+                guard let token = r["token"].nonEmpty else { show(unexpectedResponse); return }
                 error = nil
                 composing = false
                 issued = (r["device"]["label"].nonEmpty ?? name, token)
                 await load()
             } catch {
-                if !error.isCancellation { self.error = errorText(error) }
+                if !error.isCancellation { show(errorText(error)) }
             }
         }
     }
@@ -199,7 +210,7 @@ struct DevicesScreen: View {
                 _ = try await store.call("delete_device", ["id": .string(id)])
                 await load()
             } catch {
-                if !error.isCancellation { self.error = errorText(error) }
+                if !error.isCancellation { show(errorText(error)) }
             }
         }
     }

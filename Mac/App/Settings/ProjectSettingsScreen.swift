@@ -73,8 +73,11 @@ final class ProjectFormModel: ObservableObject {
         }
         guard let repo else { return }
         runtimesTask = Task { [weak self] in
-            guard let r = try? await Store.shared.call("runtimes", ["repo": .string(repo)]), let c = RuntimeCatalog(r) else { return }
-            self?.catalog = c
+            let r = try? await Store.shared.call("runtimes", ["repo": .string(repo)])
+            guard let self else { return }
+            // A failed read is asked again the next time the form comes up, as the C client's cleared request is.
+            self.runtimesTask = nil
+            if let r, let c = RuntimeCatalog(r) { self.catalog = c }
         }
     }
 
@@ -237,7 +240,7 @@ struct ProjectSettingsScreen: View {
     static func glyph(_ t: ProjectTab) -> String {
         switch t {
         case .project: return Glyph.symbol(0xE8B7)
-        case .database: return "cylinder.split.1x2"
+        case .database: return Glyph.symbol(0xE1D3)
         case .review: return Glyph.symbol(0xE721)
         case .orchestrator: return Glyph.symbol(0xE716)
         case .env: return Glyph.symbol(0xE8D7)

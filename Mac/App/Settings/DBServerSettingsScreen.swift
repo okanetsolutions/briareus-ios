@@ -175,7 +175,7 @@ struct DBServerSettingsScreen: View {
                         : "The database pool needs an Admin token on a server that offers it (GET /settings/db-servers).",
                      scrollToken: model.scrollToken) {
             SettingsTabs(tabs: DBServerTab.allCases.map { t in
-                SettingsTabs.Tab(id: t.rawValue, title: t.title, glyph: t == .server ? "cylinder.split.1x2" : Glyph.symbol(0xE716), dot: model.tabDot(t))
+                SettingsTabs.Tab(id: t.rawValue, title: t.title, glyph: Glyph.symbol(t == .server ? 0xE1D3 : 0xE716), dot: model.tabDot(t))
             }, open: model.tab.rawValue) { t in
                 focus = nil
                 model.tab = DBServerTab(rawValue: t) ?? .server
@@ -224,8 +224,12 @@ struct DBServerSettingsScreen: View {
         }
         field(.label)
         HStack(alignment: .top, spacing: 14) {
+            // The port's 140px stay its own even on a server whose rows carry none, as the C client's field_pair keeps them.
             field(.host).frame(maxWidth: .infinity)
-            if state.has(DBServerField.port.key) { field(.port).frame(width: 140) }
+            Group {
+                if state.has(DBServerField.port.key) { field(.port) } else { Color.clear.frame(height: 0) }
+            }
+            .frame(width: 140)
         }
         SettingsNote(text: "Host and port are unique in the pool. A label left empty is host:port.")
         Color.clear.frame(height: 8)

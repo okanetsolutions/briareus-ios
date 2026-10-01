@@ -289,15 +289,14 @@ struct SettingsFieldBox<FocusKey: Hashable>: View {
     @ViewBuilder private var box: some View {
         let focused = focus.wrappedValue == key
         if def.isMultiline {
-            // A long box grows with its lines, up to 40, and scrolls inside past them, as the dashboard's textareas do.
+            // A long box grows with its lines, up to 40, and scrolls inside past them, as the dashboard's textareas do. The
+            // edit sits 10px in from the left, 3px from the right and 8px from the top and bottom, as the C client's.
             let rows = min(max(SettingsText.lineCount(text), def.rows), 40)
-            TextEditor(text: $text)
-                .font(SettingsFonts.font(mono: def.mono))
-                .scrollContentBackground(.hidden)
+            SettingsTextArea(text: $text, mono: def.mono, enabled: enabled, onTab: onSubmit)
                 .focused(focus, equals: key)
-                .disabled(!enabled)
-                .padding(.horizontal, 5).padding(.vertical, 8)
+                .padding(.leading, 10).padding(.trailing, 3).padding(.vertical, 8)
                 .frame(height: CGFloat(rows) * SettingsFonts.lineHeight(mono: def.mono) + 16)
+                .background(Color.clear.contentShape(Rectangle()).onTapGesture { if enabled { focus.wrappedValue = key } })
                 .modifier(BoxFrame(focused: focused, enabled: enabled))
         } else {
             Group {
@@ -313,12 +312,120 @@ struct SettingsFieldBox<FocusKey: Hashable>: View {
             .focused(focus, equals: key)
             .disabled(!enabled)
             .onSubmit(onSubmit)
+            // Escape leaves the box, as the C client's edits hand the focus back to the form.
+            .onExitCommand { if focus.wrappedValue == key { focus.wrappedValue = nil } }
             .padding(.horizontal, 10)
             .frame(height: 36)
             // A click on the box around the text focuses it too.
             .background(Color.clear.contentShape(Rectangle()).onTapGesture { if enabled { focus.wrappedValue = key } })
             .modifier(BoxFrame(focused: focused, enabled: enabled))
         }
+    }
+}
+
+/// A long box's edit: an AppKit text view, so that the form scrolls under the pointer unless the box has more of its own
+/// to show (a SwiftUI TextEditor keeps the wheel to itself inside the form's ScrollView), Tab moves on to the next box
+/// rather than typing a tab, and Escape leaves the box; as the C client's subclassed EDIT controls. SwiftUI's focus
+/// reaches the text view through `.focused` on this view, both ways.
+struct SettingsTextArea: NSViewRepresentable {
+    @Binding var text: String
+    var mono: Bool
+    var enabled: Bool
+    var onTab: () -> Void
+
+    final class WheelScrollView: NSScrollView {
+        override func scrollWheel(with event: NSEvent) {
+            // Nothing past the box's own height: the wheel is the form's.
+            if let doc = documentView, doc.frame.height <= contentView.bounds.height + 0.5 {
+                if let outer = superview?.enclosingScrollView { outer.scrollWheel(with: event) } else { nextResponder?.scrollWheel(with: event) }
+            } else {
+                super.scrollWheel(with: event)
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: SettingsTextArea
+        var updating = false
+        init(_ parent: SettingsTextArea) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard !updating, let tv = notification.object as? NSTextView else { return }
+            if parent.text != tv.string { parent.text = tv.string }
+        }
+        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            switch selector {
+            case #selector(NSResponder.insertTab(_:)): parent.onTab(); return true
+            case #selector(NSResponder.insertBacktab(_:)): textView.window?.selectPreviousKeyView(nil); return true
+            case #selector(NSResponder.cancelOperation(_:)): textView.window?.makeFirstResponder(nil); return true
+            default: return false
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = WheelScrollView()
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.hasHorizontalScroller = false
+        let tv = NSTextView()
+        tv.delegate = context.coordinator
+        tv.drawsBackground = false
+        tv.isRichText = false
+        tv.importsGraphics = false
+        tv.allowsUndo = true
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.isAutomaticDashSubstitutionEnabled = false
+        tv.isAutomaticTextReplacementEnabled = false
+        tv.isAutomaticSpellingCorrectionEnabled = false
+        tv.isContinuousSpellCheckingEnabled = false
+        tv.smartInsertDeleteEnabled = false
+        tv.textContainerInset = .zero
+        tv.textContainer?.lineFragmentPadding = 0
+        tv.textContainer?.widthTracksTextView = true
+        tv.isVerticallyResizable = true
+        tv.isHorizontallyResizable = false
+        tv.autoresizingMask = [.width]
+        tv.minSize = .zero
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.insertionPointColor = NSColor(Theme.ink)
+        scroll.documentView = tv
+        apply(tv)
+        tv.string = text
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let tv = scroll.documentView as? NSTextView else { return }
+        apply(tv)
+        if tv.string != text {
+            context.coordinator.updating = true
+            let selection = tv.selectedRanges
+            tv.string = text
+            let length = (text as NSString).length
+            tv.selectedRanges = selection.map { r in
+                let range = r.rangeValue
+                let loc = min(range.location, length)
+                return NSValue(range: NSRange(location: loc, length: min(range.length, length - loc)))
+            }
+            context.coordinator.updating = false
+        }
+    }
+
+    private func apply(_ tv: NSTextView) {
+        let font = mono ? NSFont.monospacedSystemFont(ofSize: 13, weight: .regular) : NSFont.systemFont(ofSize: 15)
+        if tv.font != font { tv.font = font }
+        tv.typingAttributes[.font] = font
+        let color = NSColor(enabled ? Theme.ink : Theme.muted)
+        tv.textColor = color
+        tv.typingAttributes[.foregroundColor] = color
+        tv.isEditable = enabled
+        tv.isSelectable = true
     }
 }
 
