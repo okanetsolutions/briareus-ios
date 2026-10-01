@@ -176,7 +176,7 @@ enum Glyph {
         case 0xE930: return "checkmark.circle"
         case 0xE946: return "info.circle"
         case 0xE968: return "network"
-        case 0xE97A: return "chevron.left.forwardslash.chevron.right"
+        case 0xE97A: return "arrowshape.turn.up.left"
         case 0xE9D5: return "checklist"
         case 0xE9D9: return "chart.bar"
         case 0xEA39: return "xmark.circle"
