@@ -7,6 +7,9 @@ let package = Package(
     products: [.library(name: "BriareusCore", targets: ["BriareusCore"])],
     targets: [
         .target(name: "BriareusCore", path: "Core"),
-        .testTarget(name: "BriareusCoreTests", dependencies: ["BriareusCore"], path: "Tests")
+        .testTarget(name: "BriareusCoreTests", dependencies: ["BriareusCore"], path: "Tests"),
+        // The Mac app's core: the client API (/api/v1) and what it answers, with no UI.
+        .target(name: "BriareusMacCore", path: "Mac/Core"),
+        .testTarget(name: "BriareusMacCoreTests", dependencies: ["BriareusMacCore"], path: "MacTests")
     ]
 )
