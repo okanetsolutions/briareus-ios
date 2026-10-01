@@ -60,6 +60,21 @@ func actionIcon(_ id: String) -> String {
     default: return ""
     }
 }
+/// An errand button's label, `glyph label` as C writes it (`"%s %s"` in one 13px run, the line centred in the button). The
+/// glyph is drawn as its own 13px run centred on the label's line: inline, Apple Color Emoji's fallback box hangs 3pt under
+/// the baseline, which drops the emoji (🧹 🧪 💬 🔀) below the words, where Segoe UI Emoji sits on the line.
+struct ErrandLabel: View {
+    var id: String
+    var label: String
+    var body: some View {
+        let icon = actionIcon(id)
+        HStack(alignment: .center, spacing: 4) {
+            if !icon.isEmpty { Text(verbatim: icon).font(Theme.footnote) }
+            Text(verbatim: label).font(Theme.footnote).truncationMode(.tail)
+        }
+        .lineLimit(1)
+    }
+}
 /// The errands this app can start on a row: what the server offers for it, less what the token or server lacks.
 @MainActor
 func rowActions(catalog: JSON, pull: PullSummary?, failedChecks: Int) -> [BoardAction] {
@@ -116,7 +131,7 @@ enum BoardPopupMenu {
 enum ActionInputDialog {
     static func run(action: BoardAction, number: Int) -> String? {
         let state = InputState()
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 460, height: 300), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 651, height: 500), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         panel.title = action.label
         let finish: (Bool) -> Void = { ok in
             state.confirmed = ok
@@ -156,36 +171,59 @@ private struct ActionInputView: View {
     }
 
     private var canStart: Bool { !(state.text.cTrimmed.isEmpty && (action.input?.required ?? false)) }
+    @FocusState private var focused: Bool
 
+    /// IDD_ACTION_INPUT is 372×222 dialog units in Segoe UI 10pt, about 1.75 by 2.25 pixels a unit: the hint at the top,
+    /// the box under it, the recording line with the voice button at its right, the note, then Start and Cancel at the
+    /// bottom right. Every text is the dialog's 13px font; the hint in the text colour, the rest secondary.
     var body: some View {
         let hint = (action.input?.placeholder).flatMap { $0.isEmpty ? nil : $0 } ?? action.input?.label ?? ""
-        VStack(alignment: .leading, spacing: 10) {
-            Text(hint).font(Theme.callout).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(verbatim: hint).font(Theme.footnote).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
+                .frame(height: 22, alignment: .leading)
             TextEditor(text: $state.text)
-                .font(Theme.callout).scrollContentBackground(.hidden)
-                .padding(6)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line, lineWidth: 1))
-                .frame(minHeight: 110)
-            Text(verbatim: "\(action.hint). This runs a paid agent on pull request #\(number) and may write to GitHub.")
-                .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                .font(Theme.footnote).scrollContentBackground(.hidden)
+                .focused($focused)
+                .padding(4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Theme.field))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(focused ? Theme.accent : Theme.line, lineWidth: 1))
+                .frame(height: 247)
+                .padding(.top, 9).padding(.horizontal, 4)
             HStack(spacing: 8) {
                 if Store.shared.canTranscribe {
-                    Button(voice.buttonLabel) { voice.toggle { state.text += ($0.isEmpty || state.text.isEmpty ? "" : " ") + $0 } }
-                        .dashButton(.bordered).disabled(!(voice.state == .idle || voice.state == .recording))
-                    if voice.state == .recording {
-                        Text(verbatim: "Recording \(formatClock(voice.elapsed)) · Esc discards").font(Theme.caption).foregroundStyle(Theme.muted)
-                    }
+                    Text(verbatim: voice.state == .recording ? "Recording \(formatClock(voice.elapsed)) · Esc discards" : "")
+                        .font(Theme.footnote).foregroundStyle(Theme.muted).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button(voice.buttonLabel) { voice.toggle(append) }
+                        .dashButton(.bordered).frame(width: 192).disabled(!(voice.state == .idle || voice.state == .recording))
+                } else {
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 8)
-                Button("Cancel") { if voice.state == .recording { voice.discard() } else { finish(false) } }
-                    .dashButton(.bordered).keyboardShortcut(.cancelAction)
-                Button("Start") { finish(true) }.dashButton(.prominent).disabled(!canStart)
             }
+            .frame(height: 40)
+            .padding(.top, 18)
+            Text(verbatim: "\(action.hint). This runs a paid agent on pull request #\(number) and may write to GitHub.")
+                .font(Theme.footnote).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
+                .frame(minHeight: 50, alignment: .topLeading)
+                .padding(.top, 18)
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                Button("Start") { finish(true) }.dashButton(.prominent, stretch: true).frame(width: 98).disabled(!canStart)
+                Button("Cancel") { finish(false) }.dashButton(.bordered, stretch: true).frame(width: 98).keyboardShortcut(.cancelAction)
+            }
+            .padding(.top, 12)
         }
-        .padding(16)
-        .frame(width: 460)
+        .padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 16)
+        .frame(width: 651)
         .background(Theme.canvas)
+        .onAppear { focused = true }
+    }
+
+    /// A transcript joins the box as append_control_text joins it: a space first unless the box is empty or ends in one.
+    private func append(_ text: String) {
+        guard !text.isEmpty else { return }
+        let gap = state.text.isEmpty || state.text.last.map { $0 == " " || $0 == "\n" || $0 == "\t" } == true ? "" : " "
+        state.text += gap + text
     }
 }
 

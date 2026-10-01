@@ -201,8 +201,12 @@ final class PullModel: ObservableObject {
         Store.shared.cache.store(v, "actions")
         rebuildActions()
     }
+    /// The newest read wins: C cancels the read in flight before each new one, so an older answer never replaces it.
+    private var sessionsGen = 0
     func loadSessions() async {
-        guard let v = await boardCall("sessions", ["repo": .string(repo)]).value, let all = Session.parseList(v) else { return }
+        sessionsGen += 1
+        let gen = sessionsGen
+        guard let v = await boardCall("sessions", ["repo": .string(repo)]).value, gen == sessionsGen, let all = Session.parseList(v) else { return }
         runs = all.filter { $0.pullNumber == number }
         runsRead = true
         if runPending { runPending = false; runResume() }
@@ -346,16 +350,10 @@ final class PullModel: ObservableObject {
         Store.shared.supports("merge_pull") && pr["state"].string == "open" && !pr["draft"].is(true)
             && pr["headSha"].string != nil && pr["baseRef"].string != nil
     }
-    /// Squash-merges after a confirmation that says what GitHub reports standing in the way.
+    /// Squash-merges straight away, as the Windows client's Merge button does: no confirmation, the head it was shown
+    /// with (`headSha`) guarding against a push meanwhile, and GitHub's refusal shown under the title.
     func merge() {
         guard !merging, let head = pr["headSha"].string, let base = pr["baseRef"].string else { return }
-        let warnings = mergeWarnings(mergeable: pr["mergeable"], state: pr["mergeableState"].string)
-        var message = warnings.joined(separator: "\n")
-        message += (message.isEmpty ? "" : "\n\n") + "It is squash-merged into \(base)."
-        dialogOpen = true
-        let ok = Dialogs.confirm("Merge pull request #\(number)?", message, continueLabel: "Merge", destructive: !warnings.isEmpty)
-        dialogOpen = false
-        guard ok, !merging else { return }
         merging = true; mergeError = nil
         let args: JSON = ["repo": .string(repo), "pr": JSON(number), "headSha": .string(head), "baseRef": .string(base), "method": "squash"]
         Task {

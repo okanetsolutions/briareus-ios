@@ -677,7 +677,7 @@ private struct FindingsTab: View {
             }
             if model.solveFindingsOffered {
                 let fixes = findingsToFix(model.findings)
-                Button(model.busy ? "Starting…" : fixes > 0 ? "Solve findings · \(fixes) to fix" : "Solve findings") { model.solveFindings() }
+                Button(model.busy ? "Starting…" : fixes > 0 ? String("Solve findings · \(fixes) to fix") : "Solve findings") { model.solveFindings() }
                     .dashButton(.prominent).disabled(model.busy || model.uncertain || model.deciding != nil).padding(.top, 12)
                 Text(fixes > 0 ? "Starts a paid session that addresses the findings marked Fix, pushes the fixes and has them reviewed again."
                                : "Starts a paid session that addresses the open findings, pushes the fixes and has them reviewed again. Mark what to fix first to narrow it down.")
@@ -800,7 +800,7 @@ private struct PullSidebar: View {
             VStack(spacing: 6) {
                 ForEach(model.actions, id: \.id) { a in
                     let kind: ButtonKind = row?.recommended == a.id ? .prominent : a.id == "delete-self-comments" ? .destructive : .bordered
-                    Button(String("\(actionIcon(a.id)) \(a.label)")) { model.act(a) }
+                    Button { model.act(a) } label: { ErrandLabel(id: a.id, label: a.label) }
                         .dashButton(kind, stretch: true).disabled(model.busy || model.uncertain).help(a.hint)
                 }
             }

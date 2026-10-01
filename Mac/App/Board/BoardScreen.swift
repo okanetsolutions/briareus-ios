@@ -121,9 +121,14 @@ final class BoardModel: ObservableObject {
             return e
         }
     }
+    /// The newest read wins: after a start, C cancels the read in flight and reads again.
+    private var runsGen = 0
     func loadRuns() async {
+        runsGen += 1
+        let gen = runsGen
         readingRuns = true
         let r = await boardCall("sessions", ["repo": .string(repo)])
+        guard gen == runsGen else { return }
         readingRuns = false
         if let v = r.value, let list = Session.parseList(v) { runs = list }
     }
@@ -287,16 +292,17 @@ struct BoardScreen: View {
             buttons.append(HeaderButton(glyph: Glyph.symbol(0xE72C),
                                         tip: model.tab == .ssh ? "Read the project's SSH servers again" : "Read the servers and the folder on show again") { model.refresh() })
         default:
-            // The pickers, as the dashboard's selects, and ⟳.
+            // The pickers, as the dashboard's selects, and ⟳. C gives them no glyph; the SF Symbol stands in only when the
+            // header is too narrow for labels, where C would draw an empty square.
             let f = model.filter
             buttons.append(HeaderButton(glyph: "line.3.horizontal.decrease", label: "\(f.author.isEmpty ? "All authors" : f.author) ▾",
-                                        tip: "Filter by author", enabled: model.loaded) { model.pick(.author) })
+                                        enabled: model.loaded) { model.pick(.author) })
             if model.tab == .pulls {
                 buttons.append(HeaderButton(glyph: "person.crop.circle.badge.checkmark", label: "\(f.reviewer.isEmpty ? "All reviewers" : f.reviewer) ▾",
-                                            tip: "Filter by reviewer", enabled: model.loaded) { model.pick(.reviewer) })
+                                            enabled: model.loaded) { model.pick(.reviewer) })
             }
             buttons.append(HeaderButton(glyph: "tag", label: "\(f.label.isEmpty ? "All labels" : f.label) ▾",
-                                        tip: "Filter by label", enabled: model.loaded) { model.pick(.label) })
+                                        enabled: model.loaded) { model.pick(.label) })
             buttons.append(refresh)
         }
         return PaneHeader(title: model.title, subtitle: sub, status: status, buttons: buttons)
@@ -374,7 +380,9 @@ struct BoardScreen: View {
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 ForEach(actions, id: \.id) { a in
                     let starting = model.busy && model.startingNumber == pull.number && model.startingID == a.id
-                    Button(starting ? "Starting…" : "\(actionIcon(a.id)) \(a.label)") { model.act(pull, a) }
+                    Button { model.act(pull, a) } label: {
+                        if starting { Text(verbatim: "Starting…") } else { ErrandLabel(id: a.id, label: a.label) }
+                    }
                         .dashButton(pull.recommended == a.id ? .prominent : .bordered)
                         .disabled(model.busy || model.uncertain)
                         .help(a.hint)

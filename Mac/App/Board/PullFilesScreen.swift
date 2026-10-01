@@ -33,11 +33,16 @@ final class PullFilesModel: ObservableObject {
         if !confirmed && list.pr.isNull, let saved = Store.shared.cache.value(key), let l = PullFileList(saved) { list = l }
         guard let args = (confirmed ? list : PullFileList()).arguments(repo: repo, number: number) else { return }
         loading = true
+        gen += 1
+        let mine = gen
         task = Task { [weak self] in
             let r = await boardCall("pull_files", args)
-            self?.done(r)
+            // A read cancelled for a newer one (refresh) must not touch what the newer one is doing.
+            guard let self, mine == self.gen else { return }
+            self.done(r)
         }
     }
+    private var gen = 0
     private func done(_ r: Result<JSON, APIError>) {
         loading = false
         switch r {
@@ -65,7 +70,7 @@ final class PullFilesModel: ObservableObject {
             if list.nextPage == nil { Store.shared.cache.store(list.json, key) }
         }
     }
-    func cancel() { task?.cancel(); task = nil; loading = false }
+    func cancel() { task?.cancel(); task = nil; gen += 1; loading = false }
     func refresh() {
         cancel()
         list = PullFileList(); changed = false; confirmed = true
@@ -303,7 +308,7 @@ private struct DiffRow: View {
             let tint: Color = line.kind == .added ? Theme.ok : line.kind == .removed ? Theme.danger : Theme.raise
             let n = line.newLine != 0 ? line.newLine : line.oldLine
             HStack(alignment: .top, spacing: 0) {
-                Text(n != 0 ? "\(n)" : "").font(Theme.monoCaption2).foregroundStyle(Theme.tertiary).frame(width: 40, alignment: .trailing)
+                Text(verbatim: n != 0 ? String(n) : "").font(Theme.monoCaption2).foregroundStyle(Theme.tertiary).frame(width: 40, alignment: .trailing)
                 Spacer().frame(width: 8)
                 Text(line.kind == .added ? "+" : line.kind == .removed ? "\u{2212}" : " ").font(Theme.monoSmall)
                     .foregroundStyle(line.kind == .context ? Theme.muted : tint).frame(width: 14, alignment: .leading)
