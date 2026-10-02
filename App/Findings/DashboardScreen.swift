@@ -219,7 +219,7 @@ struct DashboardScreen: View {
     }
 
     private var adminNeeded: String {
-        "This server does not offer the usage ledger to this device. An Admin token reads every project's spend; create one on the web dashboard under Settings → Devices and clients."
+        "This server does not offer the usage ledger to this device. An Admin token reads every project's spend; issue one on the server with `npm run create-token`."
     }
 
     @ViewBuilder private func page(_ u: JSON) -> some View {
@@ -495,7 +495,9 @@ private struct UsageBars: View {
                 }
             }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 5)) { _ in
+                // A label on the buckets themselves, at most six: automatic ticks on a short window fall between
+                // days and repeat each one's name.
+                AxisMarks(values: stride(from: 0, to: points.count, by: max(1, (points.count + 5) / 6)).map { points[$0].date }) { _ in
                     AxisValueLabel(format: month ? .dateTime.month(.abbreviated).year(.twoDigits) : .dateTime.month(.abbreviated).day())
                 }
             }

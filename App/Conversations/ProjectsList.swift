@@ -28,7 +28,7 @@ struct ProjectsList: View {
             }
             if model.loaded && model.projects.isEmpty && model.error == nil {
                 ContentUnavailableView("No projects", systemImage: "folder",
-                                       description: Text("Grant this device access to a project in web Settings, or add one in Settings \u{2192} Projects."))
+                                       description: Text("Issue this device a token that includes a project, or add one in Settings \u{2192} Projects."))
                     .listRowBackground(Color.clear)
             }
             if !model.loaded {

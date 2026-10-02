@@ -68,7 +68,7 @@ struct IssueScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
-        .navigationTitle("#\(issue.number)").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(Text(verbatim: "#\(issue.number)")).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if safeWebURL(issue.url) {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -91,7 +91,7 @@ struct IssueScreen: View {
             guard store.supports("sessions") else { return }
             await poll(every: ProjectFeed.sessionsEvery) { await reading { try await feed.loadSessions() } }
         }
-        .confirmationDialog("Start a paid session on issue #\(issue.number)?", isPresented: $confirmingStart, titleVisibility: .visible) {
+        .confirmationDialog("Start a paid session on issue #\(issue.number)?" as String, isPresented: $confirmingStart, titleVisibility: .visible) {
             Button("Start session") { Task { await start() } }
         } message: {
             Text(runActive ? "A session is already working on this issue." : "It runs a paid agent on this project’s configured model.")
@@ -373,7 +373,7 @@ private struct CloseCommentSheet: View {
                 Section {
                     TextField("Why it is being closed", text: $text, axis: .vertical).lineLimit(5...14).focused($focused)
                 } footer: {
-                    Text("Posted on #\(number) before it is closed as \(reason). You confirm the close next.")
+                    Text(verbatim: "Posted on #\(number) before it is closed as \(reason). You confirm the close next.")
                 }
                 .listRowBackground(Theme.row)
             }

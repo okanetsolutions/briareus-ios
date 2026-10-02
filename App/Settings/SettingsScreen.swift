@@ -101,7 +101,7 @@ struct SettingsScreen: View {
             Button("Forget this connection", role: .destructive) { confirm = .forget }
             if let error { ErrorNotice(message: error) }
         } footer: {
-            Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this device only; revoke it later in web Settings. Neither action stops running agents.")
+            Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this device only; revoke it later on the server with `npm run create-token -- --revoke`. Neither action stops running agents.")
         }
         .listRowBackground(Theme.row)
         .disabled(busy)

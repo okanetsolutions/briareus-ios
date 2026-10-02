@@ -125,7 +125,7 @@ struct PullFilesScreen: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden).background(Theme.background)
-        .navigationTitle("#\(number) files").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(Text(verbatim: "#\(number) files")).navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.refresh() }
         .task { if !model.loading && model.error == nil { await model.load() } }
     }

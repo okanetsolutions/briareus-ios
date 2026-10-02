@@ -40,7 +40,7 @@ struct PullScreen: View {
                 list
             }
         }
-        .navigationTitle("#\(number)").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(Text(verbatim: "#\(number)")).navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .task {
             await poll(every: 30) {
@@ -72,7 +72,7 @@ struct PullScreen: View {
                 Task { if let s = await errands.run(p) { navigate(.conversation(id: s.id, session: s.raw)) } }
             }
         } message: { _ in
-            Text("The agent addresses the findings on PR #\(number), pushes the fixes to its branch and has them reviewed again. Uses the provider and model configured for this project.")
+            Text(verbatim: "The agent addresses the findings on PR #\(number), pushes the fixes to its branch and has them reviewed again. Uses the provider and model configured for this project.")
         }
         .confirmationDialog("Permanently delete this conversation and its transcript?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
