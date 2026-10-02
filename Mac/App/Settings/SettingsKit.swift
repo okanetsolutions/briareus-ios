@@ -237,7 +237,7 @@ private struct BoxFrame: ViewModifier {
     }
 }
 
-/// A hint under a box: 12px muted, wrapped; `rich` reads `code` spans, as the provider form's hints have them.
+/// A hint's text: 12px muted, wrapped; `rich` reads `code` spans, as the provider form's hints have them.
 struct SettingsHint: View {
     var text: String
     var rich = false
@@ -253,6 +253,41 @@ struct SettingsHint: View {
     }
 }
 
+/// A field's label, with a help icon after it when the field has a hint: hovering the icon shows the hint in a popover.
+struct SettingsFieldLabel: View {
+    var label: String
+    var hint: String?
+    var rich = false
+    var enabled = true
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(label).font(Theme.footnote).foregroundStyle(enabled ? Theme.ink : Theme.muted).lineLimit(1)
+            if let hint, !hint.isEmpty { SettingsHelpIcon(text: hint, rich: rich) }
+        }
+        .padding(.bottom, 6)
+    }
+}
+
+/// A small question mark whose hint shows in a popover while the pointer is over it.
+struct SettingsHelpIcon: View {
+    var text: String
+    var rich = false
+    @State private var shown = false
+    var body: some View {
+        Image(systemName: "questionmark.circle")
+            .font(.system(size: 11))
+            .foregroundStyle(shown ? Theme.ink : Theme.muted)
+            .contentShape(Rectangle())
+            .onHover { shown = $0 }
+            .popover(isPresented: $shown, arrowEdge: .top) {
+                SettingsHint(text: text, rich: rich)
+                    .frame(width: 300, alignment: .leading)
+                    .padding(12)
+            }
+            .accessibilityLabel(Text(text))
+    }
+}
+
 /// A note between the fields, with the space after it.
 struct SettingsNote: View {
     var text: String
@@ -261,7 +296,7 @@ struct SettingsNote: View {
     var body: some View { SettingsHint(text: text, rich: rich).padding(.bottom, after) }
 }
 
-/// A labelled box with its text, and the hint under it, then 14px before the next; as the forms' `field()`.
+/// A labelled box with its text, the hint behind a help icon by the label, then 14px before the next; as the forms' `field()`.
 struct SettingsFieldBox<FocusKey: Hashable>: View {
     var def: SettingsField
     @Binding var text: String
@@ -277,10 +312,8 @@ struct SettingsFieldBox<FocusKey: Hashable>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(def.label).font(Theme.footnote).foregroundStyle(enabled ? Theme.ink : Theme.muted).lineLimit(1)
-                .padding(.bottom, 6)
+            SettingsFieldLabel(label: def.label, hint: shownHint, rich: rich, enabled: enabled)
             box
-            if let shownHint { SettingsHint(text: shownHint, rich: rich).padding(.top, 6) }
         }
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -481,7 +514,7 @@ struct SettingsSelect: View {
     }
 }
 
-/// A labelled select with its hint, then 14px; as select_box / ssh_select.
+/// A labelled select, its hint behind a help icon by the label, then 14px; as select_box / ssh_select.
 struct SettingsLabeledSelect: View {
     var label: String
     var text: String
@@ -490,9 +523,8 @@ struct SettingsLabeledSelect: View {
     var action: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(label).font(Theme.footnote).foregroundStyle(enabled ? Theme.ink : Theme.muted).lineLimit(1).padding(.bottom, 6)
+            SettingsFieldLabel(label: label, hint: hint, enabled: enabled)
             SettingsSelect(text: text, enabled: enabled, action: action)
-            if let hint { SettingsHint(text: hint).padding(.top, 6) }
         }
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
