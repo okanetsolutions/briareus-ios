@@ -197,7 +197,6 @@ struct NewConversationSheet: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Monogram(text: title, size: 28)
                     Text(title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                     Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.tertiary)
                 }
@@ -206,7 +205,6 @@ struct NewConversationSheet: View {
             .accessibilityLabel("Project: \(title)")
         } else {
             HStack(spacing: 10) {
-                Monogram(text: title, size: 28)
                 Text(title).font(.subheadline.weight(.medium))
             }
         }

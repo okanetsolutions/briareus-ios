@@ -73,20 +73,6 @@ struct ErrorNotice: View {
     }
 }
 
-/// Square monogram used for projects so the list scans quickly.
-struct Monogram: View {
-    let text: String
-    var size: CGFloat = 34
-    var body: some View {
-        let letter = text.split(separator: "/").last?.first.map { String($0).uppercased() } ?? "?"
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(Theme.accent.opacity(0.14))
-            .frame(width: size, height: size)
-            .overlay { Text(letter).font(.system(size: size * 0.46, weight: .semibold, design: .serif)).foregroundStyle(Theme.accent) }
-            .accessibilityHidden(true)
-    }
-}
-
 // MARK: - Markdown
 
 /// A reply's Markdown, on the core's parser (Mac/Core/Markdown.swift, the Windows client's): headings, lists and task

@@ -88,7 +88,7 @@ struct SettingsScreen: View {
                     Label("All projects", systemImage: "square.stack.3d.up")
                 } else {
                     ForEach(device.repos, id: \.self) { repo in
-                        HStack(spacing: 10) { Monogram(text: repo, size: 26); Text(repo).textSelection(.enabled) }
+                        Text(repo).textSelection(.enabled)
                     }
                 }
             }
@@ -276,7 +276,6 @@ private struct SettingsProjectRow: View {
     var body: some View {
         let repo = row["repo"].string ?? ""
         HStack(spacing: 12) {
-            Monogram(text: repo, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row["label"].nonEmpty ?? repo).font(.body).lineLimit(1)
                 HStack(spacing: 6) {

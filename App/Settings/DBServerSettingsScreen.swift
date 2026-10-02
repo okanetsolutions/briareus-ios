@@ -275,7 +275,6 @@ struct DBServerSettingsScreen: View {
             ForEach(Array(claiming.enumerated()), id: \.offset) { _, p in
                 let name = p["label"].nonEmpty ?? p["repo"].nonEmpty ?? "Project"
                 HStack(spacing: 10) {
-                    Monogram(text: p["repo"].string ?? name, size: 26)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(name)
                         if let db = p["dbPoolDatabase"].nonEmpty {

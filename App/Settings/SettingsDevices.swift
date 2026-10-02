@@ -175,7 +175,6 @@ struct NewDeviceTokenSheet: View {
                             if repos.contains(repo) { repos.remove(repo) } else { repos.insert(repo) }
                         } label: {
                             HStack(spacing: 10) {
-                                Monogram(text: repo, size: 26)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(p["label"].nonEmpty ?? repo).foregroundStyle(.primary)
                                     if p["label"].nonEmpty != nil { Text(repo).font(.caption).foregroundStyle(.secondary) }

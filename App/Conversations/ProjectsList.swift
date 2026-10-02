@@ -65,7 +65,6 @@ private struct ProjectRowLabel: View {
         let working = feed.sessions.filter(\.isActive).count
         let count = feed.sessions.count
         HStack(spacing: 12) {
-            Monogram(text: project.title)
             VStack(alignment: .leading, spacing: 2) {
                 Text(project.title).font(.body.weight(.medium)).lineLimit(1)
                 if project.title != project.repo {
