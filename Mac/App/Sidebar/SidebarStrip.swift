@@ -1,8 +1,8 @@
 // The strip along the top of the sidebar (screen_projects.c sidebar_top): ＋ New session, then WhatsApp, Slack, 📊, ⚑ with
-// its count, and ⚙, as 26px squares. WhatsApp's and Slack's marks are drawn, as no font has them.
+// its count, as 26px squares (⚙ Settings is at the foot's left). WhatsApp's and Slack's marks are drawn, as no font has them.
 import SwiftUI
 
-enum StripAction { case newSession, whatsapp, slack, dashboard, findings, settings }
+enum StripAction { case newSession, whatsapp, slack, dashboard, findings }
 
 struct SidebarStrip: View {
     /// The detail pane's root id, for the WhatsApp, Slack, 📊 and ⚑ switches' accent.
@@ -15,7 +15,7 @@ struct SidebarStrip: View {
     var body: some View {
         HStack(spacing: Self.gap) {
             // The label 6px in, as C draws it. The Mac's system font sets it about 6% wider than Segoe UI does, so it may
-            // use the right inset and tighten a little rather than lose "on" to an ellipsis in the 103px the icons leave.
+            // use the right inset and tighten a little rather than lose "on" to an ellipsis in the width the icons leave.
             StripButton(active: false, action: { action(.newSession) }) {
                 Text("＋ New session").font(Theme.footnote).foregroundStyle(Theme.ink).lineLimit(1).truncationMode(.tail)
                     .allowsTightening(true).minimumScaleFactor(0.85)
@@ -31,8 +31,6 @@ struct SidebarStrip: View {
                 .frame(width: Self.iconWidth).help("Dashboard")
             StripButton(active: selected == "findings", badge: waiting, action: { action(.findings) }) { emoji("⚑", active: selected == "findings") }
                 .frame(width: Self.iconWidth).help("Findings")
-            StripButton(active: false, action: { action(.settings) }) { emoji("⚙", active: false) }
-                .frame(width: Self.iconWidth).help("Settings")
         }
         .frame(height: Self.height)
     }
