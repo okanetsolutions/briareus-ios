@@ -218,6 +218,17 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try session(#","prStatus":{"number":9,"state":"open","checks":{"passed":4,"failed":1,"pending":0}}"#).pullBadge,
                        "PR #9 open · ✓4 ✗1")
     }
+    func testPullToneFollowsStateThenChecks() throws {
+        func tone(_ pr: String) throws -> String? {
+            try JSONDecoder().decode(Session.self, from: Data(#"{"id":"s","status":"idle","prStatus":\#(pr)}"#.utf8)).pullTone
+        }
+        XCTAssertNil(try tone("null"))
+        XCTAssertEqual(try tone(#"{"number":9,"state":"merged","checks":{"failed":2}}"#), "merged")
+        XCTAssertEqual(try tone(#"{"number":9,"state":"closed"}"#), "closed")
+        XCTAssertEqual(try tone(#"{"number":9,"state":"open","checks":{"passed":3,"failed":1,"pending":2}}"#), "failing")
+        XCTAssertEqual(try tone(#"{"number":9,"state":"open","checks":{"passed":3,"pending":2}}"#), "pending")
+        XCTAssertEqual(try tone(#"{"number":9,"state":"open","checks":null}"#), "passing")
+    }
     func testActiveRunsAreCountedPerPullRequest() throws {
         let data = Data(#"[{"id":"a","status":"running","startedOnPr":4},{"id":"b","status":"queued","prStatus":{"number":4}},{"id":"c","status":"idle","startedOnPr":4},{"id":"d","status":"closed","startedOnPr":7},{"id":"e","status":"preparing","startedOnPr":9},{"id":"f","status":"running"}]"#.utf8)
         XCTAssertEqual(Session.activeRuns(try JSONDecoder().decode([Session].self, from: data)), [4: 2, 9: 1])
