@@ -122,12 +122,13 @@ struct SessionDetailsSheet: View {
             return error as? APIError
         }
     }
-    /// Saved as the Mac saves it, with the board's row of the pull request kept.
+    /// Saved as the pull request screen saves it, keeping what that screen read beside it (its board row, stack and
+    /// description).
     private func save() {
         guard let p = pull, !pr.isNull else { return }
         let key = cacheKey(p)
-        var saved: JSON = ["pr": pr, "findings": findings, "row": .null]
-        if let old = store.cache.value(key), !old["row"].isNull { saved["row"] = old["row"] }
+        var saved = store.cache.value(key).flatMap { $0.isObject ? $0 : nil } ?? [:]
+        saved["pr"] = pr; saved["findings"] = findings
         store.cache.store(saved, key)
     }
     private func decide(_ key: String, _ decision: String?) {
