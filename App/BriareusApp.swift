@@ -19,7 +19,12 @@ struct BriareusApp: App {
             .environmentObject(store)
             .task { await store.restore() }
             // Polling stops while the app is out of sight; the car's screen keeps it going on its own.
-            .onChange(of: phase, initial: true) { _, now in store.active = now == .active || CarScreen.connected }
+            .onChange(of: phase, initial: true) { _, now in
+                store.active = now == .active || CarScreen.connected
+                // The screen stays on while the app is open, as an agent's work is watched rather than touched; iOS
+                // locks it again on its own schedule once the app leaves the front.
+                UIApplication.shared.isIdleTimerDisabled = now == .active
+            }
         }
     }
 }
