@@ -147,6 +147,8 @@ struct APIRoute: Sendable {
 
     // Every call the app makes, on the /api/v1 route that answers it.
     static let all: [APIRoute] = [
+        // The token itself: revoking it signs this device out on the server (the iPhone app's Settings).
+        .init(name: "revoke_token", method: "DELETE", path: "token"),
         // Projects
         .init(name: "projects", method: "GET", path: "projects"),
         .init(name: "branches", method: "GET", path: "branches"),

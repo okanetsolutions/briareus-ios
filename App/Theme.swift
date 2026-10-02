@@ -13,15 +13,9 @@ enum Theme {
     static let danger = Color(light: 0xC0392B, dark: 0xE5776A)
     static let warning = Color(light: 0xB7791F, dark: 0xE3B25C)
 
-    /// Behind a list row: a card on the phone, nothing on a Mac, whose lists are plain.
-    static var row: some View { row(selected: false) }
-    @ViewBuilder static func row(selected: Bool) -> some View {
-        #if os(macOS)
-        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(selected ? accent.opacity(0.18) : .clear).padding(.horizontal, 6)
-        #else
-        selected ? accent.opacity(0.16) : elevated
-        #endif
-    }
+    /// Behind a list row: a card, tinted while an iPad's right-hand side shows it.
+    static var row: Color { row(selected: false) }
+    static func row(selected: Bool) -> Color { selected ? accent.opacity(0.16) : elevated }
 
     static func statusColor(_ status: String) -> Color {
         switch status {
@@ -36,14 +30,10 @@ enum Theme {
 
 extension Color {
     init(light: UInt32, dark: UInt32) {
-        func rgb(_ hex: UInt32) -> PlatformColor {
-            PlatformColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+        func rgb(_ hex: UInt32) -> UIColor {
+            UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
         }
-        #if os(macOS)
-        self.init(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? rgb(dark) : rgb(light) })
-        #else
         self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) })
-        #endif
     }
 }
 
@@ -99,46 +89,94 @@ struct Monogram: View {
 
 // MARK: - Markdown
 
-/// Equal sources draw the same, so a screen redrawn around a reply leaves the reply as it is.
+/// A reply's Markdown, on the core's parser (Mac/Core/Markdown.swift, the Windows client's): headings, lists and task
+/// boxes, quotes, code, rules and tables. Equal sources draw the same, so a screen redrawn around a reply leaves it be.
 struct MarkdownText: View, Equatable {
     let source: String
     init(_ source: String) { self.source = source }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            ForEach(Array(MarkdownBlock.parse(source).enumerated()), id: \.offset) { _, block in
-                switch block {
-                case .paragraph(let text):
-                    Text(inline(text))
-                case .heading(let level, let text):
-                    Text(inline(text)).font(level == 1 ? .title3.bold() : level == 2 ? .headline : .subheadline.bold())
+            ForEach(Array(Markdown.parse(source).enumerated()), id: \.offset) { _, block in
+                switch block.kind {
+                case .paragraph:
+                    Text(inlineMarkdown(block.text))
+                case .heading:
+                    Text(inlineMarkdown(block.text)).font(block.level == 1 ? .title3.bold() : block.level == 2 ? .headline : .subheadline.bold())
                         .padding(.top, 4)
-                case .bullet(let indent, let marker, let text):
+                case .bullet:
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(marker).foregroundStyle(.secondary).monospacedDigit()
-                        Text(inline(text))
-                    }.padding(.leading, CGFloat(indent) * 16)
-                case .quote(let text):
-                    Text(inline(text)).foregroundStyle(.secondary)
+                        switch block.task {
+                        case .none: Text(block.marker ?? "•").foregroundStyle(.secondary).monospacedDigit()
+                        case .unchecked: Image(systemName: "square").foregroundStyle(.secondary).accessibilityLabel("Not done")
+                        case .checked: Image(systemName: "checkmark.square.fill").foregroundStyle(Theme.accent).accessibilityLabel("Done")
+                        }
+                        Text(inlineMarkdown(block.text))
+                    }.padding(.leading, CGFloat(block.indent) * 16)
+                case .quote:
+                    Text(inlineMarkdown(block.text)).foregroundStyle(.secondary)
                         .padding(.leading, 12)
                         .overlay(alignment: .leading) { Capsule().fill(Theme.border).frame(width: 3) }
-                case .code(let language, let text):
-                    CodeBlock(language: language, text: text)
+                case .code:
+                    CodeBlock(language: block.language, text: block.text)
                 case .rule:
                     Rectangle().fill(Theme.border).frame(height: 1).padding(.vertical, 4)
+                case .table:
+                    MarkdownTable(block: block)
                 }
             }
         }
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    private func inline(_ text: String) -> AttributedString {
-        var result = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
-        for run in result.runs where run.inlinePresentationIntent?.contains(.code) == true {
-            result[run.range].font = .system(.callout, design: .monospaced)
-            result[run.range].backgroundColor = Theme.code
-            result[run.range].foregroundColor = Theme.accent
+}
+
+/// Inline Markdown as styled text: code in the accent on a tint, bold, italic, struck through, and links that open.
+func inlineMarkdown(_ text: String) -> AttributedString {
+    var out = AttributedString()
+    for span in Markdown.inline(text) {
+        var run = AttributedString(span.text)
+        if span.flags.contains(.code) {
+            run.font = .system(.callout, design: .monospaced)
+            run.backgroundColor = Theme.code
+            run.foregroundColor = Theme.accent
+        } else {
+            var intent: InlinePresentationIntent = []
+            if span.flags.contains(.bold) { intent.insert(.stronglyEmphasized) }
+            if span.flags.contains(.italic) { intent.insert(.emphasized) }
+            if span.flags.contains(.strike) { intent.insert(.strikethrough) }
+            if !intent.isEmpty { run.inlinePresentationIntent = intent }
         }
-        return result
+        if span.flags.contains(.link), let url = span.url.flatMap(URL.init(string:)), ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") {
+            run.link = url
+        }
+        out += run
+    }
+    return out
+}
+
+/// A table that scrolls sideways when wider than the screen, its header row tinted.
+private struct MarkdownTable: View {
+    let block: MdBlock
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                ForEach(Array(block.cells.enumerated()), id: \.offset) { r, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { c, cell in
+                            let align = c < block.aligns.count ? block.aligns[c] : .left
+                            Text(inlineMarkdown(cell)).font(.callout.weight(r == 0 ? .semibold : .regular))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(minWidth: 32, maxWidth: 280, alignment: align == .right ? .trailing : align == .center ? .center : .leading)
+                                .padding(.horizontal, 8).padding(.vertical, 5)
+                                .frame(maxHeight: .infinity, alignment: .top)
+                                .background(r == 0 ? Theme.surface : .clear)
+                                .overlay(Rectangle().strokeBorder(Theme.border, lineWidth: 0.5))
+                        }
+                    }
+                }
+            }
+            .overlay(Rectangle().strokeBorder(Theme.border, lineWidth: 1))
+        }
     }
 }
 

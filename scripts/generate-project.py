@@ -24,7 +24,8 @@ def config_list(name, values):
         ids.append(put(name+kind, f'{{isa = XCBuildConfiguration; buildSettings = {settings(vals)}; name = {kind};}}'))
     return put(name+'configs', '{isa = XCConfigurationList; buildConfigurations = ('+','.join(ids)+',); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;}')
 
-def files(folder):
+def files(folder, target=''):
+    """`target` keeps the build files of a folder two targets compile apart: an Xcode build file belongs to one target."""
     children = []; builds = []; resources = []
     for path in sorted((root / folder).rglob('*')):
         if not path.is_file() or '.xcassets/' in str(path): continue
@@ -32,7 +33,7 @@ def files(folder):
         kind = {'.swift':'sourcecode.swift', '.plist':'text.plist.xml', '.xcprivacy':'text.xml', '.entitlements':'text.plist.entitlements'}.get(ext, 'text')
         ref = put(rel, f'{{isa = PBXFileReference; lastKnownFileType = {q(kind)}; path = {q(rel)}; sourceTree = SOURCE_ROOT;}}'); children.append(ref)
         if ext in ['.swift', '.xcprivacy']:
-            build = put(rel+'build', f'{{isa = PBXBuildFile; fileRef = {ref};}}')
+            build = put(rel+'build'+target, f'{{isa = PBXBuildFile; fileRef = {ref};}}')
             (builds if ext == '.swift' else resources).append(build)
     assets = root / folder / 'Assets.xcassets'
     if assets.exists():
@@ -43,14 +44,15 @@ def files(folder):
 
 def phase(name, isa, builds): return put(name, f'{{isa = {isa}; buildActionMask = 2147483647; files = ({",".join(builds)}{"," if builds else ""}); runOnlyForDeploymentPostprocessing = 0;}}')
 appgroup, appfiles, resources = files('App')
-coregroup, corefiles, _ = files('Core')
+# The iPhone and iPad app runs on the Mac app's core (Mac/Core): one client for the client API (/api/v1) in both.
+_, corefiles, _ = files('Mac/Core', target='ios')
 testgroup, testfiles, _ = files('UITests')
 macgroup, macfiles, macresources = files('Mac')
 appref = put('appProduct', '{isa = PBXFileReference; explicitFileType = wrapper.application; path = Briareus.app; sourceTree = BUILT_PRODUCTS_DIR;}')
 macref = put('macProduct', '{isa = PBXFileReference; explicitFileType = wrapper.application; path = Briareus.app; sourceTree = BUILT_PRODUCTS_DIR;}')
 testref = put('testProduct', '{isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = BriareusUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR;}')
 products = put('Products', f'{{isa = PBXGroup; children = ({appref},{macref},{testref},); name = Products; sourceTree = "<group>";}}')
-main = put('main', f'{{isa = PBXGroup; children = ({appgroup},{coregroup},{macgroup},{testgroup},{products},); sourceTree = "<group>";}}')
+main = put('main', f'{{isa = PBXGroup; children = ({appgroup},{macgroup},{testgroup},{products},); sourceTree = "<group>";}}')
 base = {'IPHONEOS_DEPLOYMENT_TARGET':'17.0', 'MACOSX_DEPLOYMENT_TARGET':'14.0', 'SDKROOT':'iphoneos', 'SWIFT_VERSION':'5.0', 'CLANG_ENABLE_MODULES':'YES', 'CLANG_ENABLE_OBJC_ARC':'YES', 'ENABLE_USER_SCRIPT_SANDBOXING':'YES', 'GCC_C_LANGUAGE_STANDARD':'gnu17'}
 projectconfigs = config_list('project', base)
 appconfigs = config_list('app', {'PRODUCT_BUNDLE_IDENTIFIER':'com.okanetsolutions.briareus', 'PRODUCT_NAME':'Briareus', 'INFOPLIST_FILE':'App/Info.plist', 'TARGETED_DEVICE_FAMILY':'1,2', 'SUPPORTED_PLATFORMS':'iphoneos iphonesimulator', 'CODE_SIGN_STYLE':'Automatic', 'DEVELOPMENT_TEAM':'WG98W262CP', 'MARKETING_VERSION':'1.0', 'CURRENT_PROJECT_VERSION':'1', 'ASSETCATALOG_COMPILER_APPICON_NAME':'AppIcon', 'LD_RUNPATH_SEARCH_PATHS':'$(inherited) @executable_path/Frameworks',
