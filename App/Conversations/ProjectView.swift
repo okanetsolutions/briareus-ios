@@ -45,64 +45,76 @@ struct ProjectView: View {
     private var waiting: Int { feed.sessions.filter { $0.heldRound != nil }.count }
 
     var body: some View {
-        List(selection: editing ? $picked : nil) {
-            if let message = actionError ?? error {
-                Section { ErrorNotice(message: message) }.listRowBackground(Theme.row)
+        dialogs(chrome(List(selection: editing ? $picked : nil) { sections }))
+            .onChange(of: feed.sessions.map(\.id)) { _, ids in picked.formIntersection(ids) }
+            .refreshable { _ = await load(fresh: true) }
+            .task { await poll(every: ProjectFeed.sessionsEvery) { await load() } }
+    }
+
+    @ViewBuilder private var sections: some View {
+        if let message = actionError ?? error {
+            Section { ErrorNotice(message: message) }.listRowBackground(Theme.row)
+        }
+        let list = shown
+        let active = list.filter(\.isActive)
+        if !active.isEmpty {
+            Section("Active") { ForEach(active, id: \.id) { row($0) } }.listRowBackground(Theme.row)
+        }
+        Section {
+            ForEach(list.filter { !$0.isActive }, id: \.id) { row($0) }
+            if feed.sessionsLoaded && list.isEmpty {
+                Text(search.isEmpty ? (feed.sessions.isEmpty ? "No conversations here yet." : "No open conversations.") : "No matching conversations.")
+                    .foregroundStyle(.secondary)
             }
-            let list = shown
-            let active = list.filter(\.isActive)
-            if !active.isEmpty {
-                Section("Active") { ForEach(active, id: \.id) { row($0) } }.listRowBackground(Theme.row)
+            if !feed.sessionsLoaded && error == nil { ProgressView().frame(maxWidth: .infinity) }
+        } header: {
+            HStack {
+                Text(active.isEmpty ? "Conversations" : "Recent")
+                Spacer()
+                Toggle("Show closed", isOn: $showClosed).toggleStyle(.button).buttonStyle(.borderless).controlSize(.mini)
+                    .font(.caption.weight(.medium)).textCase(nil)
             }
-            Section {
-                ForEach(list.filter { !$0.isActive }, id: \.id) { row($0) }
-                if feed.sessionsLoaded && list.isEmpty {
-                    Text(search.isEmpty ? (feed.sessions.isEmpty ? "No conversations here yet." : "No open conversations.") : "No matching conversations.")
-                        .foregroundStyle(.secondary)
+        }
+        .listRowBackground(Theme.row)
+    }
+
+    /// The list's styling, search and toolbar, apart from `dialogs` so each part type-checks quickly.
+    private func chrome(_ list: some View) -> some View {
+        list
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden).background(Theme.background)
+            .environment(\.editMode, $editMode)
+            .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $search, prompt: "Find a conversation")
+            .toolbar { toolbar }
+            .safeAreaInset(edge: .bottom, spacing: 0) { if editing { bulkBar } }
+    }
+
+    /// The new conversation sheet, the confirmations and the rename alert.
+    private func dialogs(_ view: some View) -> some View {
+        view
+            .sheet(isPresented: $composing) {
+                NewConversationSheet(repo: repo) { started in navigate(.conversation(id: started.id, session: started.raw)) }
+            }
+            .confirmationDialog(asked.flatMap { conversationActionQuestion($0.action) } ?? "",
+                                isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
+                                titleVisibility: .visible, presenting: asked) { a in
+                Button(a.action == "delete" ? "Delete" : a.action == "close" ? "Close" : "Confirm", role: a.action == "delete" ? .destructive : nil) {
+                    perform(a.action, on: a.session)
                 }
-                if !feed.sessionsLoaded && error == nil { ProgressView().frame(maxWidth: .infinity) }
-            } header: {
-                HStack {
-                    Text(active.isEmpty ? "Conversations" : "Recent")
-                    Spacer()
-                    Toggle("Show closed", isOn: $showClosed).toggleStyle(.button).buttonStyle(.borderless).controlSize(.mini)
-                        .font(.caption.weight(.medium)).textCase(nil)
+            }
+            .confirmationDialog(bulkAsked.map { question($0).title } ?? "",
+                                isPresented: Binding(get: { bulkAsked != nil }, set: { if !$0 { bulkAsked = nil } }),
+                                titleVisibility: .visible, presenting: bulkAsked) { delete in
+                Button(delete ? "Delete" : "Close", role: delete ? .destructive : nil) { runBulk(delete: delete) }
+            } message: { delete in Text(question(delete).message) }
+            .alert("Rename conversation", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Title", text: $newTitle)
+                Button("Save") {
+                    if let s = renaming, !newTitle.cTrimmed.isEmpty { perform("rename", on: s, extra: ["title": .string(newTitle)]) }
                 }
+                Button("Cancel", role: .cancel) {}
             }
-            .listRowBackground(Theme.row)
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden).background(Theme.background)
-        .environment(\.editMode, $editMode)
-        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, prompt: "Find a conversation")
-        .toolbar { toolbar }
-        .safeAreaInset(edge: .bottom, spacing: 0) { if editing { bulkBar } }
-        .sheet(isPresented: $composing) {
-            NewConversationSheet(repo: repo) { started in navigate(.conversation(id: started.id, session: started.raw)) }
-        }
-        .confirmationDialog(asked.flatMap { conversationActionQuestion($0.action) } ?? "",
-                            isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
-                            titleVisibility: .visible, presenting: asked) { a in
-            Button(a.action == "delete" ? "Delete" : a.action == "close" ? "Close" : "Confirm", role: a.action == "delete" ? .destructive : nil) {
-                perform(a.action, on: a.session)
-            }
-        }
-        .confirmationDialog(bulkAsked.map { question($0).title } ?? "",
-                            isPresented: Binding(get: { bulkAsked != nil }, set: { if !$0 { bulkAsked = nil } }),
-                            titleVisibility: .visible, presenting: bulkAsked) { delete in
-            Button(delete ? "Delete" : "Close", role: delete ? .destructive : nil) { runBulk(delete: delete) }
-        } message: { delete in Text(question(delete).message) }
-        .alert("Rename conversation", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Title", text: $newTitle)
-            Button("Save") {
-                if let s = renaming, !newTitle.cTrimmed.isEmpty { perform("rename", on: s, extra: ["title": .string(newTitle)]) }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .onChange(of: feed.sessions.map(\.id)) { _, ids in picked.formIntersection(ids) }
-        .refreshable { _ = await load(fresh: true) }
-        .task { await poll(every: ProjectFeed.sessionsEvery) { await load() } }
     }
 
     // MARK: Toolbar
