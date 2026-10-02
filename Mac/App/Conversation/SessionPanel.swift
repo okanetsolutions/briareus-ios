@@ -1,4 +1,4 @@
-// The dashboard's `#pr-panel` (screen_panel.c): the 272px column on the right of a conversation with its pull request,
+// The Windows client's `#pr-panel` (screen_panel.c): the 272px column on the right of a conversation with its pull request,
 // commits, reviews and findings, each finding with its verdict buttons, and under them the session's context usage with
 // the compaction controls. The conversation hands it the session's latest record (`Navigator.panelSession`).
 import AppKit
@@ -250,7 +250,7 @@ struct SessionPanel: View {
                     if store.supports("finding_decision"), let key = f["key"].string, store.canManage {
                         let current = f["decision"].string
                         Segments(titles: findingDecisionTitles, selected: findingDecisionIndex(current)) { d in
-                            // The same pick twice clears it, as the dashboard does.
+                            // The same pick twice clears it, as the Windows client does.
                             decide(key, current == findingDecisionIds[d] ? nil : findingDecisionIds[d])
                         }
                         .disabled(deciding != nil)
@@ -293,7 +293,7 @@ struct SessionPanel: View {
         post(.conversationSessionOperation, info)
     }
 
-    /// The dashboard's `usageSection`: how much of the model's window is used, as a bar split into claude's /context
+    /// The Windows client's `usageSection`: how much of the model's window is used, as a bar split into claude's /context
     /// categories when the server has them and used-vs-free otherwise, then what the session consumed, and the compaction
     /// controls.
     @ViewBuilder private func usageSection(afterPR: Bool) -> some View {

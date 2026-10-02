@@ -29,7 +29,7 @@ struct APIError: Error, Equatable, Sendable {
     var description: String {
         switch kind {
         case .invalidAddress: return "Enter an HTTPS server address, optionally ending in /api/v1, without credentials or query parameters."
-        case .invalidToken: return "Paste the complete token from Settings → Devices and clients."
+        case .invalidToken: return "Paste the complete token the server printed when it was issued (npm run create-token)."
         case .redirected: return "The server redirected this request. Check the Cloudflare Access exception for /api/v1 and /api/v1/*."
         case .nonJSON: return "The server returned an unexpected response. Check that the client API is deployed and reachable through Cloudflare Access."
         case .incompatibleVersion: return "This server uses an unsupported client API version."
@@ -147,6 +147,8 @@ struct APIRoute: Sendable {
 
     // Every call the app makes, on the /api/v1 route that answers it.
     static let all: [APIRoute] = [
+        // The token itself: revoking it signs this device out on the server (the iPhone app's Settings).
+        .init(name: "revoke_token", method: "DELETE", path: "token"),
         // Projects
         .init(name: "projects", method: "GET", path: "projects"),
         .init(name: "branches", method: "GET", path: "branches"),
@@ -420,7 +422,7 @@ final class APIClient: @unchecked Sendable {
         return text
     }
 
-    /// Stores a file to attach to a message, as the dashboard's composer does: the bytes are the body and the name rides in the
+    /// Stores a file to attach to a message, as the Windows client's composer does: the bytes are the body and the name rides in the
     /// query. The answer is the id a message takes in `attachments`.
     func upload(name: String, bytes: Data) async throws -> String {
         if bytes.count > APIClient.uploadLimit { throw APIError(.http, status: 413, message: "The file exceeds the server’s 25 MB limit for an attachment.") }

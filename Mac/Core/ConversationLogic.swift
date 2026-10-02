@@ -226,7 +226,7 @@ func conversationComposerNote(active: Bool, liveInput: Bool, uploading: Bool, fi
 func attachmentChipLabel(name: String, size: Int, uploaded: Bool) -> String {
     "\(uploaded ? "\u{1F4CE}" : "\u{2026}") \(name) \u{00B7} \(formatFileSize(size))"
 }
-/// The most files one message takes, as the dashboard's "At most 10 files per message".
+/// The most files one message takes, as the Windows client's "At most 10 files per message".
 let attachmentsMax = 10
 /// Why a file could not be attached: "name why." lines.
 func attachmentRefusal(_ name: String, _ why: String) -> String { "\(name) \(why)." }

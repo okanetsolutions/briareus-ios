@@ -84,7 +84,7 @@ final class SettingsModel: ObservableObject {
 
     func loadProjects() {
         load(\.projects, "settings_projects", "projects") { [weak self] in
-            // The dashboard's settings page opens on its first project, or on a new one when there is none; so does this,
+            // The Windows client's settings page opens on its first project, or on a new one when there is none; so does this,
             // unless a settings form is already up.
             guard let self, Navigator.shared.sidebarMode == .settings, !Self.isSettingsScreen(Navigator.shared.root) else { return }
             if self.projects.list.isEmpty { self.newProject() } else { self.openProject(0) }
@@ -142,7 +142,7 @@ final class SettingsModel: ObservableObject {
 
     // MARK: Order
 
-    /// Moves a project up or down the list, which is also the order the dashboard's sidebar and composer use.
+    /// Moves a project up or down the list, which is also the order the Windows client's sidebar and composer use.
     func move(_ index: Int, by delta: Int) {
         let rows = projects.list, n = rows.count
         guard !ordering, index < n, !(delta < 0 && index == 0), !(delta > 0 && index + 1 >= n) else { return }
@@ -322,7 +322,7 @@ struct SettingsFieldBox<FocusKey: Hashable>: View {
     @ViewBuilder private var box: some View {
         let focused = focus.wrappedValue == key
         if def.isMultiline {
-            // A long box grows with its lines, up to 40, and scrolls inside past them, as the dashboard's textareas do. The
+            // A long box grows with its lines, up to 40, and scrolls inside past them, as the Windows client's textareas do. The
             // edit sits 10px in from the left, 3px from the right and 8px from the top and bottom, as the C client's.
             let rows = min(max(SettingsText.lineCount(text), def.rows), 40)
             SettingsTextArea(text: $text, mono: def.mono, enabled: enabled, onTab: onSubmit)

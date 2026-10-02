@@ -672,7 +672,7 @@ private struct FindingsTab: View {
             }
             if findings.isEmpty && model.findingsError == nil { Text("No findings reported").font(Theme.callout).foregroundStyle(Theme.muted) }
             if store.supports("finding_decision") && !findings.isEmpty {
-                Text("Decisions are saved on the dashboard and mirrored to the pull request’s checklist on GitHub.")
+                Text("Decisions are saved on the server and mirrored to the pull request’s checklist on GitHub.")
                     .font(Theme.caption).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
             if model.solveFindingsOffered {

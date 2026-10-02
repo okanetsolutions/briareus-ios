@@ -1,4 +1,4 @@
-// The dashboard's own look, dark or light as macOS's appearance says: its palette (canvas, sidebar, raise, field, sunken,
+// The Windows client's own look, dark or light as macOS's appearance says: its palette (canvas, sidebar, raise, field, sunken,
 // line, ink, muted, accent), its pixel sizes for the system font and the monospaced one, and the pieces the screens share.
 import AppKit
 import SwiftUI
@@ -17,7 +17,7 @@ enum Theme {
         }
     }
 
-    // The dashboard's `@theme` block, verbatim, dark; light is the same warm palette on paper, with the accents darkened.
+    // The Windows client's `@theme` block, verbatim, dark; light is the same warm palette on paper, with the accents darkened.
     static let canvas = dynamic(0x262624, 0xFAF9F5)
     static let sidebar = dynamic(0x1F1E1D, 0xF0EEE6)
     static let raise = dynamic(0x30302E, 0xFFFFFF)
@@ -51,7 +51,7 @@ enum Theme {
 
     // MARK: Type
 
-    // The dashboard's type at its own pixel sizes: body 15px (`text-sm`), the smallest chrome 13px (`text-xs`), the sidebar
+    // The Windows client's type at its own pixel sizes: body 15px (`text-sm`), the smallest chrome 13px (`text-xs`), the sidebar
     // rows 14px, metadata 12px and 11px. The Mac's system font stands in for Segoe UI and its monospaced one for Cascadia Code.
     static let body = Font.system(size: 15)
     static let bodyMedium = Font.system(size: 15, weight: .medium)
@@ -75,16 +75,16 @@ enum Theme {
     static let tinySemibold = Font.system(size: 10, weight: .semibold)
     /// 23px semibold: a pull request's title.
     static let title = Font.system(size: 23, weight: .semibold)
-    /// 22px semibold: dashboard tiles.
+    /// 22px semibold: the Windows client tiles.
     static let stat = Font.system(size: 22, weight: .semibold)
     static let monogram = Font.system(size: 17, weight: .semibold, design: .serif)
 
     // MARK: Layout
 
-    /// The dashboard's columns: a 268px sidebar, the main column, and a 272px pull request panel beside a conversation.
+    /// The Windows client's columns: a 268px sidebar, the main column, and a 272px pull request panel beside a conversation.
     static let sidebarWidth: CGFloat = 268
     static let panelWidth: CGFloat = 272
-    /// Below the dashboard's `lg` breakpoint (64rem) the columns become one at a time.
+    /// Below the Windows client's `lg` breakpoint (64rem) the columns become one at a time.
     static let narrowWidth: CGFloat = 1024
     /// Pane margins: the sidebar's 10px, the others' 18px.
     static let sidebarMargin: CGFloat = 10

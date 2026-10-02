@@ -1,4 +1,4 @@
-// The empty right-hand side: the dashboard opens on Welcome back and its composer, and so does this.
+// The empty right-hand side: the Windows client opens on Welcome back and its composer, and so does this.
 import SwiftUI
 
 struct PlaceholderScreen: View {

@@ -4,11 +4,10 @@ import PackageDescription
 let package = Package(
     name: "BriareusCore",
     platforms: [.macOS(.v13), .iOS(.v17)],
-    products: [.library(name: "BriareusCore", targets: ["BriareusCore"])],
+    products: [.library(name: "BriareusMacCore", targets: ["BriareusMacCore"])],
     targets: [
-        .target(name: "BriareusCore", path: "Core"),
-        .testTarget(name: "BriareusCoreTests", dependencies: ["BriareusCore"], path: "Tests"),
-        // The Mac app's core: the client API (/api/v1) and what it answers, with no UI.
+        // The apps' core, shared by the Mac app and the iPhone and iPad one: the client API (/api/v1) and what it
+        // answers, with no UI.
         .target(name: "BriareusMacCore", path: "Mac/Core"),
         .testTarget(name: "BriareusMacCoreTests", dependencies: ["BriareusMacCore"], path: "MacTests")
     ]

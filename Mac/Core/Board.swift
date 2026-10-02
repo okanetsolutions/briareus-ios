@@ -1,4 +1,4 @@
-// The project board: what `pulls` answers, read into the rows the dashboard draws.
+// The project board: what `pulls` answers, read into the rows the Windows client draws.
 import Foundation
 
 // MARK: - Labels and links
@@ -198,7 +198,7 @@ func issuesNested(_ issues: [IssueSummary], repo: String?) -> [IssueRow] {
     return rows
 }
 
-/// What a session started on this issue is sent, as the dashboard words it. Its first line names the session.
+/// What a session started on this issue is sent, as the Windows client words it. Its first line names the session.
 func issuePrompt(_ issue: IssueSummary, repo: String) -> String {
     var s = "Issue #\(issue.number): \(issue.title)\n\n"
     s += "Read \(repo) issue #\(issue.number) in full before you change anything: `gh issue view \(issue.number) --repo \(repo) --comments`. Its comments usually carry decisions the description was written before.\n\n"
@@ -351,7 +351,7 @@ struct BoardAction: Equatable, Sendable {
         return args
     }
 
-    /// The board's errands, in the order the dashboard shows them.
+    /// The board's errands, in the order the Windows client shows them.
     static let known: [BoardAction] = [
         BoardAction(id: "run", label: "Run", hint: "Prepare this pull request in a clean workspace and serve the app from it"),
         BoardAction(id: "review", label: "Code review", hint: "Run the provider\u{2019}s code review on this pull request and publish it"),

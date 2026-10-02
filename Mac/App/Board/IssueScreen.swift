@@ -339,7 +339,7 @@ struct IssueScreen: View {
         if store.supports("start_session") && !model.closed {
             BoardBox {
                 if issue.isEpic {
-                    Text("An epic is worked by an orchestrator, one sub-issue at a time. Start it from the web dashboard, where its models are picked, or start one of its sub-issues here.")
+                    Text("An epic is worked by an orchestrator, one sub-issue at a time. It is not started from this app; start one of its sub-issues here.")
                         .font(Theme.footnote).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Button(model.busy ? "Starting…" : "Start a session on this issue") { model.start() }

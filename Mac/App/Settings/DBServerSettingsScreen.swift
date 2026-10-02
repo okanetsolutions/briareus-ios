@@ -1,4 +1,4 @@
-// One server of the database pool, as the dashboard's database server form, its fields on tabs along the top as the
+// One server of the database pool, as the Windows client's database server form, its fields on tabs along the top as the
 // project form lays out its own: Server (where it is, how sessions sign in to it, and Test connection) and Pool. Saved
 // through /settings/db-servers, which needs an Admin token as the project routes do.
 import SwiftUI

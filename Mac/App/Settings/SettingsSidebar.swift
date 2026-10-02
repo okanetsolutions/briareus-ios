@@ -1,4 +1,4 @@
-// Settings, as the dashboard's settings page: a sidebar of its own (← Back to sessions, the projects,
+// Settings, as the Windows client's settings page: a sidebar of its own (← Back to sessions, the projects,
 // the providers, the database pool and the SSH servers, each with ＋ New) whose rows open their forms across the detail
 // pane. Those routes need an Admin token; any other token gets a sentence saying so.
 import SwiftUI
@@ -43,7 +43,7 @@ struct SettingsSidebar: View {
             Color.clear.frame(height: 8)
         } else {
             projects
-            // The providers sessions start on, then the database pool, below the projects as on the dashboard; a server
+            // The providers sessions start on, then the database pool, below the projects as on the Windows client; a server
             // without the routes shows neither.
             if store.supports("settings_providers") {
                 Color.clear.frame(height: 8)
@@ -59,7 +59,7 @@ struct SettingsSidebar: View {
                               onNew: store.supports("create_db_server") ? { model.newServer() } : nil)
                 servers
             }
-            // The SSH servers agents may run commands on, last, as on the dashboard.
+            // The SSH servers agents may run commands on, last, as on the Windows client.
             ssh
         }
     }
@@ -145,7 +145,7 @@ struct SettingsSidebar: View {
 
     // MARK: Foot
 
-    /// The foot, as the dashboard's settings page has it: `Settings` and `⎋ Sign out`, 12px muted, above a border.
+    /// The foot, as the Windows client's settings page has it: `Settings` and `⎋ Sign out`, 12px muted, above a border.
     private var footer: some View {
         VStack(spacing: 0) {
             Rectangle().fill(Theme.line).frame(height: 1).padding(.horizontal, 10).padding(.top, 6)
@@ -161,7 +161,7 @@ struct SettingsSidebar: View {
     }
 
     private func signOut() {
-        guard Dialogs.confirm("Sign out of this dashboard?",
+        guard Dialogs.confirm("Sign out of this server?",
                               "The device token and the saved conversations are removed from this computer. Revoke the token itself in web Settings.",
                               continueLabel: "Sign out", destructive: true) else { return }
         store.forget()
@@ -265,7 +265,7 @@ private struct ItemRow: View {
     }
 }
 
-/// A provider's row: its dot, label, and the dashboard's badges: the CLI it runs, and what sets it apart.
+/// A provider's row: its dot, label, and the Windows client's badges: the CLI it runs, and what sets it apart.
 private struct ProviderItemRow: View {
     var label: String
     var active: Bool

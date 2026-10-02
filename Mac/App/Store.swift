@@ -200,7 +200,7 @@ func pollDelay(base: TimeInterval, failures: Int, retryAfter: Double?) -> TimeIn
     return seconds
 }
 
-/// One-shot polling with the dashboard's backoff, for a `.task`: runs `read` now and again after each delay until the task
+/// One-shot polling with the Windows client's backoff, for a `.task`: runs `read` now and again after each delay until the task
 /// is cancelled. `read` answers the error of a failed read, or nil. Polling pauses while the app is in the background.
 @MainActor
 func poll(every base: TimeInterval, immediately: Bool = true, _ read: @MainActor () async -> APIError?) async {

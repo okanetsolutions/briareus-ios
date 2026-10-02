@@ -2,15 +2,15 @@ import SwiftUI
 
 @main
 struct BriareusApp: App {
-    @StateObject private var store = AppStore.shared
+    @StateObject private var store = Store.shared
     @Environment(\.scenePhase) private var phase
     var body: some Scene {
         WindowGroup {
             ZStack {
                 Group {
-                    if store.client != nil { ProjectsView() } else { PairingView().ownControls() }
+                    if store.client != nil { RootTabs() } else { PairingView() }
                 }
-                if !phase.isInUse {
+                if phase != .active {
                     Theme.background.ignoresSafeArea()
                     Label("Briareus", systemImage: "square.stack.3d.up.fill").font(.largeTitle.bold()).foregroundStyle(Theme.accent)
                 }
@@ -18,19 +18,47 @@ struct BriareusApp: App {
             .tint(Theme.accent)
             .environmentObject(store)
             .task { await store.restore() }
-            #if os(macOS)
-            .textFieldStyle(.plain)
-            .frame(minWidth: 480, minHeight: 420)
-            #endif
+            // Polling stops while the app is out of sight; the car's screen keeps it going on its own.
+            .onChange(of: phase, initial: true) { _, now in
+                store.active = now == .active || CarScreen.connected
+                // The screen stays on while the app is open, as an agent's work is watched rather than touched; iOS
+                // locks it again on its own schedule once the app leaves the front.
+                UIApplication.shared.isIdleTimerDisabled = now == .active
+            }
         }
-        #if os(macOS)
-        .defaultSize(width: 1280, height: 820)
-        #endif
+    }
+}
+
+/// The Mac app's sidebar strip, as a phone's tab bar: the projects and their conversations, the review rounds waiting
+/// across them, what they spent, and Settings.
+struct RootTabs: View {
+    @EnvironmentObject private var store: Store
+    @ObservedObject private var projects = ProjectsModel.shared
+    @Environment(\.horizontalSizeClass) private var width
+    var body: some View {
+        TabView {
+            Group {
+                // An iPad has room for the conversation beside the list; a phone, or a narrow window, does not.
+                if width == .regular { SplitRoot() } else { NavigationRoot { ProjectsList() } }
+            }
+            .tabItem { Label("Projects", systemImage: "folder") }
+            if store.supports("sessions") {
+                NavigationRoot { FindingsScreen(repo: nil) }
+                    .tabItem { Label("Findings", systemImage: "flag") }
+                    .badge(projects.findingsWaiting)
+            }
+            if store.supports("usage") || store.supports("usage_all") {
+                NavigationRoot { UsageScreen() }
+                    .tabItem { Label("Usage", systemImage: "chart.bar") }
+            }
+            NavigationRoot { SettingsScreen() }
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+        }
     }
 }
 
 struct PairingView: View {
-    @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var store: Store
     @State private var token = ""
     private enum Field { case server, token }
     @FocusState private var focusedField: Field?
@@ -70,7 +98,7 @@ struct PairingView: View {
                         }
                         .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-                        Text("Create a token on the web dashboard under Settings → Mobile devices.")
+                        Text("Issue a token on the server with `npm run create-token`.")
                             .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
                     }
                     Button {
@@ -97,56 +125,6 @@ struct PairingView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(Theme.background)
-        }
-    }
-}
-
-struct SettingsView: View {
-    @EnvironmentObject private var store: AppStore
-    @Environment(\.dismiss) private var dismiss
-    @State private var confirm: String?
-    @State private var busy = false
-    @State private var error: String?
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Connected dashboard") {
-                    Label { Text(store.server).textSelection(.enabled) } icon: { Image(systemName: "checkmark.seal.fill").foregroundStyle(Theme.success) }
-                    if let device = store.device {
-                        LabeledContent("Device", value: device.label)
-                        LabeledContent("Access", value: device.canManage ? "Manage" : "Read only")
-                        LabeledContent("Expires", value: device.expiry.formatted(date: .abbreviated, time: .omitted))
-                    }
-                }
-                Section("Permitted projects") {
-                    ForEach(store.device?.repos ?? [], id: \.self) { repo in
-                        HStack(spacing: 10) { Monogram(text: repo, size: 26); Text(repo) }
-                    }
-                }
-                Section {
-                    Button("Revoke token and disconnect", role: .destructive) { confirm = "revoke" }
-                    Button("Forget this connection", role: .destructive) { confirm = "forget" }
-                } footer: {
-                    Text("Revoking disables this token on the server. Forgetting removes it and the saved conversations from this device only; revoke it later in web Settings. Neither action stops running agents.")
-                }.disabled(busy)
-                if let error { Section { ErrorNotice(message: error) } }
-                Section { Text("Briareus for \(Platform.name) · 1.0").font(.footnote).foregroundStyle(.secondary) }.listRowBackground(Color.clear)
-            }.formStyle(.grouped).scrollContentBackground(.hidden).background(Theme.background)
-                .navigationTitle("Connection").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.buttonStyle(.automatic) } }
-                .confirmationDialog(confirm == "revoke" ? "Revoke this device token?" : "Forget this connection?",
-                                    isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
-                                    titleVisibility: .visible, presenting: confirm) { action in
-                    Button("Continue", role: .destructive) {
-                        busy = true
-                        Task {
-                            defer { busy = false }
-                            // Named both ways: a token meant to be revoked must never be merely forgotten.
-                            do { if action == "revoke" { try await store.revoke() } else if action == "forget" { try await store.forget() } }
-                            catch { self.error = error.localizedDescription }
-                        }
-                    }
-                }
         }
     }
 }

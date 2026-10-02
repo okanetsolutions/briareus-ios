@@ -1,5 +1,5 @@
 // The main window's columns and the navigation between them: the sidebar, the detail pane's stack of screens, and the
-// column beside a conversation (the dashboard's pull request panel).
+// column beside a conversation (the Windows client's pull request panel).
 import SwiftUI
 
 /// The web apps the sidebar strip opens in the detail pane.
@@ -8,7 +8,7 @@ enum WebApp: String, Hashable, CaseIterable { case whatsapp, slack }
 /// What the detail pane shows. Each case's `id` names what it shows, so a repeated choice is not reopened.
 enum Screen: Hashable, Identifiable {
     case placeholder
-    /// The dashboard's opening view: Welcome back, and the composer that starts a session on a project.
+    /// The Windows client's opening view: Welcome back, and the composer that starts a session on a project.
     case newSession(repo: String?)
     /// A conversation; `session` is the record the sidebar had, shown until the server answers.
     case conversation(id: String, session: JSON?)
@@ -23,7 +23,7 @@ enum Screen: Hashable, Identifiable {
     /// The review rounds waiting for a decision across every project.
     case findings
     /// What every project spent over a window.
-    case dashboard
+    case usage
     case webApp(WebApp)
     /// The settings page's forms: `row` is the server's record (nil with `defaults` for a new one).
     case projectSettings(row: JSON?, defaults: JSON?)
@@ -41,7 +41,7 @@ enum Screen: Hashable, Identifiable {
         case .pullFiles(let repo, let n): return "files:\(repo)#\(n)"
         case .issue(let repo, let issue): return "issue:\(repo)#\(issue["number"].int ?? 0)"
         case .findings: return "findings"
-        case .dashboard: return "dashboard"
+        case .usage: return "usage"
         case .webApp(let app): return app.rawValue
         case .projectSettings(let row, _): return "project-settings:\(row?["id"].int.map(String.init) ?? "new")"
         case .providerSettings(let row, _): return "provider-settings:\(row?["id"].int.map(String.init) ?? "new")"
@@ -66,7 +66,7 @@ final class Navigator: ObservableObject {
     @Published var panelSession: JSON?
     /// In one column, whether the detail is the visible pane.
     @Published var narrowShowsDetail = false
-    /// The window is below the dashboard's `lg` breakpoint, one column at a time (set by the main window).
+    /// The window is below the Windows client's `lg` breakpoint, one column at a time (set by the main window).
     var isNarrow = false
 
     /// A form with unsaved changes registers here; it answers whether another screen may replace it (asking first).
@@ -129,7 +129,7 @@ final class Navigator: ObservableObject {
 // MARK: - Header
 
 /// A header button: a glyph alone, or a labelled pill when `label` is set and the header has room for the labels.
-/// `prominent` fills it with the accent, as the dashboard's `.btn-primary` (Save).
+/// `prominent` fills it with the accent, as the Windows client's `.btn-primary` (Save).
 struct HeaderButton: Identifiable {
     var id: String { label ?? glyph }
     var glyph: String           // an SF Symbol

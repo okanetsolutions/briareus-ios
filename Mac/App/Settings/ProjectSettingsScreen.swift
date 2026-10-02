@@ -1,4 +1,4 @@
-// A project's settings across the whole pane, the dashboard's sections as tabs along the top (Project with its setup,
+// A project's settings across the whole pane, the Windows client's sections as tabs along the top (Project with its setup,
 // Database, Code review, Orchestrator, Checkout .env, Run), saved through /settings/projects. A dot marks a tab with
 // unsaved changes; the provider, model and effort pickers serve the code review, each errand step and the workers.
 import SwiftUI
@@ -277,7 +277,7 @@ struct ProjectSettingsScreen: View {
             field(.localDir)
             field(.setup)
             field(.php)
-            SettingsNote(text: "This project's own prompt wording is edited under Prompts on the web dashboard; saving here keeps it as it is.")
+            SettingsNote(text: "This project's own prompt wording is kept on the server; saving here keeps it as it is.")
         case .database:
             field(.dbName)
             field(.dbExt)
@@ -303,9 +303,9 @@ struct ProjectSettingsScreen: View {
         case .orchestrator:
             runtimeRow(.worker)
             field(.budget)
-            SettingsNote(text: "The orchestrator's standing instructions for this project live under Prompts on the web dashboard, in the “Orchestrator instructions” template.")
+            SettingsNote(text: "The orchestrator's standing instructions for this project live on the server, in its “Orchestrator instructions” template.")
             check(.isSelf)
-            SettingsNote(text: "Tick it on the repository whose code is running right now, and on no other. An orchestrator on any project that finds a flaw in the tooling running it (a briefing, a worker tool, a loop) can then send a fix worker here, review loop armed, and merge its pull request once the loop approves and the checks are green. The running dashboard keeps its code until you redeploy.")
+            SettingsNote(text: "Tick it on the repository whose code is running right now, and on no other. An orchestrator on any project that finds a flaw in the tooling running it (a briefing, a worker tool, a loop) can then send a fix worker here, review loop armed, and merge its pull request once the loop approves and the checks are green. The running server keeps its code until you redeploy.")
         case .env:
             field(.env)
         case .run:
@@ -326,7 +326,7 @@ struct ProjectSettingsScreen: View {
         }
     }
 
-    /// Provider, model and effort side by side, as the dashboard's `.runtime-row`.
+    /// Provider, model and effort side by side, as the Windows client's `.runtime-row`.
     @ViewBuilder private func runtimeRow(_ r: ProjectRuntime) -> some View {
         if state.offered(r) {
             HStack(alignment: .top, spacing: 14) {

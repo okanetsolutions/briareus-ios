@@ -1,4 +1,4 @@
-// The dashboard's opening view (screen_new_session.c): "Welcome back", and the composer that starts a session, with its
+// The Windows client's opening view (screen_new_session.c): "Welcome back", and the composer that starts a session, with its
 // row of chips for the project, branch, provider, model, effort and the review loop.
 import AppKit
 import SwiftUI
@@ -247,7 +247,7 @@ struct NewSessionScreen: View {
                 .font(Theme.body).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if model.projects.isEmpty {
-                Text("No projects yet, so there is nothing to build. Add one in Settings \u{2192} Projects on the web dashboard.")
+                Text("No projects yet, so there is nothing to build. Add one in \u{2699} Settings \u{2192} Projects.")
                     .font(Theme.footnote).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 16)

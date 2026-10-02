@@ -292,7 +292,7 @@ struct BoardScreen: View {
             buttons.append(HeaderButton(glyph: Glyph.symbol(0xE72C),
                                         tip: model.tab == .ssh ? "Read the project's SSH servers again" : "Read the servers and the folder on show again") { model.refresh() })
         default:
-            // The pickers, as the dashboard's selects, and ⟳. C gives them no glyph; the SF Symbol stands in only when the
+            // The pickers, as the Windows client's selects, and ⟳. C gives them no glyph; the SF Symbol stands in only when the
             // header is too narrow for labels, where C would draw an empty square.
             let f = model.filter
             buttons.append(HeaderButton(glyph: "line.3.horizontal.decrease", label: "\(f.author.isEmpty ? "All authors" : f.author) ▾",
@@ -372,7 +372,7 @@ struct BoardScreen: View {
         }
     }
 
-    /// The dashboard's buttons: the errands its state offers, the suggested one filled. Clicking the row opens the PR.
+    /// The Windows client's buttons: the errands its state offers, the suggested one filled. Clicking the row opens the PR.
     @ViewBuilder private func rowButtons(_ pull: PullSummary) -> some View {
         let actions = pull.branch.isEmpty ? [] : rowActions(catalog: model.catalog, pull: pull, failedChecks: 0)
         let runs = model.runsOn(pull.number)

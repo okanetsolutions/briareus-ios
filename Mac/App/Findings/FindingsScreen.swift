@@ -1,4 +1,4 @@
-// The findings waiting for a decision across every project the device may see, as the dashboard's Findings screen
+// The findings waiting for a decision across every project the device may see, as the Windows client's Findings screen
 // queues them: each review round held on a conversation, grouped by the pull request it was left on. A round on the
 // user's own pull request takes a verdict on every finding and is completed from here, which starts the fix session;
 // a review of somebody else's is read, replied to on its findings' threads, and taken off the queue.

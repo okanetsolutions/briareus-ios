@@ -1,5 +1,5 @@
-// The dashboard's pieces the screens share: buttons, dots, badges, chips, monograms, notices, sections, segmented pickers,
-// the tabnav row and a wrapping layout. Sizes are the Windows client's (and so the dashboard's) pixel sizes.
+// The Windows client's pieces the screens share: buttons, dots, badges, chips, monograms, notices, sections, segmented pickers,
+// the tabnav row and a wrapping layout. Sizes are the Windows client's  pixel sizes.
 import AppKit
 import SwiftUI
 
@@ -7,7 +7,7 @@ import SwiftUI
 
 enum ButtonKind { case prominent, bordered, plain, destructive }
 
-/// The dashboard's `.btn` (bordered), `.btn-primary` (prominent), its link-like plain button and the danger-on-hover one:
+/// The Windows client's `.btn` (bordered), `.btn-primary` (prominent), its link-like plain button and the danger-on-hover one:
 /// 13px text, 10px side padding, 7px corners, 30px tall.
 struct DashButtonStyle: ButtonStyle {
     var kind: ButtonKind = .bordered
@@ -47,7 +47,7 @@ struct DashButtonStyle: ButtonStyle {
     }
 }
 
-/// A `.btn-icon`: a 32px square with a border, as the dashboard's ☰ ＋ ⓘ and ⟳.
+/// A `.btn-icon`: a 32px square with a border, as the Windows client's ☰ ＋ ⓘ and ⟳.
 struct IconButtonStyle: ButtonStyle {
     var size: CGFloat = 32
     var destructive = false
@@ -92,7 +92,7 @@ struct GlyphButton: View {
 
 // MARK: - Dots, badges, chips
 
-/// The dashboard's 7px `.dot`.
+/// The Windows client's 7px `.dot`.
 struct StatusDot: View {
     var status: String?
     var size: CGFloat = 7
@@ -207,7 +207,7 @@ struct LabeledRow: View {
     }
 }
 
-/// A rounded box: the dashboard's `.card` (`bg-raise border border-line rounded-xl`).
+/// A rounded box: the Windows client's `.card` (`bg-raise border border-line rounded-xl`).
 struct Card<Content: View>: View {
     var padding: CGFloat = 12
     var fill: Color = Theme.raise
@@ -294,7 +294,7 @@ struct TabNav<Content: View>: View {
 
 // MARK: - Text fields
 
-/// The dashboard's inputs: `bg-field rounded-lg border-line`, 14px text.
+/// The Windows client's inputs: `bg-field rounded-lg border-line`, 14px text.
 struct FieldStyle: ViewModifier {
     var focused = false
     func body(content: Content) -> some View {

@@ -144,7 +144,7 @@ final class FormatTests: XCTestCase {
 
     // MARK: - Numbers
 
-    func testTokensAbbreviateAsTheDashboardDoes() {
+    func testTokensAbbreviate() {
         XCTAssertEqual(formatTokens(0), "0")
         XCTAssertEqual(formatTokens(999), "999")
         XCTAssertEqual(formatTokens(999.9), "999")

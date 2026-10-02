@@ -31,7 +31,7 @@ struct FormProblem: Error, Equatable, Sendable {
 enum SettingsText {
     /// A list one item per line.
     static func listText(_ v: JSON) -> String { v.items.compactMap(\.string).joined(separator: "\n") }
-    /// One item per line, trimmed, blank lines dropped, as the dashboard reads its textareas.
+    /// One item per line, trimmed, blank lines dropped, as the Windows client reads its textareas.
     static func list(from text: String) -> [String] {
         text.components(separatedBy: "\n").map(\.cTrimmed).filter { !$0.isEmpty }
     }
@@ -56,7 +56,7 @@ enum SettingsText {
 func settingsUnavailableText(supported: Bool, listed: Bool, permission: String?, what: String, path: String, manage: String) -> String? {
     if supported { return nil }
     return listed
-        ? "\(what) need an Admin token, and this device's token is \(permission ?? "unknown"). Create an Admin token on the web dashboard under Settings → Devices and clients and connect with it."
+        ? "\(what) need an Admin token, and this device's token is \(permission ?? "unknown"). Issue an Admin token on the server with npm run create-token and connect with it."
         : "This server does not offer \(what) (GET /\(path)) on its client API. Update the server to manage \(manage) here."
 }
 
@@ -115,7 +115,7 @@ enum ProjectField: Int, CaseIterable, Sendable {
             hint: "Appended to the end of the ⚙ Implement feedback prompt: what this project wants done once the review comments are implemented. Leave empty to add nothing.", rows: 4)
         case .budget: return SettingsField(key: "workerBudgetUsd", kind: .number, label: "Budget (USD)", cue: "no cap",
             hint: "What one orchestration may spend — the supervisor's turns plus every worker's — before it pauses and waits for you. Only turns whose provider reports a cost count. Leave empty for no cap.")
-        case .isSelf: return SettingsField(key: "isSelf", kind: .bool, label: "This project is the dashboard itself")
+        case .isSelf: return SettingsField(key: "isSelf", kind: .bool, label: "This project is Briareus itself")
         case .env: return SettingsField(key: "envTemplate", kind: .area, label: ".env template",
             hint: "Written into the checkout as .env before the setup steps run, on every session. Leave empty to use whatever the repository ships.", rows: 10, mono: true)
         case .run: return SettingsField(key: "runCommands", kind: .list, label: "Run commands",
@@ -324,7 +324,7 @@ enum ProviderField: Int, CaseIterable, Sendable {
 }
 
 struct ProviderFormState: Equatable, Sendable {
-    /// The CLIs a provider runs, as the dashboard's Binary select offers them.
+    /// The CLIs a provider runs, as the Windows client's Binary select offers them.
     static let binaries: [(id: String, title: String)] = [
         ("claude", "claude (Claude Code)"), ("codex", "codex (Codex)"), ("grok", "grok (Grok)"), ("opencode", "opencode"),
     ]
@@ -429,7 +429,7 @@ enum ProviderStatusText {
         if logged.is(false) { return (detail.map { "Not connected: \($0)" } ?? "Not connected", dot) }
         return ("Connection not checked yet", dot)
     }
-    /// When a time falls: the clock today, the weekday and the clock on another day, as the dashboard prints resets.
+    /// When a time falls: the clock today, the weekday and the clock on another day, as the Windows client prints resets.
     static func when(_ iso: String?, now: Date = Date(), timeZone: TimeZone = .current) -> String? {
         guard let date = boardDateParse(iso) else { return nil }
         var cal = Calendar(identifier: .gregorian)

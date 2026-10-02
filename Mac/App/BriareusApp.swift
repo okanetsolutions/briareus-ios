@@ -142,7 +142,7 @@ struct MainWindow: View {
     }
 
     /// main.c layout(): the 268px sidebar, the main column and, beside a conversation, the 272px panel, the dividers drawn
-    /// on the sidebar's last pixel column and the panel's first. Below the dashboard's `lg` breakpoint, one column at a
+    /// on the sidebar's last pixel column and the panel's first. Below the Windows client's `lg` breakpoint, one column at a
     /// time, with a back button on the detail's root. The columns are the same views in both: one hidden in a narrow window
     /// keeps its screen, as a hidden Windows pane does, so crossing the breakpoint loses nothing.
     private func columns(narrow: Bool) -> some View {
@@ -240,7 +240,7 @@ struct ScreenView: View {
         case .pullFiles(let repo, let number): PullFilesScreen(repo: repo, number: number)
         case .issue(let repo, let issue): IssueScreen(repo: repo, issue: issue)
         case .findings: FindingsScreen()
-        case .dashboard: DashboardScreen()
+        case .usage: UsageScreen()
         case .webApp(let app): WebAppScreen(app: app)
         case .projectSettings(let row, let defaults): ProjectSettingsScreen(row: row, defaults: defaults)
         case .providerSettings(let row, let defaults): ProviderSettingsScreen(row: row, defaults: defaults)

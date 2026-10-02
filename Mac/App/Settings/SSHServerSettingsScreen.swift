@@ -226,7 +226,7 @@ struct SSHServerSettingsScreen: View {
         SettingsPair { field(.username) } right: { field(.key) }
         SettingsPair {
             SettingsLabeledSelect(label: "Permission mode", text: SSHServerFormState.modeTitle(state.mode),
-                                  hint: "Ask shows the exact command in the dashboard for approval. Don't ask anything sends every command immediately.") { model.pickMode() }
+                                  hint: "Ask holds each command until it is approved. Don't ask anything sends every command immediately.") { model.pickMode() }
         } right: {
             // Level with the box beside it: below where its label sits, centred on its height.
             SettingsCheck(label: "Available to sessions on this project", on: state.enabled, height: 36) { model.toggle() }
