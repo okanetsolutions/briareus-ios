@@ -219,8 +219,12 @@ final class ChildProcess {
                 let n = bytes[at...].withUnsafeBytes { Darwin.write(self.writeFD, $0.baseAddress, $0.count) }
                 if n > 0 { at += n; continue }
                 if n < 0 && (errno == EAGAIN || errno == EINTR) {
+                    // While the program cannot take more, what it prints is read, so it is never left waiting on a full
+                    // output while this waits on a full input.
+                    if !self.eof { self.drain() }
+                    if self.writeClosed || self.fdsClosed { return }
                     var p = pollfd(fd: self.writeFD, events: Int16(POLLOUT), revents: 0)
-                    if poll(&p, 1, 1000) < 0 && errno != EINTR { self.broken = true; self.dead = true; return }
+                    if poll(&p, 1, 50) < 0 && errno != EINTR { self.broken = true; self.dead = true; return }
                     continue
                 }
                 self.broken = true

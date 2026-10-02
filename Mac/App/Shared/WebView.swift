@@ -20,6 +20,8 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     @Published private(set) var error: String?
     var access: WebAccess?
     private var observations: [NSKeyValueObservation] = []
+    /// The address last asked for, which a reload opens again when nothing has loaded yet.
+    private var requested: String?
 
     /// `profile` names the data store, so a sign-in lasts between runs and between launches.
     init(profile: String, access: WebAccess? = nil) {
@@ -54,11 +56,12 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
 
     func load(_ address: String) {
         guard let u = URL(string: address) else { error = "The address could not be opened."; return }
+        requested = address
         error = nil
         webView.load(request(for: URLRequest(url: u)))
     }
     func reload() {
-        if webView.url == nil, let url { load(url) } else { webView.reload() }
+        if webView.url == nil, let address = url ?? requested { load(address) } else { webView.reload() }
     }
 
     private func request(for r: URLRequest) -> URLRequest {
@@ -72,8 +75,10 @@ final class Browser: NSObject, ObservableObject, WKNavigationDelegate, WKUIDeleg
     // MARK: WKNavigationDelegate
 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        // A navigation to a preview host without the service token is sent again with it.
+        // A navigation to a preview host without the service token is sent again with it. Only a GET is: a form's POST
+        // would lose its body, and the Access cookie the first one earned already lets it through.
         if let access, let u = action.request.url?.absoluteString, action.targetFrame?.isMainFrame != false,
+           (action.request.httpMethod ?? "GET").uppercased() == "GET",
            previewAccessApplies(url: u, hostSuffix: access.hostSuffix),
            action.request.value(forHTTPHeaderField: "CF-Access-Client-Id") == nil {
             decisionHandler(.cancel)
