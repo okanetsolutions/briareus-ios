@@ -231,6 +231,10 @@ struct APIRoute: Sendable {
         .init(name: "delete_ssh_server", method: "DELETE", path: "settings/ssh/servers/{id}"),
         // The database login stored with one, opened, for a tunnel over it to its database.
         .init(name: "ssh_server_db_credentials", method: "GET", path: "settings/ssh/servers/{id}/db-credentials"),
+        // The tokens issued and the projects one can be held to; a new token's secret is in the create answer alone.
+        .init(name: "settings_devices", method: "GET", path: "settings/devices"),
+        .init(name: "create_device", method: "POST", path: "settings/devices"),
+        .init(name: "delete_device", method: "DELETE", path: "settings/devices/{id}"),
     ]
     private static let table: [String: APIRoute] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
 }
