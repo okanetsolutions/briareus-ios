@@ -4,9 +4,14 @@ import Foundation
 
 final class DiskCache: @unchecked Sendable {
     let directory: URL
+    /// How the files are protected: on a Mac, readable only while it is unlocked; a phone in a car runs locked in a
+    /// pocket, so its app passes `.completeFileProtectionUntilFirstUserAuthentication`.
+    let protection: Data.WritingOptions
     private let lock = NSLock()
 
-    init(directory: URL) { self.directory = directory }
+    init(directory: URL, protection: Data.WritingOptions = .completeFileProtection) {
+        self.directory = directory; self.protection = protection
+    }
 
     /// The file name a key maps to; no path separators or dots.
     static func fileName(_ key: String) -> String {
@@ -29,7 +34,7 @@ final class DiskCache: @unchecked Sendable {
     }
     private func write(_ data: Data, to url: URL) -> Bool {
         guard ensureDirectory() else { return false }
-        do { try data.write(to: url, options: [.atomic, .completeFileProtection]); return true } catch {
+        do { try data.write(to: url, options: [.atomic, protection]); return true } catch {
             return (try? data.write(to: url, options: .atomic)) != nil
         }
     }

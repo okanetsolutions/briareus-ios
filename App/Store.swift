@@ -25,7 +25,11 @@ final class Store: ObservableObject {
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        cache = DiskCache(directory: base.appendingPathComponent("Responses", isDirectory: true))
+        // Readable from the first unlock after a restart, since in a car the app runs with the phone locked. Caches
+        // stay out of backups. What the mobile API's app saved under "Responses" is of no use to this client.
+        cache = DiskCache(directory: base.appendingPathComponent("Client", isDirectory: true),
+                          protection: .completeFileProtectionUntilFirstUserAuthentication)
+        try? FileManager.default.removeItem(at: base.appendingPathComponent("Responses", isDirectory: true))
         server = UserDefaults.standard.string(forKey: Store.originKey) ?? ""
     }
 
