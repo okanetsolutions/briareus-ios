@@ -227,10 +227,6 @@ struct APIRoute: Sendable {
         .init(name: "create_ssh_server", method: "POST", path: "settings/ssh/servers"),
         .init(name: "update_ssh_server", method: "PUT", path: "settings/ssh/servers/{id}"),
         .init(name: "delete_ssh_server", method: "DELETE", path: "settings/ssh/servers/{id}"),
-        // Devices and clients: the tokens issued, a new one (its secret is in that answer alone), and revoking one.
-        .init(name: "settings_devices", method: "GET", path: "settings/devices"),
-        .init(name: "create_device", method: "POST", path: "settings/devices"),
-        .init(name: "delete_device", method: "DELETE", path: "settings/devices/{id}"),
     ]
     private static let table: [String: APIRoute] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
 }

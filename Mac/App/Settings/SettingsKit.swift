@@ -109,10 +109,10 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    /// A settings form (or Devices and clients) in the detail pane.
+    /// A settings form in the detail pane.
     static func isSettingsScreen(_ screen: Screen) -> Bool {
         switch screen {
-        case .projectSettings, .providerSettings, .dbServerSettings, .sshServerSettings, .devices: return true
+        case .projectSettings, .providerSettings, .dbServerSettings, .sshServerSettings: return true
         default: return false
         }
     }

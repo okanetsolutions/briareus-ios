@@ -1,4 +1,4 @@
-// Settings, as the dashboard's settings page: a sidebar of its own (← Back to sessions, Devices and clients, the projects,
+// Settings, as the dashboard's settings page: a sidebar of its own (← Back to sessions, the projects,
 // the providers, the database pool and the SSH servers, each with ＋ New) whose rows open their forms across the detail
 // pane. Those routes need an Admin token; any other token gets a sentence saying so.
 import SwiftUI
@@ -35,11 +35,6 @@ struct SettingsSidebar: View {
     // MARK: Sections
 
     @ViewBuilder private var content: some View {
-        // Devices and clients, under ← Back to sessions as on the dashboard's settings page.
-        EntryRow(glyph: Glyph.symbol(0xE7F4), title: "Devices and clients", selected: selected == Screen.devices.id) {
-            navigator.show(.devices)
-        }
-        Color.clear.frame(height: 12)
         let why = settingsUnavailable("settings_projects", path: "settings/projects", what: "Project settings", manage: "projects")
         SectionHeader(title: "Projects", onNew: why == nil ? { model.newProject() } : nil)
         if let why {
@@ -232,29 +227,6 @@ private struct Explanation: View {
     var body: some View {
         Text(text).font(Theme.footnote).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8).frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-/// A one-line entry with a glyph, as Devices and clients.
-private struct EntryRow: View {
-    var glyph: String
-    var title: String
-    var selected: Bool
-    var action: () -> Void
-    @State private var hovered = false
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: glyph).font(.system(size: 12)).foregroundStyle(Theme.muted).frame(width: 16)
-                Text(title).font(Theme.subheadline).foregroundStyle(Theme.ink).lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8).frame(height: 34)
-            .background(RoundedRectangle(cornerRadius: 6).fill(hovered || selected ? Theme.raise : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovered = $0 }
     }
 }
 
