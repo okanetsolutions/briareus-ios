@@ -600,7 +600,8 @@ enum SSHServerField: Int, CaseIterable, Sendable {
         case .dbPort: return SettingsField(key: "dbPort", kind: .number, label: "Database port", cue: "3306", mono: true)
         case .dbUsername: return SettingsField(key: "dbUsername", kind: .text, label: "Database username", cue: "app",
             hint: "Leave empty to keep no login on this server.", mono: true)
-        case .dbPassword: return SettingsField(key: "dbPassword", kind: .text, label: "Database password", cue: "empty = no password", mono: true, secret: true)
+        case .dbPassword: return SettingsField(key: "dbPassword", kind: .text, label: "Database password", cue: "empty = no password",
+            hint: "Sent as typed, spaces included. Leave empty for a user without a password.", mono: true, secret: true)
         }
     }
     var key: String { def.key ?? "" }

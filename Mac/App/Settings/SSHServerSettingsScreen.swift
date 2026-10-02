@@ -250,12 +250,18 @@ struct SSHServerSettingsScreen: View {
         } else if let error = model.loginError {
             NoticeBox(message: "The stored login could not be read: \(error)").padding(.bottom, 16)
         }
-        SettingsPair { field(.dbUsername) } right: { field(.dbPassword) }
-        if state.hasLogin && !state.loginKnown && !model.readingLogin {
-            SettingsNote(text: "A login is stored. Type a username or a password to replace that half of it; the other stays as it is.")
-        } else if state.hasLogin {
-            SettingsNote(text: "Empty the username to remove the stored login.")
+        SettingsPair { field(.dbUsername, hint: loginHint(.dbUsername)) } right: { field(.dbPassword, hint: loginHint(.dbPassword)) }
+    }
+
+    /// What the login's help icons say once one is stored: how to replace it while it is not read, how to remove it once
+    /// it is. Without one, the fields' own hints.
+    private func loginHint(_ f: SSHServerField) -> String? {
+        guard state.hasLogin else { return nil }
+        if !state.loginKnown {
+            return f == .dbUsername ? "A login is stored. Type a username to replace it; the stored password stays as it is."
+                                    : "A password is stored. Type one to replace it; leave empty to keep it."
         }
+        return f == .dbUsername ? "Empty it to remove the stored login, password and all." : nil
     }
 
     private var header: PaneHeader {
@@ -277,8 +283,8 @@ struct SSHServerSettingsScreen: View {
             : PaneHeader(title: "New SSH server", subtitle: "A server a project's agents may run commands on, with approval.", buttons: buttons)
     }
 
-    private func field(_ f: SSHServerField) -> some View {
-        SettingsFieldBox(def: f.def, text: model.binding(f), focus: $focus, key: f) {
+    private func field(_ f: SSHServerField, hint: String? = nil) -> some View {
+        SettingsFieldBox(def: f.def, text: model.binding(f), hint: hint, focus: $focus, key: f) {
             let all = SSHServerField.on(f.tab)
             focus = all[((all.firstIndex(of: f) ?? 0) + 1) % all.count]
         }
