@@ -1,6 +1,6 @@
 // The sidebar's foot (screen_projects.c sidebar_footer_paint, player_paint and the sessions screen's bulk bar): while ☑
 // Select is on, the count, Select all, ⏻ Close, 🗑 Delete and 🗑 Delete all; the player while something plays, with ⏮ ⏯ ⏭;
-// and `☑ Select`, the version and `⎋` above a border.
+// and `⚙`, `☑ Select`, the version and `⎋` above a border.
 import SwiftUI
 
 /// A hairline across the sidebar, 10px in from each side.
@@ -25,6 +25,7 @@ private struct FootText: View {
 struct SidebarFooter: View {
     /// The sessions screen's ☑ Select state and its bar; nil on the projects screen, where ☑ Select does nothing.
     var sessions: SidebarSessions?
+    var settings: () -> Void
     var signOut: () -> Void
     @ObservedObject private var media = Media.shared
 
@@ -92,6 +93,8 @@ struct SidebarFooter: View {
             ZStack {
                 Text(version).font(Theme.caption2).foregroundStyle(Theme.tertiary).frame(height: 18)
                 HStack(spacing: 0) {
+                    FootText(text: "⚙", font: Theme.footnote, color: Theme.muted, action: settings).help("Settings")
+                    Color.clear.frame(width: 12)
                     SelectToggle(sessions: sessions)
                     Spacer(minLength: 8)
                     FootText(text: "⎋", font: Theme.footnote, color: Theme.muted, action: signOut).help("Sign out")

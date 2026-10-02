@@ -1,6 +1,6 @@
 // The sidebar, as the dashboard draws it (screen_projects.c): the ＋ New session strip with WhatsApp and Slack, the 📊 and ⚑
-// switches and ⚙ Settings, the projects with their session counts, and inside a project its conversations; what Spotify
-// plays, ☑ Select and ⎋ along the foot. The project's conversations are pushed inside the sidebar, as on Windows, with
+// switches, the projects with their session counts, and inside a project its conversations; what Spotify plays, and
+// ⚙ Settings, ☑ Select and ⎋ along the foot. The project's conversations are pushed inside the sidebar, as on Windows, with
 // `‹ All projects` to come back.
 import AppKit
 import SwiftUI
@@ -35,10 +35,11 @@ enum SidebarCommon {
         case .whatsapp: nav.show(.webApp(.whatsapp))
         case .slack: nav.show(.webApp(.slack))
         case .findings: nav.show(.findings)
-        // Settings take the sidebar's place, as the dashboard's settings page has a sidebar of its own.
-        case .settings: nav.sidebarMode = .settings
         }
     }
+
+    /// The foot's ⚙: Settings take the sidebar's place, as the dashboard's settings page has a sidebar of its own.
+    static func openSettings() { Navigator.shared.sidebarMode = .settings }
 
     static func signOut() {
         guard Dialogs.confirm("Sign out of this dashboard?",
@@ -56,7 +57,7 @@ private struct SidebarScreenFrame<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             SidebarScroll { content() }
-            SidebarFooter(sessions: sessions, signOut: SidebarCommon.signOut)
+            SidebarFooter(sessions: sessions, settings: SidebarCommon.openSettings, signOut: SidebarCommon.signOut)
         }
     }
 }
