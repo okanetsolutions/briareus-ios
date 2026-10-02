@@ -185,6 +185,18 @@ final class CoreTests: XCTestCase {
         let sessions = try JSONDecoder().decode([Session].self, from: data)
         XCTAssertEqual(Session.holdingFindings(sessions).map(\.id), ["c", "a"])
     }
+    func testMarkdownReadsTables() {
+        let source = "Scores:\n| Dev | Score |\n|:---|---:|\n| Ana | **3** |\n| a \\| b | 1 | extra |\n| short |\n\nAfter"
+        XCTAssertEqual(MarkdownBlock.parse(source), [
+            .paragraph("Scores:"),
+            .table(header: ["Dev", "Score"], alignments: [.leading, .trailing],
+                   rows: [["Ana", "**3**"], ["a | b", "1"], ["short", ""]]),
+            .paragraph("After")
+        ])
+        // Bars without a row of dashes under them are only text.
+        XCTAssertEqual(MarkdownBlock.parse("a | b\nc | d"), [.paragraph("a | b\nc | d")])
+        XCTAssertEqual(MarkdownBlock.parse("```\n| a |\n|---|\n```"), [.code(language: nil, text: "| a |\n|---|")])
+    }
     func testSetupEventsAreHidden() throws {
         let data = Data(#"[{"seq":1,"kind":"setup","text":"Installing dependencies"},{"seq":2,"kind":"text","text":"Done"}]"#.utf8)
         let events = try JSONDecoder().decode([Event].self, from: data)

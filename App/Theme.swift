@@ -123,6 +123,8 @@ struct MarkdownText: View, Equatable {
                         .overlay(alignment: .leading) { Capsule().fill(Theme.border).frame(width: 3) }
                 case .code(let language, let text):
                     CodeBlock(language: language, text: text)
+                case .table(let header, let alignments, let rows):
+                    table(header: header, alignments: alignments, rows: rows)
                 case .rule:
                     Rectangle().fill(Theme.border).frame(height: 1).padding(.vertical, 4)
                 }
@@ -130,6 +132,38 @@ struct MarkdownText: View, Equatable {
         }
         .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    /// A table scrolls sideways when it is wider than the screen rather than squeezing its columns.
+    private func table(header: [String], alignments: [MarkdownBlock.ColumnAlignment], rows: [[String]]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(Array(header.enumerated()), id: \.offset) { column, text in
+                        cell(text, alignments[column]).fontWeight(.semibold)
+                    }
+                }
+                .background(Theme.surface)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    Rectangle().fill(Theme.border).frame(height: 0.5).gridCellUnsizedAxes(.horizontal)
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { column, text in cell(text, alignments[column]) }
+                    }
+                }
+            }
+            .font(.callout)
+            .background(Theme.elevated)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
+            .padding(.vertical, 1)
+        }
+    }
+    private func cell(_ text: String, _ alignment: MarkdownBlock.ColumnAlignment) -> some View {
+        let edge: Alignment = alignment == .trailing ? .trailing : alignment == .center ? .center : .leading
+        return Text(inline(text))
+            .multilineTextAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
+            .frame(maxWidth: 360, alignment: edge).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .gridColumnAlignment(alignment == .trailing ? .trailing : alignment == .center ? .center : .leading)
     }
     private func inline(_ text: String) -> AttributedString {
         var result = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
