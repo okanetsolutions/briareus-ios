@@ -303,7 +303,7 @@ struct ProjectSettingsScreen: View {
         case .project:
             Section { field(.repo); field(.label); field(.localDir) }.listRowBackground(Theme.row)
             Section { field(.setup); field(.php) } header: { Text("Setup") } footer: {
-                Text("This project's own prompt wording is edited under Prompts on the web dashboard; saving here keeps it as it is.")
+                Text("This project's own prompt wording is kept on the server; saving here keeps it as it is.")
             }
             .listRowBackground(Theme.row)
         case .database:
@@ -332,11 +332,11 @@ struct ProjectSettingsScreen: View {
                 runtime(.worker)
                 field(.budget)
             } footer: {
-                Text("The orchestrator's standing instructions for this project live under Prompts on the web dashboard, in the “Orchestrator instructions” template.")
+                Text("The orchestrator's standing instructions for this project live on the server, in its “Orchestrator instructions” template.")
             }
             .listRowBackground(Theme.row)
             Section { check(.isSelf) } footer: {
-                Text("Tick it on the repository whose code is running right now, and on no other. An orchestrator on any project that finds a flaw in the tooling running it (a briefing, a worker tool, a loop) can then send a fix worker here, review loop armed, and merge its pull request once the loop approves and the checks are green. The running dashboard keeps its code until you redeploy.")
+                Text("Tick it on the repository whose code is running right now, and on no other. An orchestrator on any project that finds a flaw in the tooling running it (a briefing, a worker tool, a loop) can then send a fix worker here, review loop armed, and merge its pull request once the loop approves and the checks are green. The running server keeps its code until you redeploy.")
             }
             .listRowBackground(Theme.row)
         case .env:

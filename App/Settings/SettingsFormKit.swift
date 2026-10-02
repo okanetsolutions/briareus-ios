@@ -24,7 +24,6 @@ final class SettingsLists: ObservableObject {
     @Published var servers = Section()
     @Published var ssh = Section()
     /// The tokens issued, and (in `defaults`) the projects one can be held to.
-    @Published var devices = Section()
     /// A reorder is on its way.
     @Published private(set) var ordering = false
 
@@ -39,7 +38,7 @@ final class SettingsLists: ObservableObject {
     }
 
     private func reset() {
-        projects = Section(); providers = Section(); servers = Section(); ssh = Section(); devices = Section()
+        projects = Section(); providers = Section(); servers = Section(); ssh = Section()
         ordering = false
     }
 
@@ -61,12 +60,11 @@ final class SettingsLists: ObservableObject {
     func loadProviders() async throws { try await load(\.providers, "settings_providers", "providers") }
     func loadServers() async throws { try await load(\.servers, "settings_db_servers", "servers") }
     func loadSSH() async throws { try await load(\.ssh, "settings_ssh_servers", "servers") }
-    func loadDevices() async throws { try await load(\.devices, "settings_devices", "devices", defaultsKey: "projects") }
 
     /// Every list afresh; the first failure is what a poll backs off on.
     func refresh() async throws {
         var first: Error?
-        for read in [loadProjects, loadProviders, loadServers, loadSSH, loadDevices] {
+        for read in [loadProjects, loadProviders, loadServers, loadSSH] {
             do { try await read() } catch { if first == nil { first = error } }
         }
         if let first { throw first }
@@ -74,7 +72,7 @@ final class SettingsLists: ObservableObject {
 
     // MARK: Order
 
-    /// Moves projects within the list, which is also the order the dashboard's sidebar and composer use.
+    /// Moves projects within the list, which is also the order the Mac app's sidebar and composer use.
     func moveProjects(from source: IndexSet, to destination: Int) {
         guard !ordering else { return }
         var rows = projects.list

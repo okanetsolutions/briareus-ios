@@ -1,4 +1,4 @@
-// The Usage tab: what the projects spent over a window, as the Mac's Dashboard draws it from the usage ledger. An Admin
+// The Usage tab: what the projects spent over a window, as the Mac's 📊 Usage screen draws it from the usage ledger. An Admin
 // token reads every project at once (`GET /usage/all`) over any window, narrowed by six filters, with insights and the
 // costliest sessions; any other token reads each of its projects' own month (`GET /usage`), added up here. The totals
 // are tiles, tokens and cost per day are bars, and each breakdown is a list of rows with a ring of its share of tokens;
@@ -7,11 +7,11 @@ import Charts
 import SwiftUI
 
 @MainActor
-final class UsageDashboardModel: ObservableObject {
+final class UsageModel: ObservableObject {
     /// The window is a preference, kept while the app runs; the filters are not, so a fresh visit shows everything.
     private static var period = 0
 
-    @Published var query = UsageQuery(period: UsageDashboardModel.period)
+    @Published var query = UsageQuery(period: UsageModel.period)
     /// The `usage/all` payload on screen, and the query it answered: a pick shows the loader until its own answer lands.
     @Published private(set) var data: JSON?
     private var dataKey: String?
@@ -122,7 +122,7 @@ final class UsageDashboardModel: ObservableObject {
     }
     func setPeriod(_ p: Int) {
         guard p != query.period, Usage.periods.indices.contains(p) else { return }
-        UsageDashboardModel.period = p
+        UsageModel.period = p
         query.period = p
         repick()
     }
@@ -142,8 +142,8 @@ final class UsageDashboardModel: ObservableObject {
     }
 }
 
-struct DashboardScreen: View {
-    @StateObject private var model = UsageDashboardModel()
+struct UsageScreen: View {
+    @StateObject private var model = UsageModel()
     @ObservedObject private var store = Store.shared
     @ObservedObject private var projects = ProjectsModel.shared
     @Environment(\.navigate) private var navigate

@@ -29,7 +29,7 @@ struct APIError: Error, Equatable, Sendable {
     var description: String {
         switch kind {
         case .invalidAddress: return "Enter an HTTPS server address, optionally ending in /api/v1, without credentials or query parameters."
-        case .invalidToken: return "Paste the complete token from Settings → Devices and clients."
+        case .invalidToken: return "Paste the complete token the server printed when it was issued (npm run create-token)."
         case .redirected: return "The server redirected this request. Check the Cloudflare Access exception for /api/v1 and /api/v1/*."
         case .nonJSON: return "The server returned an unexpected response. Check that the client API is deployed and reachable through Cloudflare Access."
         case .incompatibleVersion: return "This server uses an unsupported client API version."
@@ -231,10 +231,6 @@ struct APIRoute: Sendable {
         .init(name: "delete_ssh_server", method: "DELETE", path: "settings/ssh/servers/{id}"),
         // The database login stored with one, opened, for a tunnel over it to its database.
         .init(name: "ssh_server_db_credentials", method: "GET", path: "settings/ssh/servers/{id}/db-credentials"),
-        // The tokens issued and the projects one can be held to; a new token's secret is in the create answer alone.
-        .init(name: "settings_devices", method: "GET", path: "settings/devices"),
-        .init(name: "create_device", method: "POST", path: "settings/devices"),
-        .init(name: "delete_device", method: "DELETE", path: "settings/devices/{id}"),
     ]
     private static let table: [String: APIRoute] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
 }
@@ -426,7 +422,7 @@ final class APIClient: @unchecked Sendable {
         return text
     }
 
-    /// Stores a file to attach to a message, as the dashboard's composer does: the bytes are the body and the name rides in the
+    /// Stores a file to attach to a message, as the Windows client's composer does: the bytes are the body and the name rides in the
     /// query. The answer is the id a message takes in `attachments`.
     func upload(name: String, bytes: Data) async throws -> String {
         if bytes.count > APIClient.uploadLimit { throw APIError(.http, status: 413, message: "The file exceeds the server’s 25 MB limit for an attachment.") }

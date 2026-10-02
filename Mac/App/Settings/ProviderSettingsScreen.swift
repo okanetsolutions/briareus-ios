@@ -1,4 +1,4 @@
-// One provider's settings, as the dashboard's provider form laid out as the project form is: tabs along the top (Provider,
+// One provider's settings, as the Windows client's provider form laid out as the project form is: tabs along the top (Provider,
 // Models and, once saved, Status), saved through /settings/providers. A provider is one login or endpoint of one CLI; its
 // login happens in the browser and its connection and quota are read from the server.
 import SwiftUI
@@ -438,7 +438,7 @@ struct ProviderSettingsScreen: View {
         }
     }
 
-    /// The connection at a glance, as the dashboard's status headline: a dot and a sentence.
+    /// The connection at a glance, as the Windows client's status headline: a dot and a sentence.
     @ViewBuilder private var headline: some View {
         if let h = ProviderStatusText.headline(model.status) {
             HStack(spacing: 9) {

@@ -6,7 +6,7 @@ import Foundation
 // MARK: - The pull request mark
 
 extension Session {
-    /// "PR #123 open · ✓4 ✗1 ●2", as the dashboard's badge reads, once the server has synced the pull request.
+    /// "PR #123 open · ✓4 ✗1 ●2", as the Windows client's badge reads, once the server has synced the pull request.
     var pullBadge: String? {
         let pr = raw["prStatus"]
         guard let number = pr["number"].truncatedInt, number >= 1 else { return nil }
@@ -30,7 +30,7 @@ extension Session {
         return "passing"
     }
 
-    /// The dashboard's `sessionState`: an idle conversation with a question up is "waiting".
+    /// The Windows client's `sessionState`: an idle conversation with a question up is "waiting".
     var conversationState: String { status == "idle" && raw["awaitingAnswer"].is(true) ? "waiting" : status }
     /// A row's second line: provider, branch (an orchestrator's role in its place), state and age, the empty ones left out.
     func conversationRowDetail(now: Date = Date()) -> String {

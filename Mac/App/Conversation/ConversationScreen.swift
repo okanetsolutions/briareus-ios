@@ -115,7 +115,7 @@ final class ConversationModel: ObservableObject {
         if next != blocks { blocks = next }
     }
 
-    /// Polls while the screen is up: every 2 seconds while the agent works, every 7 otherwise, with the dashboard's backoff.
+    /// Polls while the screen is up: every 2 seconds while the agent works, every 7 otherwise, with the Windows client's backoff.
     func run() async {
         var failures = 0
         while !Task.isCancelled {

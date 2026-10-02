@@ -19,7 +19,7 @@ enum Destination: Hashable, Identifiable {
     /// The review rounds waiting for a decision: one project's, or every project's with nil.
     case findings(repo: String?)
     /// What every project spent over a window.
-    case dashboard
+    case usage
     /// The settings forms: `row` is the server's record (nil with `defaults` for a new one).
     case projectSettings(row: JSON?, defaults: JSON?)
     case providerSettings(row: JSON?, defaults: JSON?)
@@ -35,7 +35,7 @@ enum Destination: Hashable, Identifiable {
         case .pullFiles(let repo, let n): return "files:\(repo)#\(n)"
         case .issue(let repo, let issue): return "issue:\(repo)#\(issue["number"].int ?? 0)"
         case .findings(let repo): return "findings:\(repo ?? "")"
-        case .dashboard: return "dashboard"
+        case .usage: return "usage"
         case .projectSettings(let row, _): return "project-settings:\(row?["id"].int.map(String.init) ?? "new")"
         case .providerSettings(let row, _): return "provider-settings:\(row?["id"].int.map(String.init) ?? "new")"
         case .dbServerSettings(let row, _): return "db-server:\(row?["id"].int.map(String.init) ?? "new")"
@@ -54,7 +54,7 @@ enum Destination: Hashable, Identifiable {
         case .pullFiles(let repo, let number): PullFilesScreen(repo: repo, number: number)
         case .issue(let repo, let issue): IssueScreen(repo: repo, issue: issue)
         case .findings(let repo): FindingsScreen(repo: repo)
-        case .dashboard: DashboardScreen()
+        case .usage: UsageScreen()
         case .projectSettings(let row, let defaults): ProjectSettingsScreen(row: row, defaults: defaults)
         case .providerSettings(let row, let defaults): ProviderSettingsScreen(row: row, defaults: defaults)
         case .dbServerSettings(let row, let defaults): DBServerSettingsScreen(row: row, defaults: defaults)
@@ -121,7 +121,7 @@ struct DestinationLink<Label: View>: View {
 }
 
 /// An iPad's Projects tab: the projects and a project's conversations on the left, the chosen screen on the right with
-/// its own stack, as the dashboard lays them out.
+/// its own stack, as the Mac app lays them out.
 struct SplitRoot: View {
     @State private var detail: Destination?
     @State private var detailPath: [Destination] = []

@@ -170,7 +170,7 @@ extension CarAssistant {
         }
     }
     private func connection() -> CPListTemplate {
-        var about = [fact(store.server, "Connected dashboard", symbol: "checkmark.seal")]
+        var about = [fact(store.server, "Connected server", symbol: "checkmark.seal")]
         if let device = store.device {
             about.append(fact(device.label, "\(device.isAdmin ? "Admin" : device.canManage ? "Manage" : "Read only") · expires \(device.expiry.formatted(date: .abbreviated, time: .omitted))", symbol: "iphone.gen3"))
         }
@@ -365,7 +365,7 @@ extension CarAssistant {
         return Self.fit([section(CarText.status(session, asking: question != nil), talk), section("Agent", agent), section("More", more)])
     }
 
-    /// The round held for verdicts. An unmarked finding goes as optional, as on the dashboard and on the phone.
+    /// The round held for verdicts. An unmarked finding goes as optional, as on the Mac app and on the phone.
     private func triageList(_ triage: JSON) -> CPListTemplate {
         let template = CPListTemplate(title: "Findings", sections: [])
         let mine = triageTakesVerdicts(triage)
@@ -477,9 +477,9 @@ extension CarAssistant {
         var rows = [fact(issue.author.map { "By @\($0)" } ?? "Issue", said.joined(separator: " · "), symbol: "smallcircle.filled.circle")]
         let sessions = store.feed(repo).sessions.filter { issueRunMatches($0, issue: issue, repo: repo) }
         if store.supports("start_session") {
-            // An epic is worked by an orchestrator, which the web dashboard starts; its sub-issues start here.
+            // An epic is worked by an orchestrator, which the Mac app starts; its sub-issues start here.
             if issue.isEpic {
-                rows.append(fact("Start its sub-issues one by one", "An epic is started from the web dashboard", symbol: "square.stack.3d.up"))
+                rows.append(fact("Start its sub-issues one by one", "An epic is not started from the car", symbol: "square.stack.3d.up"))
             } else {
                 rows.append(item("Start a session on it", sessions.contains(where: \.isActive) ? "A session is already working on it" : "Starts a paid agent", symbol: "play") { [weak self] in
                     self?.ask(["Start a paid session on issue #\(issue.number)?", "Start a session?"], yes: "Start") { self?.begin(on: issue) }

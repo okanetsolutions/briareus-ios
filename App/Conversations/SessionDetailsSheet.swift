@@ -275,7 +275,7 @@ struct SessionDetailsSheet: View {
                 HStack(spacing: 6) {
                     ForEach(Array(findingDecisionIds.enumerated()), id: \.offset) { i, id in
                         let on = current == id
-                        // The same pick twice clears it, as the dashboard does.
+                        // The same pick twice clears it, as the Mac app does.
                         Button { decide(key, on ? nil : id) } label: {
                             Text(findingDecisionTitles[i]).font(.caption.weight(.medium))
                                 .foregroundStyle(on ? Color.white : .primary)

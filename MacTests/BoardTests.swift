@@ -340,7 +340,7 @@ final class BoardTests: XCTestCase {
     }
     private func known(_ id: String) -> BoardAction? { BoardAction.known.first { $0.id == id } }
 
-    func testKnownErrandsAreListedInTheDashboardsOrder() {
+    func testKnownErrandsAreListedInOrder() {
         let k = BoardAction.known
         XCTAssertEqual(ids(k), "run,review,solve-conflicts,fix-checks,implement-feedback,custom-feedback,pr-body-summary,delete-self-comments")
         for a in k { XCTAssertFalse(a.label.isEmpty); XCTAssertFalse(a.hint.isEmpty); XCTAssertEqual(a.input != nil, a.id == "custom-feedback") }

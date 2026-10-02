@@ -1,6 +1,6 @@
 # Briareus for iPhone, iPad, Mac and CarPlay
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the dashboard for running coding agents against your projects. It talks to the server's client API (`/api/v1`), as the Mac and Windows clients do, and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the server for running coding agents against your projects. It talks to the server's client API (`/api/v1`), as the Mac and Windows clients do, and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
 
 ## Contents
 
@@ -34,13 +34,13 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 - Turns the review loop on or off from inside a conversation.
 - Triages a review round from its conversation or from the Findings tab: a verdict and a comment per finding, a note for the fix session, replies and deletions on a round that is not yours.
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
-- On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right, as the dashboard does. A window too narrow for both falls back to the phone's single column.
+- On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right. A window too narrow for both falls back to the phone's single column.
 - On a Mac, runs as a Mac app of its own (`Mac/`), the twin of [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows): the same screens, layout and features, on the client API (`/api/v1`). See [The Mac app](#the-mac-app).
 
 **Project board**
 
-- Shows open pull requests as the dashboard does: labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack position, narrowed by author, reviewer or label.
-- Opens a pull request on its description, file changes with diffs, checks, reviews, commits, the issues it closes, findings, the conversations already run on it and its ▶ Run preview in an embedded browser.
+- Shows open pull requests: labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack position, narrowed by author, reviewer or label.
+- Opens a pull request on its description, file changes with diffs, reviews, the issues it closes, findings, the conversations already run on it and its ▶ Run preview in an embedded browser.
 - Records fix, optional or dismiss decisions on findings, and merges when the server offers it, saying first what stands in the way.
 - Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, PR body and delete my comments. The one the pull request's state asks for is marked as suggested, and named on its row in the list.
 - Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, starts a session on an issue and closes one as completed or not planned.
@@ -48,7 +48,7 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 **Usage and Settings**
 
 - Shows what the projects spent over a window, by project, activity, provider and model, with the costliest sessions; an admin token sees every project's, others this month's for their own.
-- With an admin token, edits the server's settings as the Mac app does: projects and their order, providers and their logins, the database pool, SSH servers with the database login each stores, and the tokens issued to devices and clients, a new one shown once to copy. Each field's hint is behind an ⓘ beside it.
+- With an admin token, edits the server's settings as the Mac app does: projects and their order, providers and their logins, the database pool, and SSH servers with the database login each stores. Each field's hint is behind an ⓘ beside it.
 
 **In the car**
 
@@ -68,7 +68,7 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 
 ## The Mac app
 
-The Mac app is built from `Mac/` by the **Briareus Mac** scheme and does what [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows) does, screen for screen: the sidebar with the ＋ New session strip (WhatsApp, Slack, 📊 Dashboard, ⚑ Findings, ⚙ Settings) and the player for what Spotify or Music is playing; conversations with Markdown replies, tool clusters, attachments and voice notes, beside the pull request panel; the project board with pull requests, issues, errands, the pull request page and its Run tab in an embedded browser; the Findings queue; the usage Dashboard; ⚙ Settings for projects, providers, the database pool, SSH servers (with the database login each stores, on a Database tab) and devices; and SSH and SFTP sessions on a project's servers, run by this Mac's own `ssh` and `sftp`, so `~/.ssh` applies. It talks to the client API (`/api/v1`) with a device token, as the Windows client does, and is not sandboxed, since the SSH and SFTP sessions read `~/.ssh`. Its core (`Mac/Core`), which the iPhone and iPad app compiles too, is tested with `swift test`.
+The Mac app is built from `Mac/` by the **Briareus Mac** scheme and does what [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows) does, screen for screen: the sidebar with the ＋ New session strip (WhatsApp, Slack, 📊 Usage, ⚑ Findings) and ⚙ Settings at its foot, and the player for what Spotify or Music is playing; conversations with Markdown replies, tool clusters, attachments and voice notes, beside the pull request panel; the project board with pull requests, issues, errands, the pull request page and its Run tab in an embedded browser; the Findings queue; the 📊 Usage screen; ⚙ Settings for projects, providers, the database pool, SSH servers (with the database login each stores, on a Database tab); and SSH and SFTP sessions on a project's servers, run by this Mac's own `ssh` and `sftp`, so `~/.ssh` applies. It talks to the client API (`/api/v1`) with a device token, as the Windows client does, and is not sandboxed, since the SSH and SFTP sessions read `~/.ssh`. Its core (`Mac/Core`), which the iPhone and iPad app compiles too, is tested with `swift test`.
 
 ## Requirements
 
@@ -106,7 +106,7 @@ A deployment has two halves: a Briareus server exposing the client API, and a si
 1. Deploy a recent version of [Briareus](https://github.com/nadinyamaui/briareus) and publish it on an HTTPS hostname. Plain HTTP is refused by the app.
 2. Issue the first token on the server with `npm run create-token -- --label Phone` (restart once if that run wrote `AUTH_SECRET`). The client API fails closed until then.
 3. For voice notes, set `OPENAI_TRANSCRIBE_API_KEY` and `OPENAI_TRANSCRIBE_MODEL` on the server. Without them everything else works and the microphone explains what is missing.
-4. If an access proxy such as Cloudflare Access protects the dashboard, exempt only `/api/v1` and `/api/v1/*` from its interactive login. The token still guards every request. Do not exempt the whole hostname. The server's [client API guide](https://github.com/nadinyamaui/briareus/blob/main/docs/api-v1.md) has the exact steps.
+4. If an access proxy such as Cloudflare Access protects the server, exempt only `/api/v1` and `/api/v1/*` from its interactive login. The token still guards every request. Do not exempt the whole hostname. The server's [client API guide](https://github.com/nadinyamaui/briareus/blob/main/docs/api-v1.md) has the exact steps.
 5. Check the endpoint from outside your network, without cookies:
 
    ```sh
@@ -199,7 +199,7 @@ The app declares that it uses no non-exempt encryption (`ITSAppUsesNonExemptEncr
 
 ### 5. Pair the app with the server
 
-1. Issue a token: the first with `npm run create-token` on the server, later ones from an admin token under **Settings → Devices and clients** in this app or the Mac app. Give the device a name, choose the projects it may see, **Read**, **Manage** or **Admin**, and an expiry.
+1. Issue a token: the first with `npm run create-token` on the server, later ones the same way. Give the device a name, choose the projects it may see, **Read**, **Manage** or **Admin**, and an expiry.
 2. In the app, enter the public HTTPS server address (or its `/api/v1` URL) and the one-time token.
 
 Issue one token per device. **Manage** permits paid agent starts, messages, GitHub changes and session deletion on the chosen projects; **Read** permits none of them; **Admin** reaches every project and the server's settings.
@@ -291,18 +291,18 @@ Tests exercise the saved-response cache, origin validation, credential headers, 
 Manual acceptance with a deployed test project:
 
 - Pair with a Read-only token; verify only its projects appear and mutation controls are absent.
-- Pair with Manage, start a conversation, send a follow-up and check the dashboard sees it once.
+- Pair with Manage, start a conversation, send a follow-up and check the Mac app sees it once.
 - Open a conversation whose agent ran tools, commands and git steps; verify the transcript shows only the messages, questions and turn endings.
 - Background/foreground and leave/reopen the conversation; verify it opens at once on the saved transcript, then shows incremental updates and no duplicate events.
 - Quit and relaunch the app; verify projects appear before the server answers and refresh afterwards.
 - Test a question, queued follow-up, stop, rename, close and reopen; confirm before deleting a disposable session.
-- Open the pull requests and compare labels, conflicts, checks and filters against the dashboard's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
-- Triage a round of findings from the project's Findings button and toggle the review loop from a conversation; verify the dashboard shows the same state.
-- Revoke the token in the dashboard during polling and verify pairing appears; also test self-revocation and local-only forgetting.
+- Open the pull requests and compare labels, conflicts, checks and filters against the Mac app's board; open a pull request and compare checks, reviews and findings. The actions start paid agents and may write to GitHub.
+- Triage a round of findings from the project's Findings button and toggle the review loop from a conversation; verify the Mac app shows the same state.
+- Revoke the token on the server (`npm run create-token -- --revoke`) during polling and verify pairing appears; also test self-revocation and local-only forgetting.
 - Record a voice note in a conversation and in a new one; verify its text lands at the end of the box, that discarding sends nothing, that a Read-only token shows no microphone, and that a server without transcription explains what it is missing when the microphone is pressed.
 - Lose networking during a write; refresh and check the outcome before submitting it again.
 - Test Dynamic Type, VoiceOver, landscape, dark mode, an iPad and a physical iPhone.
-- In CarPlay, with the phone locked: choose a project and a conversation, dictate a message, answer no and yes when it is shown, and check the dashboard sees it once. Start a conversation, stop the agent, triage a round of findings, look at a pull request's checks, start an errand on it, check that music comes back after each dictation and that the app never speaks. Check that every list opens from the voice screen and that none goes deeper than two screens.
+- In CarPlay, with the phone locked: choose a project and a conversation, dictate a message, answer no and yes when it is shown, and check the Mac app sees it once. Start a conversation, stop the agent, triage a round of findings, look at a pull request's checks, start an errand on it, check that music comes back after each dictation and that the app never speaks. Check that every list opens from the voice screen and that none goes deeper than two screens.
 - On a Mac, choose a project and a conversation, resize the window, and check the conversation goes on updating with another app in front.
 
 ## Boundaries
@@ -314,7 +314,7 @@ The iPhone and iPad app has what the Mac app has, except what needs the Mac itse
 - Diffs GitHub does not return (binary or very large files) open on GitHub instead.
 - Review and the board's other errands always use the runtime configured on the server.
 - A pull request's labels and conflicts come from the board, which lists open pull requests only, so a merged or closed one shows neither.
-- Starting an epic, which picks an orchestrator's and its workers' models, remains in the web dashboard.
+- Starting an epic, which picks an orchestrator's and its workers' models, is not offered by the apps.
 
 ## Security and privacy
 

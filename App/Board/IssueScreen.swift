@@ -267,7 +267,7 @@ struct IssueScreen: View {
         if store.supports("start_session") && closedReason == nil {
             Section {
                 if issue.isEpic {
-                    Text("An epic is worked by an orchestrator, one sub-issue at a time. Start it from the web dashboard, where its models are picked, or start one of its sub-issues here.")
+                    Text("An epic is worked by an orchestrator, one sub-issue at a time. It is not started from this app; start one of its sub-issues here.")
                         .font(.footnote).foregroundStyle(.secondary)
                 } else {
                     Button { confirmingStart = true } label: {

@@ -12,7 +12,7 @@ final class PhoneConversationsTests: XCTestCase {
 
     // MARK: Pull request mark
 
-    func testPullBadgeReadsAsTheDashboards() {
+    func testPullBadgeReadsAsTheBadge() {
         XCTAssertNil(session(["startedOnPr": 4]).pullBadge)
         XCTAssertNil(session(["prStatus": .null]).pullBadge)
         XCTAssertEqual(session(["prStatus": ["number": 9, "state": "merged", "checks": .null]]).pullBadge, "PR #9 merged")

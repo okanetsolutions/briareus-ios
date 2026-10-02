@@ -1,4 +1,4 @@
-// The 📊 Dashboard: what every project spent over a window, as the web dashboard's home pane draws it from the usage
+// The 📊 Usage screen: what every project spent over a window, as the Windows client draws it from the usage
 // ledger (`GET /usage/all`). The totals as tiles, tokens and cost per day or month as bars, the most expensive sessions,
 // and the spend by project, activity, provider and model, each with a ring of its share of the tokens. The window and
 // six filters narrow every number on the page; a row of a breakdown is a filter too. Reading it needs an Admin token.
@@ -9,11 +9,11 @@ private typealias MeasuredFont = FDKit.MeasuredFont
 // MARK: - Model
 
 @MainActor
-final class DashboardModel: ObservableObject {
+final class UsageModel: ObservableObject {
     /// The window is a preference, kept while the app runs; the filters are not, so a fresh visit shows everything.
     private static var period = 0
 
-    @Published var query = UsageQuery(period: DashboardModel.period)
+    @Published var query = UsageQuery(period: UsageModel.period)
     /// The payload on screen, and the query it answered: a pick shows the loader until its own answer lands.
     @Published private(set) var data: JSON?
     private var dataKey: String?
@@ -26,9 +26,9 @@ final class DashboardModel: ObservableObject {
 
     init() { restore() }
 
-    /// The screen's model while the Dashboard is on the stack, so the picks survive a session opened from it.
-    private static let keeper = FDKit.Keeper<DashboardModel>(.dashboard)
-    static func kept() -> DashboardModel { keeper.obtain(DashboardModel.init) { $0.stop() } }
+    /// The screen's model while Usage is on the stack, so the picks survive a session opened from it.
+    private static let keeper = FDKit.Keeper<UsageModel>(.usage)
+    static func kept() -> UsageModel { keeper.obtain(UsageModel.init) { $0.stop() } }
 
     /// The payload drawn: only the one that answered the current window and picks.
     var shown: JSON? { data != nil && dataKey == query.key ? data : nil }
@@ -82,7 +82,7 @@ final class DashboardModel: ObservableObject {
     func pickPeriod() {
         let items = Usage.periods.enumerated().map { FDKit.Menu.Item(title: $0.element.label, checked: $0.offset == query.period) }
         guard let chosen = FDKit.Menu.show(items, rightAligned: true), chosen != query.period else { return }
-        DashboardModel.period = chosen
+        UsageModel.period = chosen
         query.period = chosen
         repick()
     }
@@ -121,8 +121,8 @@ final class DashboardModel: ObservableObject {
 
 // MARK: - Screen
 
-struct DashboardScreen: View {
-    @StateObject private var model = DashboardModel.kept()
+struct UsageScreen: View {
+    @StateObject private var model = UsageModel.kept()
     @ObservedObject private var store = Store.shared
     @State private var width: CGFloat = 0
 
@@ -142,7 +142,7 @@ struct DashboardScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PaneHeader(title: "\u{1F4CA} Dashboard", subtitle: subtitle, buttons: buttons)
+            PaneHeader(title: "\u{1F4CA} Usage", subtitle: subtitle, buttons: buttons)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     Color.clear.frame(height: 14)
@@ -173,11 +173,11 @@ struct DashboardScreen: View {
 
     private var adminNeeded: String {
         let listed = store.routes.contains { $0.path == "/usage/all" || $0.path == "usage/all" }
-        guard listed else { return "This server does not offer the usage ledger (GET /usage/all) on its client API. Update the server to see the dashboard here." }
-        return "The dashboard reads every project's spend, which needs an Admin token, and this device's token is \(store.device?.permission ?? "unknown"). Create an Admin token on the web dashboard under Settings \u{2192} Devices and clients and connect with it."
+        guard listed else { return "This server does not offer the usage ledger (GET /usage/all) on its client API. Update the server to see the usage here." }
+        return "Usage reads every project's spend, which needs an Admin token, and this device's token is \(store.device?.permission ?? "unknown"). Issue an Admin token on the server with npm run create-token and connect with it."
     }
 
-    /// The pickers, as the dashboard's selects, and Clear filters.
+    /// The pickers, as the Windows client's selects, and Clear filters.
     private var filters: some View {
         FlowLayout(spacing: 6, lineSpacing: 6) {
             ForEach(Usage.Filter.allCases, id: \.self) { f in
@@ -231,7 +231,7 @@ struct DashboardScreen: View {
 
 // MARK: - Cards
 
-/// The dashboard's `.card`: raise on a line, 12px corners, 12px above and below the content and 14px (or `side`) beside it.
+/// The Windows client's `.card`: raise on a line, 12px corners, 12px above and below the content and 14px (or `side`) beside it.
 private struct UsageCard<Content: View>: View {
     var side: CGFloat = 14
     @ViewBuilder var content: Content
@@ -489,7 +489,7 @@ private func usageCells(_ u: JSON, total: Bool) -> [String] {
 }
 
 private struct ProjectCard: View {
-    @ObservedObject var model: DashboardModel
+    @ObservedObject var model: UsageModel
     var u: JSON
     var width: CGFloat
     var body: some View {
@@ -524,7 +524,7 @@ private struct ProjectCard: View {
 
 /// The activity, provider and model cards: a swatch on each row for its slice, and the row as a filter.
 private struct SimpleCard: View {
-    @ObservedObject var model: DashboardModel
+    @ObservedObject var model: UsageModel
     var u: JSON
     var filter: Usage.Filter
     var width: CGFloat

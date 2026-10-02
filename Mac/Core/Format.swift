@@ -103,7 +103,7 @@ func formatClock(_ seconds: Int) -> String {
 
 // MARK: - Numbers
 
-/// Token counts as the dashboard abbreviates them: 999, 1.0k, 19.1M, 21.6B. From where one decimal rounds up to 1000 of
+/// Token counts as the Windows client abbreviates them: 999, 1.0k, 19.1M, 21.6B. From where one decimal rounds up to 1000 of
 /// the smaller unit, the larger unit is used.
 func formatTokens(_ n: Double) -> String {
     if n >= 999.95e6 { return String(format: "%.1fB", n / 1e9) }

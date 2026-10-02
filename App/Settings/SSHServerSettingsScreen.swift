@@ -255,7 +255,7 @@ struct SSHServerSettingsScreen: View {
                 ForEach(["ask", "allow"], id: \.self) { Text(SSHServerFormState.modeTitle($0)).tag($0) }
             } label: {
                 SettingsLabel(label: "Permission mode",
-                              hint: "Ask shows the exact command in the dashboard for approval. Don't ask anything sends every command immediately.")
+                              hint: "Ask holds each command until it is approved. Don't ask anything sends every command immediately.")
             }
             Toggle("Available to sessions on this project", isOn: model.enabledBinding).tint(Theme.accent)
         } footer: {

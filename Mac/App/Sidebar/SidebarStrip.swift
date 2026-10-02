@@ -2,7 +2,7 @@
 // its count, as 26px squares (⚙ Settings is at the foot's left). WhatsApp's and Slack's marks are drawn, as no font has them.
 import SwiftUI
 
-enum StripAction { case newSession, whatsapp, slack, dashboard, findings }
+enum StripAction { case newSession, whatsapp, slack, usage, findings }
 
 struct SidebarStrip: View {
     /// The detail pane's root id, for the WhatsApp, Slack, 📊 and ⚑ switches' accent.
@@ -27,8 +27,8 @@ struct SidebarStrip: View {
                 .frame(width: Self.iconWidth).help("WhatsApp")
             StripButton(active: selected == "slack", action: { action(.slack) }) { SlackMark() }
                 .frame(width: Self.iconWidth).help("Slack")
-            StripButton(active: selected == "dashboard", action: { action(.dashboard) }) { emoji("📊", active: selected == "dashboard") }
-                .frame(width: Self.iconWidth).help("Dashboard")
+            StripButton(active: selected == "usage", action: { action(.usage) }) { emoji("📊", active: selected == "usage") }
+                .frame(width: Self.iconWidth).help("Usage")
             StripButton(active: selected == "findings", badge: waiting, action: { action(.findings) }) { emoji("⚑", active: selected == "findings") }
                 .frame(width: Self.iconWidth).help("Findings")
         }

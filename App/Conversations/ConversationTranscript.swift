@@ -204,7 +204,7 @@ private struct TranscriptEventView: View, Equatable {
                 if event.kind == "stderr" || event.kind == "claude" || event.kind == "stdout" {
                     LogLine(text: logLineText(event), danger: event.kind == "stderr")
                 } else {
-                    // Dashboard notices: review loops, interruptions, the worker starting.
+                    // Server notices: review loops, interruptions, the worker starting.
                     Label { Text(inlineMarkdown(logLineText(event))).textSelection(.enabled) } icon: { Image(systemName: "info.circle") }
                         .font(.footnote).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)

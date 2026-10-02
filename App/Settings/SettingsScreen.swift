@@ -1,5 +1,5 @@
 // The Settings tab: this device's connection (who it is, what it may do, revoke or forget it), then for an Admin token
-// the dashboard's settings page as the Mac's settings sidebar lists it: the projects (in the server's order, which Edit
+// the Mac app's settings page as the Mac's settings sidebar lists it: the projects (in the server's order, which Edit
 // rearranges), the providers sessions start on, the database pool, the SSH servers, and the tokens issued. Each row opens
 // its form.
 import SwiftUI
@@ -19,7 +19,7 @@ struct SettingsScreen: View {
 
     /// Any of the settings lists is this token's to read.
     private var managesServer: Bool {
-        ["settings_projects", "settings_providers", "settings_db_servers", "settings_ssh_servers", "settings_devices"].contains { store.supports($0) }
+        ["settings_projects", "settings_providers", "settings_db_servers", "settings_ssh_servers"].contains { store.supports($0) }
     }
 
     var body: some View {
@@ -34,7 +34,6 @@ struct SettingsScreen: View {
                 if store.supports("settings_db_servers") { servers }
                 ssh
             }
-            if store.supports("settings_devices") { SettingsDevicesSection() }
             Section {
                 Text("Briareus for \(Platform.name) · \(Platform.version)").font(.footnote).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
@@ -142,7 +141,7 @@ struct SettingsScreen: View {
             if s.loaded && s.list.isEmpty && s.error == nil {
                 Text("No projects yet. ＋ adds a repository sessions can be started against.")
             } else if store.supports("order_projects") && s.list.count > 1 {
-                Text("The order here is the order the dashboard lists them in; Edit rearranges it.")
+                Text("The order here is the order the apps list them in; Edit rearranges it.")
             }
         }
         .listRowBackground(Theme.row)
@@ -226,7 +225,7 @@ struct SettingsScreen: View {
     }
 }
 
-/// What a token may do, as the dashboard names it.
+/// What a token may do, as the Mac app names it.
 func settingsPermissionTitle(_ permission: String) -> String {
     switch permission {
     case "admin": return "Admin"
@@ -290,7 +289,7 @@ private struct SettingsProjectRow: View {
     }
 }
 
-/// A provider: its dot, label, and the dashboard's badges: the CLI it runs, and what sets it apart.
+/// A provider: its dot, label, and the Mac app's badges: the CLI it runs, and what sets it apart.
 private struct SettingsProviderRow: View {
     var row: JSON
     var body: some View {

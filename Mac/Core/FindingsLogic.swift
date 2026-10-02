@@ -62,7 +62,7 @@ enum Findings {
             return n > 0 ? "\(count), already on the pull request. Read them there; Reply says something on a finding\u{2019}s own thread, Delete takes one out of the review itself, and Complete takes this card off the queue and leaves the rest to the pull request\u{2019}s author."
                          : "Every finding was deleted from the review. Complete takes this card off the queue."
         }
-        if !manage { return "\(count). This device is read-only: the verdicts are given on the dashboard." }
+        if !manage { return "\(count). This device is read-only: the verdicts are given with a Manage token." }
         return "\(count). Give each one a verdict and a comment if you have one; Save comments keeps them here and on the pull request, and Complete appears once every finding is marked."
     }
     /// "round 3 · held since 10:42", or "code review" for a hand-started one.

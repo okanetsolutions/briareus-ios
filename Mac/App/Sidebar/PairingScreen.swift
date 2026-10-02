@@ -36,7 +36,7 @@ struct PairingScreen: View {
                 }
                 .background(RoundedRectangle(cornerRadius: 18).fill(Theme.raise))
                 .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Theme.line, lineWidth: 1))
-                Text("Create a token on the web dashboard under Settings → Devices and clients, with Manage or Read-only access.")
+                Text("Issue a token on the server with npm run create-token, with Manage or Read-only access.")
                     .font(Theme.footnote).foregroundStyle(Theme.muted).fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4).padding(.top, 8)
                 Button(action: connect) { Text(store.connecting ? "Connecting…" : "Connect") }

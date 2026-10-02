@@ -1,5 +1,5 @@
-// The 📊 Dashboard's numbers and words, as the Windows client's screen_dashboard.c (and so the web dashboard's home pane)
-// puts them: the usage ledger's totals, its buckets, its breakdowns and the window and filters a reading is narrowed by.
+// The 📊 Usage screen's numbers and words, as the Windows client puts them: the usage
+// ledger's totals, its buckets, its breakdowns and the window and filters a reading is narrowed by.
 import Foundation
 
 enum Usage {
@@ -77,7 +77,7 @@ enum Usage {
 
     // MARK: Labels
 
-    /// The dashboard's ACTIVITY_LABELS: what each kind of session is called on its row.
+    /// The Windows client's ACTIVITY_LABELS: what each kind of session is called on its row.
     static let activities: [(id: String, label: String)] = [
         ("chat", "💬 Chat"), ("preview", "▶ Run"), ("code-review", "⌕ Code review"),
         ("issue", "▶ Issue"), ("qa", "🔍 QA"), ("orchestrator", "🧭 Orchestrator"),

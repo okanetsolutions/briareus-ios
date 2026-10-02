@@ -6,15 +6,13 @@ import SwiftUI
 
 /// The parts of the pull request screen, as the section picker lists them.
 enum PullSection: String, CaseIterable, Identifiable {
-    case description, files, checks, reviews, commits, issues, findings, conversations, run
+    case description, files, reviews, issues, findings, conversations, run
     var id: String { rawValue }
     var title: String {
         switch self {
         case .description: return "Description"
         case .files: return "Files"
-        case .checks: return "Checks"
         case .reviews: return "Reviews"
-        case .commits: return "Commits"
         case .issues: return "Issues"
         case .findings: return "Findings"
         case .conversations: return "Conversations"
@@ -25,9 +23,7 @@ enum PullSection: String, CaseIterable, Identifiable {
         switch self {
         case .description: return "doc.text"
         case .files: return "doc.on.doc"
-        case .checks: return "checklist"
         case .reviews: return "text.bubble"
-        case .commits: return "smallcircle.filled.circle"
         case .issues: return "link"
         case .findings: return "flag"
         case .conversations: return "bubble.left.and.bubble.right"

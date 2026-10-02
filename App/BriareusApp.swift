@@ -48,7 +48,7 @@ struct RootTabs: View {
                     .badge(projects.findingsWaiting)
             }
             if store.supports("usage") || store.supports("usage_all") {
-                NavigationRoot { DashboardScreen() }
+                NavigationRoot { UsageScreen() }
                     .tabItem { Label("Usage", systemImage: "chart.bar") }
             }
             NavigationRoot { SettingsScreen() }
@@ -98,7 +98,7 @@ struct PairingView: View {
                         }
                         .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.border, lineWidth: 0.5))
-                        Text("Create a token on the server with `npm run create-token`, or in Settings → Devices and clients.")
+                        Text("Issue a token on the server with `npm run create-token`.")
                             .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 4)
                     }
                     Button {

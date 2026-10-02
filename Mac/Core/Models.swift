@@ -139,7 +139,7 @@ struct HeldRound: Equatable, Sendable {
 }
 
 extension Session {
-    /// The review round a conversation holds for a decision, as the dashboard's Findings screen queues them: a loop's round
+    /// The review round a conversation holds for a decision, as the Windows client's Findings screen queues them: a loop's round
     /// or a hand-started review, even one whose every finding was deleted. Nil without one.
     var heldRound: JSON? {
         let loop = raw["reviewLoop"]["triage"]
@@ -148,7 +148,7 @@ extension Session {
         // (A ternary with `nil` would read as JSON.null, since JSON is nil-literal expressible.)
         return standalone.isObject ? .some(standalone) : .none
     }
-    /// The conversations holding a round, the oldest hold first, as the dashboard lists them. Equal holds keep the list's order.
+    /// The conversations holding a round, the oldest hold first, as the Windows client lists them. Equal holds keep the list's order.
     static func heldRounds(_ sessions: [Session]) -> [HeldRound] {
         func at(_ held: JSON) -> String { held["heldAt"].string ?? "" }
         var rounds: [HeldRound] = []
@@ -185,7 +185,7 @@ func heldRoundIsMine(_ held: JSON) -> Bool {
     if !held["standalone"].isSet { return true }
     return held["mine"].is(true)
 }
-/// What `complete_findings` answered, in the dashboard's words; `danger` is set when the verdicts led nowhere.
+/// What `complete_findings` answered, in the Windows client's words; `danger` is set when the verdicts led nowhere.
 func triageOutcomeText(_ outcome: JSON) -> (text: String, danger: Bool) {
     if outcome["completed"].isSet {
         if let pr = outcome["prNumber"].int32, pr != 0 { return ("Review completed; what it found stays on PR #\(pr) for its author.", false) }
@@ -237,7 +237,7 @@ struct Event: Equatable, Sendable {
     }
     /// Tool events carry their detail in `summary`; other kinds use `text`.
     var detail: String? { text ?? summary }
-    /// Status and workspace setup output are dashboard plumbing, not part of the conversation.
+    /// Status and workspace setup output are server plumbing, not part of the conversation.
     var isVisible: Bool {
         if kind == "status" { return false }
         return text != nil || question != nil || kind == "tool" || kind == "tool_error" || kind == "result"

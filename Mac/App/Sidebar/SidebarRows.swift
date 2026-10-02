@@ -1,5 +1,5 @@
 // The sidebar's rows (screen_projects.c): a project with its count, working dot and chevron, `‹ All projects`, and a
-// conversation as the dashboard lists it, with its mark, title, and a wrapped line of provider, branch, state and age.
+// conversation as the Windows client lists it, with its mark, title, and a wrapped line of provider, branch, state and age.
 import AppKit
 import SwiftUI
 
@@ -61,7 +61,7 @@ struct BackRow: View {
 // MARK: - Conversation
 
 extension Session {
-    /// The dashboard's `sessionState`: an idle conversation with a question up is "waiting".
+    /// The Windows client's `sessionState`: an idle conversation with a question up is "waiting".
     var sidebarState: String { status == "idle" && raw["awaitingAnswer"].is(true) ? "waiting" : status }
     /// How long ago it was created, "" without a date.
     var sidebarAge: String { boardDateParse(raw["createdAt"].string).map { formatRelative($0) } ?? "" }
@@ -78,8 +78,8 @@ extension Session {
     }
 }
 
-/// paint_session_row / doc_dashboard_session_row.
-struct DashboardSessionRow: View {
+/// paint_session_row.
+struct SidebarSessionRow: View {
     var session: Session
     var lit: Bool
     var selectMode: Bool

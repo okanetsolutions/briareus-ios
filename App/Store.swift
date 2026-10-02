@@ -222,7 +222,7 @@ func pollDelay(base: TimeInterval, failures: Int, retryAfter: Double?) -> TimeIn
     return seconds
 }
 
-/// Polling with the dashboard's backoff, for a `.task`: runs `read` now and again after each delay until the task is
+/// Polling with the Mac app's backoff, for a `.task`: runs `read` now and again after each delay until the task is
 /// cancelled. `read` answers the error of a failed read, or nil. Polling pauses while the app is out of sight, and a 401
 /// ends it (the store has signed out).
 @MainActor

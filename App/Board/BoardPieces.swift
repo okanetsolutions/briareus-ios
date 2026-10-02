@@ -294,16 +294,6 @@ func reviewStyle(_ status: ReviewStatus) -> (symbol: String, color: Color) {
     }
 }
 
-/// A check's result as a symbol and colour.
-func checkStyle(_ result: String?) -> (symbol: String, color: Color) {
-    switch result?.lowercased() {
-    case "success", "passed", "neutral", "skipped": return ("checkmark.circle.fill", Theme.success)
-    case "failure", "failed", "timed_out", "action_required", "error": return ("xmark.circle.fill", Theme.danger)
-    case "cancelled", "stale": return ("minus.circle.fill", .secondary)
-    default: return ("clock.fill", Theme.warning)
-    }
-}
-
 /// A board row's checks rollup as a badge.
 struct ChecksBadge: View {
     let state: String

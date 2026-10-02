@@ -1,5 +1,5 @@
-// The Findings and Dashboard screens' pure parts (Mac/Core/FindingsLogic.swift and DashboardLogic.swift), against what
-// screen_findings.c and screen_dashboard.c produce.
+// The Findings and Usage screens' pure parts (Mac/Core/FindingsLogic.swift and UsageLogic.swift), against what
+// the Windows client produces.
 import XCTest
 @testable import BriareusMacCore
 
@@ -46,7 +46,7 @@ final class FindingsLogicTests: XCTestCase {
         XCTAssertEqual(Findings.groupCount(findings: 5, reviews: 2), "5 findings across 2 reviews")
         XCTAssertEqual(Findings.unmarkedText(1), "1 finding still unmarked; Complete appears once every finding has a verdict.")
         XCTAssertEqual(Findings.howText(mine: false, manage: true, count: 0), "Every finding was deleted from the review. Complete takes this card off the queue.")
-        XCTAssertEqual(Findings.howText(mine: true, manage: false, count: 2), "2 findings. This device is read-only: the verdicts are given on the dashboard.")
+        XCTAssertEqual(Findings.howText(mine: true, manage: false, count: 2), "2 findings. This device is read-only: the verdicts are given with a Manage token.")
         XCTAssertEqual(Findings.location(["file": "a.swift", "line": 12]), "a.swift:12 \u{2197}")
         XCTAssertEqual(Findings.location(["file": "a.swift"]), "a.swift \u{2197}")
         XCTAssertNil(Findings.location(["file": ""]))
@@ -77,10 +77,10 @@ final class FindingsLogicTests: XCTestCase {
     }
 }
 
-final class DashboardLogicTests: XCTestCase {
+final class UsageLogicTests: XCTestCase {
     private let en = Locale(identifier: "en_US")
 
-    func testTokensAsTheDashboardWordsThem() {
+    func testTokensAsUsageWordsThem() {
         XCTAssertEqual(Usage.tokens(21_599_700_000), "21599.7M")
         XCTAssertEqual(Usage.tokens(80_500_000), "80.5M")
         XCTAssertEqual(Usage.tokens(93_000), "93.0k")

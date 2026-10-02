@@ -110,7 +110,7 @@ final class ConversationScreenModel: ObservableObject {
     }
 
     /// Polls while the screen is up: often while the agent works, less once it waits, rarely once closed, with the
-    /// dashboard's backoff; never while a write or a dialog is under way.
+    /// the Mac app's backoff; never while a write or a dialog is under way.
     func run() async {
         var failures = 0
         while !Task.isCancelled {

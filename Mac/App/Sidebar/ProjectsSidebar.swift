@@ -1,4 +1,4 @@
-// The sidebar, as the dashboard draws it (screen_projects.c): the ＋ New session strip with WhatsApp and Slack, the 📊 and ⚑
+// The sidebar, as the Windows client draws it (screen_projects.c): the ＋ New session strip with WhatsApp and Slack, the 📊 and ⚑
 // switches, the projects with their session counts, and inside a project its conversations; what Spotify plays, and
 // ⚙ Settings, ☑ Select and ⎋ along the foot. The project's conversations are pushed inside the sidebar, as on Windows, with
 // `‹ All projects` to come back.
@@ -31,18 +31,18 @@ enum SidebarCommon {
         let nav = Navigator.shared
         switch action {
         case .newSession: nav.show(.newSession(repo: newSessionRepo))
-        case .dashboard: nav.show(.dashboard)
+        case .usage: nav.show(.usage)
         case .whatsapp: nav.show(.webApp(.whatsapp))
         case .slack: nav.show(.webApp(.slack))
         case .findings: nav.show(.findings)
         }
     }
 
-    /// The foot's ⚙: Settings take the sidebar's place, as the dashboard's settings page has a sidebar of its own.
+    /// The foot's ⚙: Settings take the sidebar's place, as the Windows client's settings page has a sidebar of its own.
     static func openSettings() { Navigator.shared.sidebarMode = .settings }
 
     static func signOut() {
-        guard Dialogs.confirm("Sign out of this dashboard?",
+        guard Dialogs.confirm("Sign out of this server?",
                               "The device token and the saved conversations are removed from this computer. Revoke the token itself in web Settings.",
                               continueLabel: "Sign out", destructive: true) else { return }
         Store.shared.forget()
@@ -63,7 +63,7 @@ private struct SidebarScreenFrame<Content: View>: View {
 }
 
 /// The sidebar pane's scrolling (pane.c): the rows between 10px margins, 12px more to scroll past the end, and the
-/// dashboard's own 10px scrollbar (`::-webkit-scrollbar`, the palette's thumb, no track) in place of the system's. Once the
+/// the Windows client's own 10px scrollbar (`::-webkit-scrollbar`, the palette's thumb, no track) in place of the system's. Once the
 /// rows overflow, the bar takes its own 10px of width instead of covering the ⚑ badge and the rows' edges.
 struct SidebarScroll<Content: View>: View {
     @ViewBuilder var content: () -> Content
@@ -157,7 +157,7 @@ private struct SidebarProjectsScreen: View {
                 }
             }
             if model.loaded && model.projects.isEmpty && model.error == nil {
-                SidebarNote(text: "No projects yet. Add one in Settings → Projects on the web dashboard.")
+                SidebarNote(text: "No projects yet. Add one in ⚙ Settings → Projects.")
             }
             if !model.loaded { LoadingNote(text: "Loading projects…") }
             Color.clear.frame(height: 8)
@@ -198,7 +198,7 @@ private struct SidebarSessionsScreen: View {
                 Color.clear.frame(height: 8)
             }
             ForEach(model.sessions, id: \.id) { s in
-                DashboardSessionRow(session: s,
+                SidebarSessionRow(session: s,
                                     lit: model.selectMode ? model.isPicked(s.id) : selected == "conversation:\(s.id)",
                                     selectMode: model.selectMode, picked: model.isPicked(s.id)) { open(s) }
             }
@@ -229,7 +229,7 @@ private struct SidebarSessionsScreen: View {
 
     private func open(_ s: Session) {
         if model.selectMode { model.togglePick(s.id); return }
-        // Ctrl- or ⌘-clicking a row turns ☑ Select on with that row ticked, as the dashboard does.
+        // Ctrl- or ⌘-clicking a row turns ☑ Select on with that row ticked, as the Windows client does.
         let flags = NSEvent.modifierFlags
         if flags.contains(.control) || flags.contains(.command) {
             model.selectMode = true

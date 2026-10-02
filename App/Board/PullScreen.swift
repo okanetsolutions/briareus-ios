@@ -1,5 +1,5 @@
 // One pull request on a phone (the Mac's PullScreen): what it is and where it stands at the top, a scrolling section
-// picker in place of GitHub's tabs (description, files, checks, reviews and comments, commits, the issues it closes,
+// picker in place of GitHub's tabs (description, files, reviews and comments, the issues it closes,
 // findings, the conversations run on it, and ▶ Run), the errands in the toolbar, and a squash merge that says first what
 // stands in its way.
 import SwiftUI
@@ -105,9 +105,7 @@ struct PullScreen: View {
                 switch model.section {
                 case .description: description
                 case .files: files
-                case .checks: checks
                 case .reviews: reviews
-                case .commits: commits
                 case .issues: issues
                 case .findings: findings
                 case .conversations: conversations
@@ -244,13 +242,10 @@ struct PullScreen: View {
             }
             .padding(.vertical, 4)
             if !model.pr.isNull {
-                Button { model.select(.checks) } label: {
-                    LabeledContent("Checks") {
-                        if checks["runs"].count == 0 { Text("None reported") }
-                        else { CheckCounts(checks: checks) }
-                    }
+                LabeledContent("Checks") {
+                    if checks["runs"].count == 0 { Text("None reported") }
+                    else { CheckCounts(checks: checks) }
                 }
-                .foregroundStyle(.primary)
             }
             if let stack = model.stack { stackGroup(stack) }
             if model.canMerge {
@@ -321,8 +316,7 @@ struct PullScreen: View {
             switch s {
             case .description, .conversations: return true
             case .files: return store.supports("pull_files") || safeWebURL(model.url)
-            case .checks, .reviews: return !model.pr.isNull
-            case .commits: return model.pr["commitList"].count > 0
+            case .reviews: return !model.pr.isNull
             case .issues: return !model.closes.isEmpty
             case .findings: return store.supports("findings")
             case .run: return model.runOffered && (model.isOpen || model.runURL != nil)
@@ -332,9 +326,7 @@ struct PullScreen: View {
     private func count(_ s: PullSection) -> Int? {
         switch s {
         case .files: return model.pr["changedFiles"].int
-        case .checks: return model.pr["checks"]["runs"].count
         case .reviews: return model.commentCount ?? model.pr["reviews"].count
-        case .commits: return model.commitCount
         case .issues: return model.closes.count
         case .findings: return model.findings.count
         case .conversations: return model.runs.count
@@ -417,29 +409,6 @@ struct PullScreen: View {
         .listRowBackground(Theme.row)
     }
 
-    @ViewBuilder private var checks: some View {
-        let checks = model.pr["checks"]
-        Section {
-            ForEach(Array(checks["runs"].items.enumerated()), id: \.offset) { _, check in
-                let result = check["conclusion"].string ?? check["status"].string ?? "pending"
-                let style = checkStyle(result)
-                let content = HStack(spacing: 10) {
-                    Image(systemName: style.symbol).foregroundStyle(style.color)
-                    Text(check["name"].string ?? "Check").lineLimit(2)
-                    Spacer(minLength: 8)
-                    Text(result.replacingOccurrences(of: "_", with: " ").asciiCapitalized).font(.caption).foregroundStyle(.secondary)
-                }
-                if safeWebURL(check["url"].string) {
-                    Button { boardOpenWeb(check["url"].string) } label: { content }.foregroundStyle(.primary)
-                } else { content }
-            }
-            if checks["runs"].count == 0 { Text("No checks reported").foregroundStyle(.secondary) }
-        } header: {
-            if checks["runs"].count > 0 { CheckCounts(checks: checks).textCase(nil) }
-        }
-        .listRowBackground(Theme.row)
-    }
-
     @ViewBuilder private var reviews: some View {
         let row = model.boardRow
         let verdicts = model.pr["reviews"].items
@@ -462,24 +431,6 @@ struct PullScreen: View {
         if store.supports(ConvFeed.comments.operation) || store.supports(ConvFeed.reviews.operation) {
             PullTimeline(model: model)
         }
-    }
-
-    @ViewBuilder private var commits: some View {
-        Section {
-            ForEach(Array(model.pr["commitList"].items.enumerated()), id: \.offset) { _, commit in
-                let line = HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(String((commit["sha"].string ?? "").prefix(7))).font(.caption.monospaced()).foregroundStyle(.secondary)
-                    Text(commit["message"].string ?? "").font(.callout).lineLimit(3)
-                }
-                if safeWebURL(commit["url"].string) {
-                    Button { boardOpenWeb(commit["url"].string) } label: { line }.foregroundStyle(.primary)
-                        .contextMenu { Button { Pasteboard.copy(commit["sha"].string ?? "") } label: { Label("Copy SHA", systemImage: "doc.on.doc") } }
-                } else { line }
-            }
-        } footer: {
-            if model.commitCount > model.pr["commitList"].count { Text("GitHub lists the first \(model.pr["commitList"].count) of \(model.commitCount) commits.") }
-        }
-        .listRowBackground(Theme.row)
     }
 
     @ViewBuilder private var issues: some View {
@@ -532,7 +483,7 @@ struct PullScreen: View {
             }
             if list.isEmpty && model.findingsError == nil { Text("No findings reported").foregroundStyle(.secondary) }
         } footer: {
-            if canDecide && !list.isEmpty { Text("Decisions are saved on the dashboard and mirrored to the pull request’s checklist on GitHub.") }
+            if canDecide && !list.isEmpty { Text("Decisions are saved on the server and mirrored to the pull request’s checklist on GitHub.") }
         }
         .listRowBackground(Theme.row)
         if let solve = model.solveFindings(catalog.catalog) {

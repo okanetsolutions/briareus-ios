@@ -1,4 +1,4 @@
-// The files for a composer's next message or first prompt, as the dashboard's `.attach-list` (attach.c, attach_list.c):
+// The files for a composer's next message or first prompt, as the Windows client's `.attach-list` (attach.c, attach_list.c):
 // an image pasted from the clipboard, encoded as PNG, or files copied in Finder and pasted, dropped or picked with 📎, each
 // read off the main thread, uploaded at once, and shown as a chip with ✕ above the text until it is sent.
 import AppKit
@@ -108,7 +108,7 @@ final class Attachments: ObservableObject {
         return (files, errors.isEmpty ? nil : errors.joined(separator: "\n"))
     }
 
-    /// The browser's pasted image is "image.png"; the dashboard names it by the moment, and so does this.
+    /// The browser's pasted image is "image.png"; the Windows client names it by the moment, and so does this.
     nonisolated private static func encodePNG(_ data: Data) -> (files: [(String, Data)], error: String?) {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

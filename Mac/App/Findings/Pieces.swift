@@ -1,4 +1,4 @@
-// What the Findings and Dashboard screens share: the width a pane's content is laid out at, text that works as a link
+// What the Findings and Usage screens share: the width a pane's content is laid out at, text that works as a link
 // (the hand cursor of a clickable doc item), a popup menu at the pointer (TrackPopupMenu) and measured text widths.
 import AppKit
 import Combine

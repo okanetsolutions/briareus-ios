@@ -16,7 +16,7 @@ enum RemoteRegistry {
 }
 
 /// The text shown when the token may not read the servers.
-let remoteNeedsAdmin = "The SSH servers are read from Settings, which needs an Admin token. Create one on the web dashboard under Settings \u{2192} Devices and clients and connect with it."
+let remoteNeedsAdmin = "The SSH servers are read from Settings, which needs an Admin token. Issue one on the server with npm run create-token and connect with it."
 
 /// One registered SSH server, as Settings has it.
 struct RemoteServer: Identifiable {
