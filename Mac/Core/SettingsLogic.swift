@@ -580,8 +580,13 @@ struct DBServerFormState: Equatable, Sendable {
 
 // MARK: - SSH servers
 
+enum SSHServerTab: Int, CaseIterable, Sendable {
+    case server, database
+    var title: String { self == .server ? "SSH server" : "Database" }
+}
+
 enum SSHServerField: Int, CaseIterable, Sendable {
-    case label, host, port, username, key
+    case label, host, port, username, key, dbHost, dbPort, dbUsername, dbPassword
     var def: SettingsField {
         switch self {
         case .label: return SettingsField(key: "label", kind: .text, label: "Label", cue: "Production web server", hint: "Leave empty to name it user@host:port.")
@@ -590,9 +595,26 @@ enum SSHServerField: Int, CaseIterable, Sendable {
         case .username: return SettingsField(key: "username", kind: .text, label: "Username", cue: "deploy", mono: true)
         case .key: return SettingsField(key: "identityFile", kind: .text, label: "Private key path", cue: "/home/you/.ssh/id_ed25519",
             hint: "Absolute path on the machine running Briareus; leave empty for its default SSH keys or agent. Password prompts are not supported.", mono: true)
+        case .dbHost: return SettingsField(key: "dbHost", kind: .text, label: "Database host", cue: "127.0.0.1",
+            hint: "Where the database listens, as seen from the SSH server itself. Leave empty for 127.0.0.1.", mono: true)
+        case .dbPort: return SettingsField(key: "dbPort", kind: .number, label: "Database port", cue: "3306", mono: true)
+        case .dbUsername: return SettingsField(key: "dbUsername", kind: .text, label: "Database username", cue: "app",
+            hint: "Leave empty to keep no login on this server.", mono: true)
+        case .dbPassword: return SettingsField(key: "dbPassword", kind: .text, label: "Database password", cue: "empty = no password", mono: true, secret: true)
         }
     }
     var key: String { def.key ?? "" }
+    var tab: SSHServerTab { rawValue >= Self.dbHost.rawValue ? .database : .server }
+    /// The login's two boxes, which the server's rows never carry: it keeps them sealed and opens them only through
+    /// GET …/db-credentials.
+    var isLogin: Bool { self == .dbUsername || self == .dbPassword }
+    static func on(_ t: SSHServerTab) -> [SSHServerField] { allCases.filter { $0.tab == t } }
+}
+
+/// An SSH server's database login, as the server opened it.
+struct DBLogin: Equatable, Sendable {
+    var username = ""
+    var password = ""
 }
 
 struct SSHServerFormState: Equatable, Sendable {
@@ -603,15 +625,22 @@ struct SSHServerFormState: Equatable, Sendable {
     var repo = ""
     var mode = "ask"
     var dirty = false
+    /// The login stored on the server, once it is known: read through GET …/db-credentials, or none stored.
+    var login = DBLogin()
+    var loginKnown = true
 
-    /// A new server starts on the first project, as the web's form does, on port 22.
-    init(row: JSON, firstRepo: String? = nil) {
+    /// A new server starts on the first project, as the web's form does, on port 22; on a server that stores a database
+    /// login (`database`), with the database where the server's own default puts it.
+    init(row: JSON, firstRepo: String? = nil, database: Bool = false) {
         var r: JSON = row.isObject ? row : [:]
         if Self.rowID(r) == 0 {
             if r["repo"].nonEmpty == nil, let firstRepo, !firstRepo.isEmpty { r["repo"] = .string(firstRepo) }
             if r.object?["port"] == nil { r["port"] = 22 }
+            if database && r.object?["dbHost"] == nil { r["dbHost"] = "127.0.0.1" }
+            if database && r.object?["dbPort"] == nil { r["dbPort"] = 3306 }
         }
         self.row = r
+        loginKnown = !hasLogin
         fill()
     }
 
@@ -619,6 +648,9 @@ struct SSHServerFormState: Equatable, Sendable {
     static func rowID(_ row: JSON) -> Double { row["id"].number.flatMap { $0.isFinite ? $0 : nil } ?? 0 }
     var id: Double { Self.rowID(row) }
     func text(_ f: SSHServerField) -> String { texts[f] ?? "" }
+    /// The server stores a database login per SSH server: its rows say where the database listens.
+    var offersDatabase: Bool { row.object?["dbHost"] != nil }
+    var hasLogin: Bool { row["hasDbCredentials"].is(true) }
 
     static func savedRepo(_ row: JSON) -> String { row["repo"].nonEmpty ?? "" }
     /// A server without a mode asks, as the server's own default does.
@@ -630,17 +662,35 @@ struct SSHServerFormState: Equatable, Sendable {
         enabled = Self.savedEnabled(row)
         repo = Self.savedRepo(row)
         mode = Self.savedMode(row)
-        for f in SSHServerField.allCases { texts[f] = Self.fieldText(row, f) }
+        // A clone's row carries the login it was copied with; a saved one only says whether there is one.
+        for f in SSHServerField.allCases { texts[f] = f.isLogin ? row[f.key].string ?? savedText(f) : Self.fieldText(row, f) }
         dirty = false
     }
     static func fieldText(_ row: JSON, _ f: SSHServerField) -> String {
         f.def.kind == .number ? SettingsText.numberText(row[f.key]) : row[f.key].string ?? ""
     }
+    /// A box's value as saved: the login's as last read, the others as the row has them.
+    func savedText(_ f: SSHServerField) -> String {
+        switch f {
+        case .dbUsername: return login.username
+        case .dbPassword: return login.password
+        default: return Self.fieldText(row, f)
+        }
+    }
+
+    /// The login read through GET …/db-credentials, into the boxes not typed in yet.
+    mutating func loginRead(_ credentials: JSON) {
+        let was = login
+        login = DBLogin(username: credentials["username"].string ?? "", password: credentials["password"].string ?? "")
+        loginKnown = true
+        if text(.dbUsername) == was.username { texts[.dbUsername] = login.username }
+        if text(.dbPassword) == was.password { texts[.dbPassword] = login.password }
+    }
 
     func body() -> Result<JSON, FormProblem> {
         var body: JSON = row.isObject ? row : [:]
-        body.remove("id")
-        for f in SSHServerField.allCases {
+        for k in ["id", "hasDbCredentials", "dbUsername", "dbPassword"] { body.remove(k) }
+        for f in SSHServerField.on(.server) {
             let t = text(f).cTrimmed
             if f.def.kind == .number {
                 guard let port = SettingsText.port(t) else { return .failure(FormProblem(message: "Enter a port from 1 to 65535.")) }
@@ -653,13 +703,65 @@ struct SSHServerFormState: Equatable, Sendable {
         if (body["repo"].string ?? "").isEmpty { return .failure(FormProblem(message: "Choose the project whose sessions may use this server.")) }
         if (body["host"].string ?? "").isEmpty { return .failure(FormProblem(message: "Enter the host: a hostname or an IP address.")) }
         if (body["username"].string ?? "").isEmpty { return .failure(FormProblem(message: "Enter the username to connect as.")) }
+        if offersDatabase {
+            let database = SSHServerTab.database.rawValue
+            body["dbHost"] = .string(text(.dbHost).cTrimmed)
+            guard let port = SettingsText.port(text(.dbPort).cTrimmed) else {
+                return .failure(FormProblem(message: "Enter a database port from 1 to 65535.", tab: database))
+            }
+            body["dbPort"] = JSON(port)
+            // Only what changed is sent: the server keeps the half of the login left out, and an empty username removes
+            // it, password and all. A password spaces may belong to is sent as typed.
+            let user = text(.dbUsername).cTrimmed, pass = text(.dbPassword)
+            if user.isEmpty && loginKnown {
+                if !pass.isEmpty && pass != login.password {
+                    return .failure(FormProblem(message: "Enter the database username this password is for.", tab: database))
+                }
+                if !login.username.isEmpty { body["dbUsername"] = ""; body["dbPassword"] = "" }
+            } else {
+                if user != login.username { body["dbUsername"] = .string(user) }
+                if pass != login.password { body["dbPassword"] = .string(pass) }
+            }
+        }
         return .success(body)
     }
 
+    /// The server's word on what was saved, from the body sent: what the login is now, when the form knows all of it.
+    mutating func saved(_ newRow: JSON, sent body: JSON) {
+        let user = body["dbUsername"].string, pass = body["dbPassword"].string
+        row = newRow
+        if !hasLogin {
+            login = DBLogin(); loginKnown = true
+        } else if user != nil || pass != nil {
+            if loginKnown || (user != nil && pass != nil) {
+                login = DBLogin(username: user ?? login.username, password: pass ?? login.password); loginKnown = true
+            } else {
+                login = DBLogin(); loginKnown = false
+            }
+        }
+        fill()
+    }
+
+    /// What a clone starts from: the form as it stands, its login included, without the label that named this one.
+    func copy() -> Result<JSON, FormProblem> {
+        body().map { b in
+            var copy = b
+            copy["label"] = ""
+            for f in [SSHServerField.dbUsername, .dbPassword] { copy.remove(f.key) }
+            if offersDatabase && !text(.dbUsername).cTrimmed.isEmpty {
+                copy["dbUsername"] = .string(text(.dbUsername).cTrimmed)
+                copy["dbPassword"] = .string(text(.dbPassword))
+            }
+            return copy
+        }
+    }
+
     /// Whether the form holds a change not saved yet, for the dot after the tab's title.
-    var changed: Bool {
-        if enabled != Self.savedEnabled(row) || repo != Self.savedRepo(row) || mode != Self.savedMode(row) { return true }
-        return SSHServerField.allCases.contains { text($0) != Self.fieldText(row, $0) }
+    var changed: Bool { SSHServerTab.allCases.contains { tabChanged($0) } }
+    func tabChanged(_ t: SSHServerTab) -> Bool {
+        if t == .server && (enabled != Self.savedEnabled(row) || repo != Self.savedRepo(row) || mode != Self.savedMode(row)) { return true }
+        if t == .database && !offersDatabase { return false }
+        return SSHServerField.on(t).contains { text($0) != savedText($0) }
     }
 
     /// The header's subtitle for a saved server: user@host:port · project.

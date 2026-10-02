@@ -227,6 +227,8 @@ struct APIRoute: Sendable {
         .init(name: "create_ssh_server", method: "POST", path: "settings/ssh/servers"),
         .init(name: "update_ssh_server", method: "PUT", path: "settings/ssh/servers/{id}"),
         .init(name: "delete_ssh_server", method: "DELETE", path: "settings/ssh/servers/{id}"),
+        // The database login stored with one, opened, for a tunnel over it to its database.
+        .init(name: "ssh_server_db_credentials", method: "GET", path: "settings/ssh/servers/{id}/db-credentials"),
     ]
     private static let table: [String: APIRoute] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })
 }

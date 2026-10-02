@@ -127,8 +127,71 @@ final class SettingsLogicTests: XCTestCase {
         XCTAssertEqual(SSHServerFormState.subtitle(["username": "u", "host": "h", "port": 22, "repo": "o/r"]), "u@h:22 · o/r")
         XCTAssertEqual(SSHServerFormState.rowID(["id": 1712345678901]), 1712345678901)
     }
+
+    func testSSHServerDatabaseLogin() throws {
+        // A server that predates the login has no Database tab and is sent none of its keys.
+        let old = SSHServerFormState(row: ["id": 1, "repo": "o/r", "host": "h", "port": 22, "username": "u"])
+        XCTAssertFalse(old.offersDatabase)
+        XCTAssertNil(try old.body().get().object?["dbHost"])
+
+        // A new one starts where the server's default puts the database, and sends a login only once one is typed.
+        var s = SSHServerFormState(row: [:], firstRepo: "o/r", database: true)
+        XCTAssertTrue(s.offersDatabase)
+        XCTAssertEqual(s.text(.dbHost), "127.0.0.1")
+        XCTAssertEqual(s.text(.dbPort), "3306")
+        s.texts[.host] = "h"; s.texts[.username] = "u"
+        XCTAssertNil(try s.body().get().object?["dbUsername"])
+        s.texts[.dbPassword] = "p"
+        XCTAssertEqual(s.body().failure, FormProblem(message: "Enter the database username this password is for.", tab: SSHServerTab.database.rawValue))
+        s.texts[.dbUsername] = " app "
+        s.texts[.dbPort] = "0"
+        XCTAssertEqual(s.body().failure?.tab, SSHServerTab.database.rawValue)
+        s.texts[.dbPort] = "3307"
+        var body = try s.body().get()
+        XCTAssertEqual(body["dbUsername"], "app")
+        XCTAssertEqual(body["dbPassword"], "p")
+        XCTAssertEqual(body["dbPort"], 3307)
+        XCTAssertTrue(s.tabChanged(.database))
+
+        // Saved: the row only says there is a login; the form knows it from what it sent.
+        let row: JSON = ["id": 5, "repo": "o/r", "host": "h", "port": 22, "username": "u", "dbHost": "127.0.0.1", "dbPort": 3307, "hasDbCredentials": true]
+        s.saved(row, sent: body)
+        XCTAssertTrue(s.loginKnown)
+        XCTAssertEqual(s.text(.dbUsername), "app")
+        XCTAssertFalse(s.changed)
+
+        // Emptying the username removes the whole login.
+        s.texts[.dbUsername] = ""
+        body = try s.body().get()
+        XCTAssertEqual(body["dbUsername"], "")
+        XCTAssertEqual(body["dbPassword"], "")
+        XCTAssertNil(body.object?["hasDbCredentials"])
+
+        // A stored login not read yet: only the half typed is sent, and the other stays on the server.
+        var stored = SSHServerFormState(row: row)
+        XCTAssertFalse(stored.loginKnown)
+        stored.texts[.dbPassword] = "new"
+        body = try stored.body().get()
+        XCTAssertNil(body.object?["dbUsername"])
+        XCTAssertEqual(body["dbPassword"], "new")
+        // Read, it fills the box not typed in and leaves the typed one.
+        stored.loginRead(["username": "app", "password": "p"])
+        XCTAssertEqual(stored.text(.dbUsername), "app")
+        XCTAssertEqual(stored.text(.dbPassword), "new")
+        XCTAssertTrue(stored.tabChanged(.database))
+        XCTAssertFalse(stored.tabChanged(.server))
+
+        // A clone carries the login it was copied with.
+        let copy = try stored.copy().get()
+        XCTAssertEqual(copy["label"], "")
+        XCTAssertEqual(copy["dbUsername"], "app")
+        XCTAssertEqual(copy["dbPassword"], "new")
+        let clone = SSHServerFormState(row: copy)
+        XCTAssertEqual(try clone.body().get()["dbUsername"], "app")
+    }
 }
 
 private extension Result where Failure == FormProblem {
     var failureMessage: String? { if case .failure(let p) = self { return p.message }; return nil }
+    var failure: FormProblem? { if case .failure(let p) = self { return p }; return nil }
 }
