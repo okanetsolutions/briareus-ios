@@ -43,8 +43,14 @@ enum Voice {
     against titles loosely. Each conversation carries its pull_request with its state (open, merged or closed) and \
     checks, and each open pull request names the conversations working on it: use these links to answer whether a \
     conversation's pull request was merged or closed. list_pull_requests lists open pull requests only; one missing \
-    from it was merged or closed, and the conversation's pull_request says which. read_conversation tells what an agent did, said or asks. send_message also answers an \
-    agent's question.
+    from it was merged or closed, and the conversation's pull_request says which. read_conversation tells what an \
+    agent did, said or asks. send_message also answers an agent's question.
+
+    ## Issues
+    list_issues lists the project's open issues with their labels, epic progress, the pull requests that close them \
+    and the conversations started on them. To have an agent do an issue, use work_on_issue with its number: it starts \
+    a conversation that reads the issue in full, implements it and opens a pull request that closes it. Before starting \
+    one, say if a conversation or a pull request is already on that issue.
 
     ## Ready to merge
     A pull request is ready to be merged only when list_pull_requests marks it ready_to_merge: it carries the \
@@ -52,7 +58,7 @@ enum Voice {
     checks or reviews alone; say what it still lacks instead.
 
     ## Confirmation
-    start_conversation, send_message and stop_conversation change things. Call them with confirmed=false first: the \
+    start_conversation, work_on_issue, send_message and stop_conversation change things. Call them with confirmed=false first: the \
     answer says what to read back. Call again with confirmed=true only after the user clearly agreed to that exact action \
     in their latest turn. Never pass confirmed=true on your own.
 
@@ -88,7 +94,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
     case readConversation = "read_conversation"
     case listPullRequests = "list_pull_requests"
     case waitingFindings = "waiting_findings"
+    case listIssues = "list_issues"
     case startConversation = "start_conversation"
+    case workOnIssue = "work_on_issue"
     case sendMessage = "send_message"
     case stopConversation = "stop_conversation"
 
@@ -97,13 +105,13 @@ enum VoiceTool: String, CaseIterable, Sendable {
         switch self {
         case .listConversations, .waitingFindings: return "sessions"
         case .readConversation: return "session"
-        case .listPullRequests: return "pulls"
-        case .startConversation: return "start_session"
+        case .listPullRequests, .listIssues: return "pulls"
+        case .startConversation, .workOnIssue: return "start_session"
         case .sendMessage: return "message"
         case .stopConversation: return "cancel"
         }
     }
-    var changes: Bool { [.startConversation, .sendMessage, .stopConversation].contains(self) }
+    var changes: Bool { [.startConversation, .workOnIssue, .sendMessage, .stopConversation].contains(self) }
     /// Acts on a conversation named by id, which must be the project's: the phone checks before it answers.
     var namesConversation: Bool { [.readConversation, .sendMessage, .stopConversation].contains(self) }
 
@@ -127,6 +135,12 @@ enum VoiceTool: String, CaseIterable, Sendable {
             description = "The project's open pull requests with their checks, conflicts, labels and review state, whether each is ready to merge, and the conversations working on it."
         case .waitingFindings:
             description = "The project's review rounds waiting for the user's decision."
+        case .listIssues:
+            description = "The project's open issues with their labels, epic progress, the pull requests that close them and the conversations started on them."
+        case .workOnIssue:
+            description = "Starts an agent on one of the project's open issues: it reads the issue in full, implements it and opens a pull request that closes it."
+            add("issue", "integer", "The issue's number, from list_issues.")
+            add("confirmed", "boolean", "True only after the user agreed to this exact action.")
         case .startConversation:
             description = "Starts an agent on the project with a first prompt."
             add("prompt", "string", "What the agent should do, as the user said it.")
@@ -155,8 +169,12 @@ enum VoiceTool: String, CaseIterable, Sendable {
         }
         let confirmed = args["confirmed"].is(true)
         switch self {
-        case .listConversations, .waitingFindings, .listPullRequests:
+        case .listConversations, .waitingFindings, .listPullRequests, .listIssues:
             return .call(["repo": .string(repo)])
+        case .workOnIssue:
+            guard let number = args["issue"].int, number >= 1 else { return .refuse("issue is missing.") }
+            // The board is read first: the conversation's prompt is made from the issue's row there.
+            return confirmed ? .call(["repo": .string(repo), "issue": JSON(number)]) : .confirm("Start an agent on issue #\(number).")
         case .readConversation:
             guard let id = text("session_id") else { return .refuse("session_id is missing.") }
             return .call(["sessionId": .string(id), "since": 0])
@@ -175,8 +193,8 @@ enum VoiceTool: String, CaseIterable, Sendable {
         }
     }
 
-    /// Reads the project's conversations too, to link each pull request to the conversations working on it.
-    var readsConversations: Bool { self == .listPullRequests }
+    /// Reads the project's conversations too, to link each pull request or issue to the conversations working on it.
+    var readsConversations: Bool { self == .listPullRequests || self == .listIssues }
 
     /// The answer of the call, cut to what the backend needs to say it. `args` are the tool's own arguments, and
     /// `sessions` the project's conversations when `readsConversations`.
@@ -208,7 +226,20 @@ enum VoiceTool: String, CaseIterable, Sendable {
                 ["session_id": .string(s.id), "title": .string(s.displayTitle),
                  "findings": JSON(s.heldTriage?["findings"].count ?? 0)]
             })]
-        case .startConversation:
+        case .listIssues:
+            let issues = IssueSummary.parseList(answer["issues"])
+            return ["issues": .array(issues.prefix(20).map { issue in
+                var out: JSON = ["number": JSON(issue.number), "title": .string(CarText.inline(issue.title)),
+                                 "labels": JSON(issue.labels.map(\.name)),
+                                 "pull_requests": .array(issue.pulls.map { JSON($0.number) }),
+                                 "conversations": .array(sessions.filter { $0.onIssue(issue.number) }.map { s in
+                                     ["session_id": .string(s.id), "title": .string(s.displayTitle), "status": .string(CarText.status(s))]
+                                 })]
+                if issue.isEpic { out["sub_issues"] = .string("\(issue.subIssuesDone) of \(issue.subIssues) done") }
+                if let parent = issue.parent { out["epic"] = JSON(parent.number) }
+                return out
+            }), "total": JSON(issues.count)]
+        case .startConversation, .workOnIssue:
             guard let session = Session(answer["session"]) else { return ["done": true] }
             return ["done": true, "session_id": .string(session.id), "title": .string(session.displayTitle)]
         case .sendMessage:
@@ -230,6 +261,12 @@ enum VoicePlan: Equatable, Sendable {
 }
 
 extension Voice {
+    /// What `start_session` is sent for an agent on issue `number`, from the board the project's `pulls` answered; nil
+    /// when the issue is not open on it.
+    static func issueStart(_ board: JSON, number: Int, repo: String) -> JSON? {
+        guard let issue = issuesFind(IssueSummary.parseList(board["issues"]), number) else { return nil }
+        return ["repo": .string(repo), "prompt": .string(issuePrompt(issue, repo: repo)), "activity": "issue"]
+    }
     /// The label a reviewer sets once the code is approved.
     static let approvedLabel = "code-approved"
     /// Ready to merge: approved by its label, checks passed, no conflicts, not a draft.

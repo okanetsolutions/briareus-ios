@@ -129,4 +129,28 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(out[0]["conversations"], [["session_id": "b", "title": "Backups"]])
         XCTAssertEqual(out[1]["conversations"], [])
     }
+
+    func testIssuesListTheirLinksAndWorkingOnOneStartsFromItsBoardRow() {
+        let board = j(#"""
+        {"issues":[
+          {"number":5,"title":"Add **exports**","labels":[{"name":"bug"}],"pulls":[{"number":9,"title":"Exports"}],
+           "parent":{"number":2,"title":"Epic"}},
+          {"number":2,"title":"Epic","subIssues":{"total":3,"completed":1}}]}
+        """#)
+        let sessions = Session.parseList(j(#"{"sessions":[{"id":"a","title":"Issue #5: Add exports","status":"running"}]}"#))!
+        XCTAssertTrue(VoiceTool.listIssues.readsConversations)
+        let issues = VoiceTool.listIssues.summary(board, args: [:], sessions: sessions)["issues"].items
+        XCTAssertEqual(issues[0], ["number": 5, "title": "Add exports", "labels": ["bug"], "pull_requests": [9], "epic": 2,
+                                   "conversations": [["session_id": "a", "title": "Issue #5: Add exports", "status": "Working"]]])
+        XCTAssertEqual(issues[1]["sub_issues"], "1 of 3 done")
+
+        XCTAssertTrue(VoiceTool.workOnIssue.changes)
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["issue": 5], repo: "o/r"), .confirm("Start an agent on issue #5."))
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["issue": 5, "confirmed": true], repo: "o/r"), .call(["repo": "o/r", "issue": 5]))
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["confirmed": true], repo: "o/r"), .refuse("issue is missing."))
+        let start = Voice.issueStart(board, number: 5, repo: "o/r")!
+        XCTAssertEqual(start["activity"], "issue")
+        XCTAssertTrue(start["prompt"].string!.hasPrefix("Issue #5: Add **exports**"))
+        XCTAssertNil(Voice.issueStart(board, number: 7, repo: "o/r"))
+    }
 }

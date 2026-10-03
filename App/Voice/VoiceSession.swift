@@ -238,7 +238,7 @@ final class VoiceSession: ObservableObject {
             readBacks[key] = heard
             return finish(.waiting, ["needs_confirmation": true, "read_back": .string(readBack),
                                      "next": "Read this back to the user. Call again with confirmed=true only if they say yes."])
-        case .call(let arguments):
+        case .call(var arguments):
             guard Store.shared.supports(tool.operation) else {
                 return finish(.failed("Not allowed"), ["error": "This device's token cannot do that on the server."])
             }
@@ -248,6 +248,14 @@ final class VoiceSession: ObservableObject {
                    !Voice.owns(try await Store.shared.call("sessions", ["repo": .string(repo)]), session: id) {
                     let why = "That conversation is not one of this project's."
                     return finish(.failed(why), ["error": .string(why)])
+                }
+                if tool == .workOnIssue, let number = arguments["issue"].int {
+                    let board = try await Store.shared.call("pulls", ["repo": .string(repo)])
+                    guard let start = Voice.issueStart(board, number: number, repo: repo) else {
+                        let why = "Issue #\(number) is not open on this project."
+                        return finish(.failed(why), ["error": .string(why)])
+                    }
+                    arguments = start
                 }
                 let answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
                 let sessions = tool.readsConversations
@@ -268,7 +276,7 @@ final class VoiceSession: ObservableObject {
         let words = { (s: String?) in
             (s ?? "").lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: " ")
         }
-        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "",
+        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "", args["issue"].int.map(String.init) ?? "",
                 words(args["text"].string ?? args["prompt"].string)].joined(separator: "|")
     }
 }
