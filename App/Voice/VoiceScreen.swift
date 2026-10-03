@@ -1,4 +1,4 @@
-// A project's voice conversation, opened from its screen: GPT-Live about that project's agents, pull requests and
+// A project's voice conversation, opened from its screen: GPT-Realtime about that project's agents, pull requests and
 // findings, and nothing else. What both sides said scrolls as captions; the actions it ran on the server are listed
 // under them.
 import SwiftUI

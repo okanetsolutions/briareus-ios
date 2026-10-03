@@ -1,7 +1,7 @@
 import Foundation
 
-/// One spoken conversation with GPT-Live about one project: the WebRTC call, the captions, and
-/// the tools its backend calls, each held to that project. It outlives the screen that started it, so it goes on from
+/// One spoken conversation with GPT-Realtime about one project: the WebRTC call, the captions, and
+/// the tools it calls, each held to that project. It outlives the screen that started it, so it goes on from
 /// any tab and with the phone locked, and ends when the user ends it or after a silence.
 @MainActor
 final class VoiceSession: ObservableObject {
@@ -42,7 +42,7 @@ final class VoiceSession: ObservableObject {
     private var lastActivity = Date()
     /// How many pieces of the user's speech have been heard: a yes must come after the read-back it answers.
     private var heard = 0
-    /// The function calls of each delegated response, by delegation id, answered together once the response completes.
+    /// The function calls of each response, by response id, answered together once the response is done.
     private var calls: [String: [Task<(id: String, output: String), Never>]] = [:]
     private var seenCalls: Set<String> = []
     /// The changes read back to the user, with how much had been heard at the time.
@@ -68,12 +68,10 @@ final class VoiceSession: ObservableObject {
         let call = LiveCall()
         self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
-        let voice = settings.voice, backend = settings.backendModel
+        let session = Voice.session(voice: settings.voice, project: named)
         reader = Task { [weak self] in
             do {
-                let events = try await call.open(key: key) { offer in
-                    Voice.create(offer: offer, voice: voice, backend: backend, project: named)
-                }
+                let events = try await call.open(key: key, session: session)
                 for try await event in events { self?.handle(event) }
                 self?.ended(nil)
             } catch {
@@ -82,17 +80,13 @@ final class VoiceSession: ObservableObject {
         }
     }
 
-    /// Asks GPT-Live to close, which settles the bill, and lets go of everything once it has or after a few seconds.
+    /// Hangs up: closing the WebRTC call ends the Realtime session.
     func stop(reason: String? = nil) {
         guard phase == .connecting || phase == .live else { return }
         if let reason { notice = reason }
         phase = .closing
         speaking = false
-        call?.send(["type": "session.close", "event_id": .string(nextID())])
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            if self?.phase == .closing { self?.ended(nil) }
-        }
+        ended(nil)
     }
 
     func toggleMute() {
@@ -119,26 +113,27 @@ final class VoiceSession: ObservableObject {
 
     private func handle(_ event: JSON) {
         switch event["type"].string {
-        case "session.started":
+        case "session.created":
             guard phase == .connecting else { return }
             phase = .live
             started = Date()
             touch()
             watch()
-        case "session.input_transcript.delta":
+        case "input_audio_buffer.committed":
+            // A piece of the user's speech the model hears, transcribed or not.
             heard += 1
-            caption(user: true, event["delta"].string)
             touch()
-        case "session.output_transcript.delta":
+        case "conversation.item.input_audio_transcription.completed":
+            caption(user: true, event["transcript"].string)
+            touch()
+        case "response.output_audio_transcript.delta":
             caption(user: false, event["delta"].string)
             talking()
             touch()
-        case "response.event":
-            backend(event["delegation_id"].string ?? "", event["event"])
+        case "response.output_item.done", "response.done":
+            tools(event)
         case "error":
-            notice = event["error"]["message"].string ?? "GPT-Live reported an error."
-        case "session.closed":
-            ended(nil)
+            notice = event["error"]["message"].string ?? "GPT-Realtime reported an error."
         default:
             break
         }
@@ -154,7 +149,7 @@ final class VoiceSession: ObservableObject {
         }
     }
 
-    /// Ends the conversation after the silence the settings allow, as GPT-Live bills every minute it is open.
+    /// Ends the conversation after the silence the settings allow, as GPT-Realtime bills the audio it hears and says.
     private func watch() {
         watchdog = Task { [weak self] in
             while !Task.isCancelled {
@@ -181,40 +176,41 @@ final class VoiceSession: ObservableObject {
 
     // MARK: Tools
 
-    /// A Responses event from the backend: a finished function call starts running at once; when the response
-    /// completes, every call it made is answered and the backend is told to go on.
-    private func backend(_ delegation: String, _ event: JSON) {
+    /// A response's event: a finished function call starts running at once; when the response is done, every call
+    /// it made is answered and the model is told to go on.
+    private func tools(_ event: JSON) {
         switch event["type"].string {
         case "response.output_item.done":
-            let item = event["item"]
+            let item = event["item"], response = event["response_id"].string ?? ""
             guard item["type"].string == "function_call", let id = item["call_id"].string, let name = item["name"].string,
                   seenCalls.insert(id).inserted else { return }
             let args = item["arguments"].string.flatMap(JSON.parse) ?? [:]
             let step = Step(tool: VoiceTool(rawValue: name), name: name, args: args, state: .running)
             steps.append(step)
             touch()
-            calls[delegation, default: []].append(Task { (id, await self.run(step)) })
-        case "response.completed", "response.done":
-            guard let pending = calls[delegation], !pending.isEmpty, let call else { return }
-            calls[delegation] = nil
+            calls[response, default: []].append(Task { (id, await self.run(step)) })
+        case "response.done":
+            let response = event["response"]["id"].string ?? ""
+            guard let pending = calls[response], !pending.isEmpty, let call else { return }
+            calls[response] = nil
+            // A response cut off by the user does not go on by itself; what its calls did is still told.
+            let goOn = response.isEmpty || event["response"]["status"].string == "completed"
             Task {
                 var outputs: [(id: String, output: String)] = []
                 for call in pending { outputs.append(await call.value) }
                 guard self.call === call else { return }
                 for (id, output) in outputs {
-                    call.send(["type": "response.item.create", "event_id": .string(nextID()),
-                                 "item": ["type": "function_call_output", "call_id": .string(id), "output": .string(output)]])
+                    call.send(["type": "conversation.item.create", "event_id": .string(nextID()),
+                               "item": ["type": "function_call_output", "call_id": .string(id), "output": .string(output)]])
                 }
-                call.send(["type": "response.create", "event_id": .string(nextID())])
+                if goOn { call.send(["type": "response.create", "event_id": .string(nextID())]) }
             }
-        case "response.failed", "response.incomplete":
-            calls[delegation] = nil
         default:
             break
         }
     }
 
-    /// Runs one tool call and answers with what the backend should know, as JSON text.
+    /// Runs one tool call and answers with what the model should know, as JSON text.
     private func run(_ step: Step) async -> String {
         func finish(_ state: Step.State, _ answer: JSON) -> String {
             if let i = steps.firstIndex(where: { $0.id == step.id }) { steps[i].state = state }
@@ -225,7 +221,7 @@ final class VoiceSession: ObservableObject {
         guard let repo else { return finish(.failed("No project"), ["error": "The conversation has no project."]) }
         let key = Self.readBackKey(tool, step.args)
         var plan = tool.plan(step.args, repo: repo)
-        // A change goes through only on a yes the user said after hearing it read back; the backend's word is not enough.
+        // A change goes through only on a yes the user said after hearing it read back; the model's word is not enough.
         if case .call = plan, tool.changes, !(readBacks[key].map { heard > $0 } ?? false) {
             var unconfirmed = step.args
             unconfirmed["confirmed"] = false

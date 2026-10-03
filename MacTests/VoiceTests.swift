@@ -1,4 +1,4 @@
-// The voice mode's session and tools: what GPT-Live is started with, which calls a tool makes on the project, and what it
+// The voice mode's session and tools: what GPT-Realtime is started with, which calls a tool makes on the project, and what it
 // answers.
 import XCTest
 @testable import BriareusMacCore
@@ -6,26 +6,27 @@ import XCTest
 final class VoiceTests: XCTestCase {
     private func j(_ s: String) -> JSON { JSON.parse(s)! }
 
-    func testCreateCarriesTheOfferTheVoiceTheProjectAndEveryToolOnTheBackend() {
-        let create = Voice.create(offer: "v=0", voice: "gleam", backend: "gpt-6-luna", project: "HQ (o/hq)")
-        XCTAssertEqual(create["transport"], ["type": "webrtc", "sdp": "v=0"])
-        let session = create["session"]
-        XCTAssertEqual(session["model"], "gpt-live-1")
-        // WebRTC negotiates the format; only the voice is chosen.
-        XCTAssertEqual(session["audio"], ["output": ["voice": "gleam"]])
-        XCTAssertEqual(session["delegation"]["type"], "responses")
-        XCTAssertEqual(session["delegation"]["responses"]["model"], "gpt-6-luna")
-        let names = session["delegation"]["responses"]["tools"].items.compactMap { $0["name"].string }
+    func testSessionCarriesTheVoiceTheProjectAndEveryTool() {
+        let session = Voice.session(voice: "cedar", project: "HQ (o/hq)")
+        XCTAssertEqual(session["type"], "realtime")
+        XCTAssertEqual(session["model"], "gpt-realtime-2.1-mini")
+        // WebRTC negotiates the format; the voice is chosen and the user's speech is transcribed for the captions.
+        XCTAssertEqual(session["audio"], ["input": ["transcription": ["model": "gpt-4o-mini-transcribe"]], "output": ["voice": "cedar"]])
+        XCTAssertEqual(session["tool_choice"], "auto")
+        let names = session["tools"].items.compactMap { $0["name"].string }
         XCTAssertEqual(names, VoiceTool.allCases.map(\.rawValue))
-        XCTAssertTrue(session["instructions"].string!.contains("HQ (o/hq)"))
-        XCTAssertTrue(session["delegation"]["responses"]["instructions"].string!.contains("HQ (o/hq)"))
+        let instructions = session["instructions"].string!
+        XCTAssertTrue(instructions.contains("HQ (o/hq)"))
+        XCTAssertTrue(instructions.contains("## Confirmation"))
+        // A voice the Realtime API does not have falls back to Marin.
+        XCTAssertEqual(Voice.session(voice: "gleam", project: "HQ")["audio"]["output"]["voice"], "marin")
     }
 
     func testNoToolNamesAProjectAndEveryCallIsOnTheConversationsOwn() {
         for tool in VoiceTool.allCases {
             XCTAssertTrue(tool.definition["parameters"]["properties"]["repo"].isNull, tool.rawValue)
         }
-        // Whatever the backend sends, the repository is the project's.
+        // Whatever the model sends, the repository is the project's.
         XCTAssertEqual(VoiceTool.listConversations.plan(["repo": "other/repo"], repo: "o/r"), .call(["repo": "o/r"]))
         XCTAssertEqual(VoiceTool.listPullRequests.plan([:], repo: "o/r"), .call(["repo": "o/r"]))
         XCTAssertEqual(VoiceTool.waitingFindings.plan([:], repo: "o/r"), .call(["repo": "o/r"]))

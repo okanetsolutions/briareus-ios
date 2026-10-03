@@ -1,39 +1,41 @@
-// The voice mode's side of GPT-Live, OpenAI's live voice model: the session it opens, the tools its backend calls on the
+// The voice mode's side of GPT-Realtime, OpenAI's realtime voice model: the session it opens, the tools it calls on the
 // client API, and what each answer becomes for the model to say. No UI and no audio here.
 //
-// GPT-Live holds the spoken conversation; a Responses model behind it (its "delegation") decides which tool to call. The
-// phone runs each call on /api/v1 with its own token and answers with a short JSON summary. A voice conversation belongs
-// to one project: no tool names a repository, the phone puts that project's in every call.
+// GPT-Realtime holds the spoken conversation and decides itself which tool to call. The phone runs each call on /api/v1
+// with its own token and answers with a short JSON summary. A voice conversation belongs to one project: no tool names a
+// repository, the phone puts that project's in every call.
 import Foundation
 
 enum Voice {
-    /// Where a session starts: the phone posts its WebRTC offer with the session, and the answer comes back.
-    static let endpoint = URL(string: "https://api.openai.com/v1/live/sessions")!
-    /// The data channel GPT-Live sends and takes its JSON events on.
+    /// Where a call starts: the phone posts its WebRTC offer with the session, and the SDP answer comes back.
+    static let endpoint = URL(string: "https://api.openai.com/v1/realtime/calls")!
+    /// The data channel GPT-Realtime sends and takes its JSON events on.
     static let channel = "oai-events"
-    static let model = "gpt-live-1"
-    static let defaultBackend = "gpt-6-luna"
+    static let model = "gpt-realtime-2.1-mini"
+    /// What writes out the user's speech for the captions; the model hears the audio itself.
+    static let transcriber = "gpt-4o-mini-transcribe"
     static let defaultVoice = "marin"
-    /// Marin first, the default; then the voices GPT-Live adds.
-    static let voices = ["marin", "gleam", "meridian", "willow", "stone", "vesper", "quartz", "ripple", "bossa", "tempo",
-                         "beacon", "delta", "cinder"]
+    /// Marin first, the default; then the Realtime API's other voices.
+    static let voices = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo", "sage", "shimmer", "verse"]
 
-    /// How the voice speaks: short, in the speaker's language, about one project, and never claiming what the backend
+    /// How the voice speaks: short, in the speaker's language, about one project, and never claiming what a tool
     /// has not confirmed.
     static func instructions(project: String) -> String { """
     You are the voice of Briareus, an app that runs coding agents on the user's projects. This conversation is about one \
     project only: \(project). The user talks to you hands-free, often with the phone locked. Answer in the language the \
     user speaks, in one or two short sentences. Speak only when the user has said something; do not volunteer updates. \
-    Delegate anything about the project's conversations, agents, pull requests or findings to the backend, and say only \
-    what it confirms. If the user asks about another project, say this conversation can only work on \(project). Before \
-    the backend starts a conversation, sends a message or stops an agent, read back what will happen in a few words and \
-    wait for the user's yes.
+    Use the tools for anything about the project's conversations, agents, pull requests, issues or findings, and say only \
+    what they confirm. If the user asks about another project, say this conversation can only work on \(project). Before \
+    you start a conversation, send a message or stop an agent, read back what will happen in a few words and wait for the \
+    user's yes.
+
+    \(toolInstructions(project: project))
     """ }
 
-    /// What the backend model knows of the project, the tools and their rules.
-    static func backendInstructions(project: String) -> String { """
+    /// What the model knows of the project, the tools and their rules.
+    static func toolInstructions(project: String) -> String { """
     ## Voice conversation context
-    You help a voice assistant in a live conversation about one project on the user's Briareus server: \(project). Coding \
+    This is a live conversation about one project on the user's Briareus server: \(project). Coding \
     agents work on it in conversations (sessions). Every tool works on this project only; there is no way to reach \
     another. Transcripts can contain mistakes, unfinished phrases and later corrections; use the latest context. If a \
     needed detail is unclear, ask for it instead of guessing.
@@ -66,32 +68,27 @@ enum Voice {
     answer says what to read back. Call again with confirmed=true only after the user clearly agreed to that exact action \
     in their latest turn. Never pass confirmed=true on your own.
 
-    ## Return the result
-    Return the relevant facts in a few plain sentences, without Markdown, ids or URLs. Report an action as done only when \
-    the tool says it is.
+    ## Saying the result
+    Say the relevant facts in a few plain sentences, without ids or URLs. Report an action as done only when the tool \
+    says it is.
     """ }
 
-    /// What starts a session over WebRTC: the phone's SDP offer, and the voice and the backend with its tools, all on
-    /// one project. `project` is how it is named aloud: its label and repository. WebRTC settles the audio format.
-    static func create(offer sdp: String, voice: String, backend: String, project: String) -> JSON {
-        ["transport": ["type": "webrtc", "sdp": .string(sdp)], "session": [
-            "model": .string(model),
-            "instructions": .string(instructions(project: project)),
-            "audio": ["output": ["voice": .string(voice)]],
-            "delegation": ["type": "responses", "responses": [
-                "model": .string(backend),
-                "instructions": .string(backendInstructions(project: project)),
-                "tools": .array(VoiceTool.allCases.map(\.definition)),
-                "tool_choice": "auto",
-                "parallel_tool_calls": false,
-            ]],
-        ]]
+    /// What starts a call over WebRTC: the voice and the tools, all on one project. `project` is how it is named aloud:
+    /// its label and repository. WebRTC settles the audio format; the SDP offer goes beside this, not in it.
+    static func session(voice: String, project: String) -> JSON {
+        ["type": "realtime",
+         "model": .string(model),
+         "instructions": .string(instructions(project: project)),
+         "audio": ["input": ["transcription": ["model": .string(transcriber)]],
+                   "output": ["voice": .string(voices.contains(voice) ? voice : defaultVoice)]],
+         "tools": .array(VoiceTool.allCases.map(\.definition)),
+         "tool_choice": "auto"]
     }
 }
 
 // MARK: - Tools
 
-/// What the backend may call. Each runs one call of the client API on the conversation's project; the ones that change
+/// What the model may call. Each runs one call of the client API on the conversation's project; the ones that change
 /// something wait for a yes.
 enum VoiceTool: String, CaseIterable, Sendable {
     case listConversations = "list_conversations"
@@ -123,7 +120,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     /// Acts on a conversation named by id, which must be the project's: the phone checks before it answers.
     var namesConversation: Bool { [.readConversation, .sendMessage, .stopConversation].contains(self) }
 
-    /// A Responses function tool.
+    /// A Realtime function tool.
     var definition: JSON {
         var properties: [String: JSON] = [:]
         var required: [String] = []
@@ -216,7 +213,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     /// Reads the project's conversations too, to link each pull request or issue to the conversations working on it.
     var readsConversations: Bool { [.listPullRequests, .listIssues, .readIssue].contains(self) }
 
-    /// The answer of the call, cut to what the backend needs to say it. `args` are the tool's own arguments, and
+    /// The answer of the call, cut to what the model needs to say it. `args` are the tool's own arguments, and
     /// `sessions` the project's conversations when `readsConversations`. A `read_issue` answer carries the timeline
     /// rows the phone read after it as `timeline`.
     func summary(_ answer: JSON, args: JSON, sessions: [Session] = []) -> JSON {
@@ -309,9 +306,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
 enum VoicePlan: Equatable, Sendable {
     /// Make the tool's client API call with these arguments.
     case call(JSON)
-    /// Answer the backend with this read-back; nothing is done until the call comes back confirmed.
+    /// Answer the model with this read-back; nothing is done until the call comes back confirmed.
     case confirm(String)
-    /// Answer the backend with what is wrong with the call.
+    /// Answer the model with what is wrong with the call.
     case refuse(String)
 }
 
@@ -372,7 +369,7 @@ extension Voice {
     static func owns(_ sessions: JSON, session id: String) -> Bool {
         (Session.parseList(sessions) ?? []).contains { $0.id == id }
     }
-    /// A conversation as the backend reads it.
+    /// A conversation as the model reads it.
     static func conversation(_ s: Session) -> JSON { conversation(s, events: []) }
     static func conversation(_ s: Session, events: [Event]) -> JSON {
         let asking = CarText.openQuestion(events)
