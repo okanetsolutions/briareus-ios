@@ -248,6 +248,7 @@ struct PullScreen: View {
                 }
             }
             if let stack = model.stack { stackGroup(stack) }
+            suggestedErrand
             if model.canMerge {
                 Button { Task { await model.askMerge() } } label: {
                     HStack {
@@ -259,6 +260,28 @@ struct PullScreen: View {
             }
         }
         .listRowBackground(Theme.row)
+    }
+
+    /// The errand the pull request's state asks for, above the merge as the Mac's filled button is: Run opens the
+    /// ▶ Run section, any other starts as the toolbar's menu would.
+    @ViewBuilder private var suggestedErrand: some View {
+        let suggested = model.boardRow?.recommended
+        if suggested == "run", sections.contains(.run) {
+            Button { withAnimation(.snappy) { model.select(.run) } } label: { suggestedLabel("Run") }
+        } else if let a = model.actions(catalog.catalog).first(where: { $0.id == suggested }), let branch = model.pr["headRef"].string {
+            Button(role: a.id == "delete-self-comments" ? .destructive : nil) {
+                errands.ask(a, number: number, branch: branch)
+            } label: { suggestedLabel(a.label) }
+            .disabled(errands.busy || errands.uncertain)
+        }
+    }
+
+    private func suggestedLabel(_ text: String) -> some View {
+        HStack {
+            Label(text, systemImage: "sparkles").fontWeight(.semibold)
+            Spacer()
+            Text("Suggested").font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     /// `author wants to merge N commits into base from head`, the branches as chips.
