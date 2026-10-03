@@ -48,9 +48,11 @@ enum Voice {
 
     ## Issues
     list_issues lists the project's open issues with their labels, epic progress, the pull requests that close them \
-    and the conversations started on them. To have an agent do an issue, use work_on_issue with its number: it starts \
-    a conversation that reads the issue in full, implements it and opens a pull request that closes it. Before starting \
-    one, say if a conversation or a pull request is already on that issue.
+    and the conversations started on them. read_issue reads one in full: its description, its latest comments, its \
+    epic or sub-issues and the pull requests that close it; use it whenever the user asks what an issue says or wants. \
+    To have an agent do an issue, use work_on_issue with its number: it starts a conversation that reads the issue in \
+    full, implements it and opens a pull request that closes it. Before starting one, say if a conversation or a pull \
+    request is already on that issue.
 
     ## Ready to merge
     A pull request is ready to be merged only when list_pull_requests marks it ready_to_merge: it carries the \
@@ -95,6 +97,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     case listPullRequests = "list_pull_requests"
     case waitingFindings = "waiting_findings"
     case listIssues = "list_issues"
+    case readIssue = "read_issue"
     case startConversation = "start_conversation"
     case workOnIssue = "work_on_issue"
     case sendMessage = "send_message"
@@ -106,6 +109,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .listConversations, .waitingFindings: return "sessions"
         case .readConversation: return "session"
         case .listPullRequests, .listIssues: return "pulls"
+        case .readIssue: return "issue"
         case .startConversation, .workOnIssue: return "start_session"
         case .sendMessage: return "message"
         case .stopConversation: return "cancel"
@@ -137,6 +141,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
             description = "The project's review rounds waiting for the user's decision."
         case .listIssues:
             description = "The project's open issues with their labels, epic progress, the pull requests that close them and the conversations started on them."
+        case .readIssue:
+            description = "One of the project's issues in full: its state, type, labels, description and latest comments, its epic or sub-issues, the pull requests that close it and the conversations started on it."
+            add("issue", "integer", "The issue's number, from list_issues or as the user said it.")
         case .workOnIssue:
             description = "Starts an agent on one of the project's open issues: it reads the issue in full, implements it and opens a pull request that closes it."
             add("issue", "integer", "The issue's number, from list_issues.")
@@ -171,6 +178,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
         switch self {
         case .listConversations, .waitingFindings, .listPullRequests, .listIssues:
             return .call(["repo": .string(repo)])
+        case .readIssue:
+            guard let number = args["issue"].int, number >= 1 else { return .refuse("issue is missing.") }
+            return .call(["repo": .string(repo), "issue": JSON(number)])
         case .workOnIssue:
             guard let number = args["issue"].int, number >= 1 else { return .refuse("issue is missing.") }
             // The board is read first: the conversation's prompt is made from the issue's row there.
@@ -194,10 +204,11 @@ enum VoiceTool: String, CaseIterable, Sendable {
     }
 
     /// Reads the project's conversations too, to link each pull request or issue to the conversations working on it.
-    var readsConversations: Bool { self == .listPullRequests || self == .listIssues }
+    var readsConversations: Bool { [.listPullRequests, .listIssues, .readIssue].contains(self) }
 
     /// The answer of the call, cut to what the backend needs to say it. `args` are the tool's own arguments, and
-    /// `sessions` the project's conversations when `readsConversations`.
+    /// `sessions` the project's conversations when `readsConversations`. A `read_issue` answer carries the timeline
+    /// rows the phone read after it as `timeline`.
     func summary(_ answer: JSON, args: JSON, sessions: [Session] = []) -> JSON {
         switch self {
         case .listConversations:
@@ -239,6 +250,37 @@ enum VoiceTool: String, CaseIterable, Sendable {
                 if let parent = issue.parent { out["epic"] = JSON(parent.number) }
                 return out
             }), "total": JSON(issues.count)]
+        case .readIssue:
+            let raw = answer["issue"]
+            guard let issue = IssueSummary(raw) else { return ["error": "The server did not return the issue."] }
+            let pulls: [JSON] = issue.pulls.map { pr in
+                var link: JSON = ["number": JSON(pr.number), "title": .string(CarText.inline(pr.title))]
+                if let state = pr.state { link["state"] = .string(state) }
+                if pr.draft { link["draft"] = true }
+                return link
+            }
+            let working: [JSON] = sessions.filter { $0.onIssue(issue.number) }.map { s in
+                ["session_id": .string(s.id), "title": .string(s.displayTitle), "status": .string(CarText.status(s))]
+            }
+            var out: JSON = ["number": JSON(issue.number), "title": .string(CarText.inline(issue.title)),
+                             "state": .string(Voice.issueState(raw)), "labels": JSON(issue.labels.map(\.name)),
+                             "description": .string(Voice.cut(CarText.inline(raw["body"].string ?? ""), 4000)),
+                             "pull_requests": .array(pulls), "conversations": .array(working)]
+            if let type = raw["type"].nonEmpty { out["type"] = .string(type) }
+            if let author = issue.author { out["author"] = .string(author) }
+            if !issue.assignees.isEmpty { out["assignees"] = JSON(issue.assignees) }
+            if let parent = issue.parent { out["epic"] = ["number": JSON(parent.number), "title": .string(CarText.inline(parent.title))] }
+            if issue.isEpic {
+                out["sub_issues"] = .string("\(issue.subIssuesDone) of \(issue.subIssues) done")
+                let open = raw["subIssues"]["items"].items.compactMap(BoardLink.init).filter { $0.state == "open" }
+                out["open_sub_issues"] = .array(open.prefix(10).map { ["number": JSON($0.number), "title": .string(CarText.inline($0.title))] })
+            }
+            let comments = answer["timeline"].items.filter { $0["kind"].string == "commented" && $0["body"].nonEmpty != nil }
+            out["comments"] = .array(comments.suffix(5).map { c in
+                ["from": .string(c["actor"].string ?? "a deleted account"), "text": .string(Voice.cut(CarText.inline(c["body"].string ?? ""), 800))]
+            })
+            out["comments_total"] = JSON(issue.comments)
+            return out
         case .startConversation, .workOnIssue:
             guard let session = Session(answer["session"]) else { return ["done": true] }
             return ["done": true, "session_id": .string(session.id), "title": .string(session.displayTitle)]
@@ -266,6 +308,22 @@ extension Voice {
     static func issueStart(_ board: JSON, number: Int, repo: String) -> JSON? {
         guard let issue = issuesFind(IssueSummary.parseList(board["issues"]), number) else { return nil }
         return ["repo": .string(repo), "prompt": .string(issuePrompt(issue, repo: repo)), "activity": "issue"]
+    }
+    /// How many timeline pages `read_issue` reads at most: 100 rows each, oldest first, so its latest comments are on the last.
+    static let issueTimelinePages = 5
+    /// An issue's state in words: open, closed, or closed with its reason.
+    static func issueState(_ issue: JSON) -> String {
+        guard issue["state"].string == "closed" else { return issue["state"].string ?? "open" }
+        switch issue["stateReason"].string {
+        case "not_planned": return "closed as not planned"
+        case "duplicate": return "closed as a duplicate"
+        case "completed": return "closed as completed"
+        default: return "closed"
+        }
+    }
+    /// `text` cut to `length` characters, with an ellipsis when it was longer.
+    static func cut(_ text: String, _ length: Int) -> String {
+        text.count > length ? String(text.prefix(length)) + "…" : text
     }
     /// The label a reviewer sets once the code is approved.
     static let approvedLabel = "code-approved"
@@ -309,9 +367,7 @@ extension Voice {
         let said = events.filter { ["user", "text", "result", "ask"].contains($0.kind) && ($0.question ?? $0.text)?.isEmpty == false }
         return said.suffix(count).map { e in
             let who = e.kind == "user" ? "user" : "agent"
-            var words = CarText.inline(e.question ?? e.text ?? "")
-            if words.count > length { words = String(words.prefix(length)) + "…" }
-            return ["from": .string(who), "text": .string(words)]
+            return ["from": .string(who), "text": .string(cut(CarText.inline(e.question ?? e.text ?? ""), length))]
         }
     }
 }

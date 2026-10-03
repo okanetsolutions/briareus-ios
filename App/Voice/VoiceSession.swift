@@ -257,7 +257,19 @@ final class VoiceSession: ObservableObject {
                     }
                     arguments = start
                 }
-                let answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
+                var answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
+                // An issue's comments are on its timeline, oldest first: its pages are read up to a few, for the latest.
+                if tool == .readIssue, Store.shared.supports("issue_timeline") {
+                    var rows: [JSON] = [], read = arguments
+                    read["page"] = 1
+                    for _ in 0..<Voice.issueTimelinePages {
+                        guard let timeline = try? await Store.shared.call("issue_timeline", read, timeout: 60) else { break }
+                        rows += timeline["events"].items
+                        guard let next = timeline["nextPage"].int else { break }
+                        read["page"] = JSON(next)
+                    }
+                    answer["timeline"] = .array(rows)
+                }
                 let sessions = tool.readsConversations
                     ? (try? await Store.shared.call("sessions", ["repo": .string(repo)])).flatMap(Session.parseList) ?? []
                     : []

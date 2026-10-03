@@ -153,4 +153,41 @@ final class VoiceTests: XCTestCase {
         XCTAssertTrue(start["prompt"].string!.hasPrefix("Issue #5: Add **exports**"))
         XCTAssertNil(Voice.issueStart(board, number: 7, repo: "o/r"))
     }
+
+    func testReadingAnIssueGivesItsDescriptionLatestCommentsAndLinks() {
+        XCTAssertEqual(VoiceTool.readIssue.operation, "issue")
+        XCTAssertFalse(VoiceTool.readIssue.changes)
+        XCTAssertTrue(VoiceTool.readIssue.readsConversations)
+        XCTAssertEqual(VoiceTool.readIssue.plan(["issue": 5], repo: "o/r"), .call(["repo": "o/r", "issue": 5]))
+        XCTAssertEqual(VoiceTool.readIssue.plan([:], repo: "o/r"), .refuse("issue is missing."))
+        XCTAssertEqual(APIRoute.named("issue")?.path, "issues/{issue}")
+        XCTAssertEqual(APIRoute.named("issue_timeline")?.path, "issues/{issue}/timeline")
+
+        var answer = j(#"""
+        {"issue":{"number":5,"title":"Add **exports**","state":"open","type":"Feature","author":"ana","assignees":["bo"],
+          "body":"Export the **ledger** as [CSV](https://x.y).\n\nKeep the filters.","labels":[{"name":"bug"}],"comments":7,
+          "parent":{"number":2,"title":"Epic"},
+          "subIssues":{"total":2,"completed":1,"items":[{"number":6,"title":"Done","state":"closed"},{"number":8,"title":"Left","state":"open"}]},
+          "pulls":[{"number":9,"title":"Exports","state":"open","draft":true}]}}
+        """#)
+        let rows = (1...7).map { n in j(#"{"kind":"commented","actor":"ana","body":"Comment \#(n)"}"#) }
+        answer["timeline"] = .array([j(#"{"kind":"labeled","actor":"ana"}"#)] + rows)
+        let sessions = Session.parseList(j(#"{"sessions":[{"id":"a","title":"Issue #5: Add exports","status":"running"}]}"#))!
+        let out = VoiceTool.readIssue.summary(answer, args: ["issue": 5], sessions: sessions)
+        XCTAssertEqual(out["title"], "Add exports")
+        XCTAssertEqual(out["state"], "open")
+        XCTAssertEqual(out["type"], "Feature")
+        XCTAssertEqual(out["description"], "Export the ledger as CSV. Keep the filters.")
+        XCTAssertEqual(out["epic"], ["number": 2, "title": "Epic"])
+        XCTAssertEqual(out["sub_issues"], "1 of 2 done")
+        XCTAssertEqual(out["open_sub_issues"], [["number": 8, "title": "Left"]])
+        XCTAssertEqual(out["pull_requests"], [["number": 9, "title": "Exports", "state": "open", "draft": true]])
+        XCTAssertEqual(out["conversations"], [["session_id": "a", "title": "Issue #5: Add exports", "status": "Working"]])
+        XCTAssertEqual(out["comments"].items.map { $0["text"] }, ["Comment 3", "Comment 4", "Comment 5", "Comment 6", "Comment 7"])
+        XCTAssertEqual(out["comments_total"], 7)
+
+        XCTAssertEqual(Voice.issueState(j(#"{"state":"closed","stateReason":"not_planned"}"#)), "closed as not planned")
+        XCTAssertEqual(Voice.cut("abcdef", 3), "abc…")
+        XCTAssertEqual(VoiceTool.readIssue.summary(j("{}"), args: [:])["error"], "The server did not return the issue.")
+    }
 }

@@ -173,6 +173,8 @@ struct APIRoute: Sendable {
         .init(name: "serve_pull", method: "POST", path: "pulls/{prNumber}/serve"),
         .init(name: "commit", method: "GET", path: "commits/{sha}"),
         // Issues
+        .init(name: "issue", method: "GET", path: "issues/{issue}"),
+        .init(name: "issue_timeline", method: "GET", path: "issues/{issue}/timeline"),   // comments and events, 100 a `page`, oldest first
         .init(name: "close_issue", method: "POST", path: "issues/{issue}/close"),   // `reason` completed or not_planned, and an optional `comment`
         // Sessions. The list has no project parameter: a `repo` argument cuts the answer down here instead.
         .init(name: "sessions", method: "GET", path: "sessions", filter: "repo", list: "sessions"),
