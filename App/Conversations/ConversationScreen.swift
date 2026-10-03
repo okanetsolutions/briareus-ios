@@ -56,7 +56,7 @@ struct ConversationScreen: View {
                             isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
                             titleVisibility: .visible, presenting: asked) { action in
             Button(confirmLabel(action), role: action == "delete" || action == "cancel" ? .destructive : nil) {
-                model.mutate(action, action == "review_loop" ? ["on": true] : [:])
+                model.mutate(action)
             }
         }
         .alert("Rename conversation", isPresented: $renaming) {
@@ -252,11 +252,9 @@ struct ConversationScreen: View {
                     Button("Rename", systemImage: "pencil") { newTitle = s.displayTitle; renaming = true }.disabled(!can)
                 }
                 if store.supports("review_loop") && s.canReviewLoop {
-                    if s.reviewLoopOn {
-                        Button("Turn Off Review Loop", systemImage: "repeat") { model.mutate("review_loop", ["on": false]) }.disabled(!can)
-                    } else {
-                        Button("Turn On Review Loop", systemImage: "repeat") { asked = "review_loop" }.disabled(!can)
-                    }
+                    Button(s.reviewLoopOn ? "Turn Off Review Loop" : "Turn On Review Loop", systemImage: "repeat") {
+                        model.mutate("review_loop", ["on": .bool(!s.reviewLoopOn)])
+                    }.disabled(!can)
                 }
                 if sessionOffersCompact(s.raw) && store.supports("compact") && store.canManage {
                     let compacting = s.raw["compacting"].is(true)
@@ -268,7 +266,6 @@ struct ConversationScreen: View {
                 }
             }
             Section {
-                Button("Copy Session ID", systemImage: "doc.on.doc") { Pasteboard.copy(s.id) }
                 if let url = s.raw["prStatus"]["url"].nonEmpty {
                     Button("Copy Pull Request Link", systemImage: "link") { Pasteboard.copy(url) }
                 }
@@ -298,7 +295,6 @@ struct ConversationScreen: View {
         case "cancel": return "Stop"
         case "close": return "Close"
         case "reopen": return "Reopen"
-        case "review_loop": return "Turn On"
         case "compact": return "Compact"
         case "clear": return "Clear"
         default: return "Confirm"

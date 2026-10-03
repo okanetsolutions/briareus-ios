@@ -80,16 +80,6 @@ struct SessionDetailsSheet: View {
                 let loop = s.raw["reviewLoop"]
                 LabeledContent("Review loop", value: !s.reviewLoopOn ? "Off" : loop["rounds"].truncatedInt.map { "On \u{00B7} round \($0)" } ?? "On")
             }
-            LabeledContent("Session ID") {
-                Button { Pasteboard.copy(s.id) } label: {
-                    HStack(spacing: 4) {
-                        Text(s.id).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
-                        Image(systemName: "doc.on.doc").font(.caption)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Copy session ID")
-            }
         }
         .listRowBackground(Theme.row)
     }
