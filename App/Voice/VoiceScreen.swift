@@ -173,12 +173,12 @@ extension VoiceSession.Step {
         case .waitingFindings: return "Read the findings waiting"
         case .listIssues: return "Read the issues"
         case .readIssue: return "Read issue #" + (args["issue"].int.map(String.init) ?? "")
+        case .mergePullRequest: return (state == .waiting ? "Asked to merge #" : "Merge #") + (args["number"].int.map(String.init) ?? "")
         case .readPullRequest: return "Read the changes of #" + (args["number"].int.map(String.init) ?? "")
         case .workOnIssue: return (state == .waiting ? "Asked to work on issue #" : "Work on issue #") + (args["issue"].int.map(String.init) ?? "")
         case .startConversation: return (state == .waiting ? "Asked to start an agent: " : "Start an agent: ") + (args["prompt"].string ?? "")
         case .sendMessage: return (state == .waiting ? "Asked to send: " : "Send: ") + (args["text"].string ?? "")
         case .stopConversation: return state == .waiting ? "Asked to stop an agent" : "Stop an agent"
-        case .mergePullRequest: return (state == .waiting ? "Asked to merge #" : "Merge #") + (args["number"].int.map(String.init) ?? "")
         case nil: return name
         }
     }

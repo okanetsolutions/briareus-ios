@@ -49,8 +49,8 @@ final class VoiceSession: ObservableObject {
     private var seenCalls: Set<String> = []
     /// The changes read back to the user, with how much had been heard at the time.
     private var readBacks: [String: Int] = [:]
-    /// The head each merge read back was read at: a push after it makes GitHub refuse the merge rather than take it.
-    private var mergeHeads: [String: String] = [:]
+    /// The merges read back, by the same key: the call pinned to the head the user heard about, and its base.
+    private var merges: [String: (arguments: JSON, base: String)] = [:]
     private var sequence = 0
 
     private init() {}
@@ -68,7 +68,7 @@ final class VoiceSession: ObservableObject {
         } catch { notice = error.localizedDescription; return }
         phase = .connecting
         repo = project.repo
-        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; mergeHeads = [:]; muted = false; started = nil; cost = VoiceCost()
+        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; merges = [:]; muted = false; started = nil; cost = VoiceCost()
         let call = LiveCall()
         self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
@@ -235,27 +235,10 @@ final class VoiceSession: ObservableObject {
             unconfirmed["confirmed"] = false
             plan = tool.plan(unconfirmed, repo: repo)
         }
-        // A merge is said and made on the pull request as it is now: open, not a draft, with what stands in its way.
-        if tool == .mergePullRequest, let number = step.args["number"].int, number >= 1 {
-            guard Store.shared.supports("pull"), Store.shared.supports(tool.operation) else {
-                return finish(.failed("Not allowed"), ["error": "This device's token cannot do that on the server."])
-            }
-            let pr: JSON
-            do { pr = try await Store.shared.call("pull", ["repo": .string(repo), "pr": JSON(number)])["pr"] }
-            catch { let said = errorText(error); return finish(.failed(said), ["error": .string(said)]) }
-            if let why = Voice.mergeRefusal(pr, number: number) { readBacks[key] = nil; return finish(.failed(why), ["error": .string(why)]) }
-            switch plan {
-            case .confirm:
-                let files = Store.shared.supports("pull_files")
-                    ? (try? await Store.shared.call("pull_files", ["repo": .string(repo), "pr": JSON(number)])) ?? .null : .null
-                mergeHeads[key] = pr["headSha"].string
-                plan = .confirm(Voice.mergeReadBack(pr, number: number, files: files))
-            case .call(var arguments):
-                arguments["headSha"] = .string(mergeHeads[key] ?? pr["headSha"].string ?? "")
-                arguments["baseRef"] = .string(pr["baseRef"].string ?? "")
-                plan = .call(arguments)
-            case .refuse: break
-            }
+        if tool == .mergePullRequest {
+            if case .refuse(let why) = plan { return finish(.failed(why), ["error": .string(why)]) }
+            let (state, answer) = await merge(step, plan: plan, key: key, repo: repo)
+            return finish(state, answer)
         }
         switch plan {
         case .refuse(let why):
@@ -299,13 +282,52 @@ final class VoiceSession: ObservableObject {
                 let sessions = tool.readsConversations
                     ? (try? await Store.shared.call("sessions", ["repo": .string(repo)])).flatMap(Session.parseList) ?? []
                     : []
-                readBacks[key] = nil; mergeHeads[key] = nil
+                readBacks[key] = nil
                 if tool.changes { Task { try? await Store.shared.feed(repo).loadSessions(fresh: true) } }
                 return finish(.done, tool.summary(answer, args: step.args, sessions: sessions))
             } catch {
                 let said = errorText(error)
                 return finish(.failed(said), ["error": .string(said)])
             }
+        }
+    }
+
+    /// Merges a pull request: the first call reads it and reads back what stands in the way; the confirmed one merges
+    /// the head the user heard about, so a push in between makes GitHub refuse it.
+    private func merge(_ step: Step, plan: VoicePlan, key: String, repo: String) async -> (Step.State, JSON) {
+        guard Store.shared.supports("merge_pull"), Store.shared.supports("pull") else {
+            return (.failed("Not allowed"), ["error": "This device's token cannot merge pull requests on the server."])
+        }
+        guard let number = step.args["number"].int else { return (.failed("No number"), ["error": "number is missing."]) }
+        do {
+            if case .call = plan, let held = merges[key] {
+                let answer = try await Store.shared.call("merge_pull", held.arguments, timeout: 60)
+                readBacks[key] = nil; merges[key] = nil
+                Task {
+                    try? await Store.shared.feed(repo).loadBoard(fresh: true)
+                    try? await Store.shared.feed(repo).loadSessions(fresh: true)
+                }
+                var args = step.args
+                args["base"] = .string(held.base)
+                return (.done, VoiceTool.mergePullRequest.summary(answer, args: args))
+            }
+            let place: JSON = ["repo": .string(repo), "pr": JSON(number)]
+            let pull = try await Store.shared.call("pull", place)
+            let files = Store.shared.supports("pull_files") ? try? await Store.shared.call("pull_files", place) : nil
+            let board = Store.shared.supports("pulls") ? try? await Store.shared.call("pulls", ["repo": .string(repo)]) : nil
+            let row = PullSummary.parseList(board?["pulls"] ?? .null).first { $0.number == number }
+            switch VoiceMerge.check(number: number, repo: repo, pull: pull, files: files, row: row) {
+            case .refuse(let why):
+                return (.failed(why), ["error": .string(why)])
+            case .ready(let arguments, let base, let readBack):
+                readBacks[key] = heard
+                merges[key] = (arguments, base)
+                return (.waiting, ["needs_confirmation": true, "read_back": .string(readBack),
+                                   "next": "Read all of this to the user. Call again with confirmed=true only if they say yes."])
+            }
+        } catch {
+            let said = errorText(error)
+            return (.failed(said), ["error": .string(said)])
         }
     }
 
