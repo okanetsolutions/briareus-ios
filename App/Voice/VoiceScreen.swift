@@ -132,8 +132,20 @@ struct VoiceScreen: View {
                 Color.clear.frame(width: 56, height: 56)
             }
             status.font(.footnote).foregroundStyle(.secondary)
+            if mine, let started = voice.started { costLine(since: started) }
         }
         .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 18)
+    }
+
+    /// What the conversation has cost, ticking every second while it runs and kept once it ends.
+    private func costLine(since started: Date) -> some View {
+        TimelineView(.periodic(from: started, by: 1)) { context in
+            let end = voice.finished ?? context.date
+            Text(voice.cost.line(model: voice.backendModel, elapsed: end.timeIntervalSince(started)))
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+        }
+        .accessibilityLabel("Estimated cost")
     }
 
     @ViewBuilder private var status: some View {

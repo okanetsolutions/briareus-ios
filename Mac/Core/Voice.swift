@@ -412,3 +412,64 @@ extension Voice {
 private extension String {
     var nonEmptyString: String? { isEmpty ? nil : self }
 }
+
+// MARK: - Cost
+
+/// What a voice conversation has cost so far: GPT-Live's voice time, billed by the second, and the backend model's
+/// tokens, at the prices OpenAI publishes. An estimate: OpenAI's own bill is the reference.
+struct VoiceCost: Equatable, Sendable {
+    /// Dollars per minute of voice.
+    static let voicePerMinute = 0.05
+    /// Dollars per million tokens: input, cached input, output.
+    static let backendPrices: [String: (input: Double, cached: Double, output: Double)] = [
+        "gpt-6-luna": (0.1, 0.01, 0.5),
+        "gpt-6-sol": (2, 0.2, 10),
+    ]
+
+    /// The voice seconds GPT-Live last reported: each report replaces the one before.
+    private(set) var seconds: Double = 0
+    private(set) var inputTokens = 0
+    private(set) var cachedTokens = 0
+    private(set) var outputTokens = 0
+    private var counted: Set<String> = []
+
+    /// Reads a `session.usage.updated` or `session.closed` event's voice seconds.
+    mutating func voice(_ event: JSON) {
+        if let s = event["usage"]["seconds"].number, s.isFinite, s >= 0 { seconds = s }
+    }
+    /// Counts a backend response's tokens, from its `response.completed` event, once per response.
+    mutating func backend(_ response: JSON) {
+        let usage = response["usage"]
+        guard usage.isObject, counted.insert(response["id"].string ?? UUID().uuidString).inserted else { return }
+        let input = usage["input_tokens"].int ?? 0
+        let cached = min(usage["input_tokens_details"]["cached_tokens"].int ?? 0, input)
+        inputTokens += input - cached
+        cachedTokens += cached
+        outputTokens += usage["output_tokens"].int ?? 0
+    }
+
+    var tokens: Int { inputTokens + cachedTokens + outputTokens }
+    /// The voice's dollars for `seconds` of conversation, at least the last reported.
+    func voiceDollars(seconds elapsed: Double = 0) -> Double { max(seconds, elapsed) / 60 * Self.voicePerMinute }
+    /// The backend's dollars for `model`; nil for a model whose price is not known here.
+    func backendDollars(_ model: String) -> Double? {
+        guard let price = Self.backendPrices[model] else { return tokens == 0 ? 0 : nil }
+        return (Double(inputTokens) * price.input + Double(cachedTokens) * price.cached + Double(outputTokens) * price.output) / 1_000_000
+    }
+
+    /// "$0.0123", with more places while it is under a cent.
+    static func dollars(_ amount: Double) -> String {
+        String(format: amount < 0.01 ? "$%.4f" : amount < 1 ? "$%.3f" : "$%.2f", amount)
+    }
+    /// What the screen shows under the controls: the total, then the voice and the backend apart.
+    func line(model: String, elapsed: Double = 0) -> String {
+        let voice = voiceDollars(seconds: elapsed)
+        let shown = Int(max(seconds, elapsed).rounded(.down))
+        let time = String(format: "%d:%02d", shown / 60, shown % 60)
+        let tokenText = tokens >= 1000 ? String(format: "%.1fk tokens", Double(tokens) / 1000) : "\(tokens) tokens"
+        guard let backend = backendDollars(model) else {
+            return "≈ \(Self.dollars(voice)) voice (\(time)) + \(tokenText) on \(model)"
+        }
+        return "≈ \(Self.dollars(voice + backend)) · voice \(time) \(Self.dollars(voice)) · backend \(tokenText) \(Self.dollars(backend))"
+    }
+}

@@ -32,6 +32,11 @@ final class VoiceSession: ObservableObject {
     @Published private(set) var lines: [Line] = []
     @Published private(set) var steps: [Step] = []
     @Published private(set) var started: Date?
+    /// When the conversation ended; with `started`, how long it ran.
+    @Published private(set) var finished: Date?
+    /// What the conversation has cost so far, and the backend model it is priced at.
+    @Published private(set) var cost = VoiceCost()
+    @Published private(set) var backendModel = ""
     /// Why the last conversation failed or ended by itself.
     @Published private(set) var notice: String?
 
@@ -64,11 +69,13 @@ final class VoiceSession: ObservableObject {
         } catch { notice = error.localizedDescription; return }
         phase = .connecting
         repo = project.repo
-        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil
+        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil; finished = nil
+        cost = VoiceCost()
         let call = LiveCall()
         self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
         let voice = settings.voice, backend = settings.backendModel
+        backendModel = backend
         reader = Task { [weak self] in
             do {
                 let events = try await call.open(key: key) { offer in
@@ -109,6 +116,7 @@ final class VoiceSession: ObservableObject {
         hush?.cancel(); hush = nil
         call?.close(); call = nil
         speaking = false
+        if started != nil { finished = Date() }
         phase = .off
     }
 
@@ -137,7 +145,10 @@ final class VoiceSession: ObservableObject {
             backend(event["delegation_id"].string ?? "", event["event"])
         case "error":
             notice = event["error"]["message"].string ?? "GPT-Live reported an error."
+        case "session.usage.updated":
+            cost.voice(event)
         case "session.closed":
+            cost.voice(event)
             ended(nil)
         default:
             break
@@ -195,6 +206,7 @@ final class VoiceSession: ObservableObject {
             touch()
             calls[delegation, default: []].append(Task { (id, await self.run(step)) })
         case "response.completed", "response.done":
+            cost.backend(event["response"])
             guard let pending = calls[delegation], !pending.isEmpty, let call else { return }
             calls[delegation] = nil
             Task {

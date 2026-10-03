@@ -210,4 +210,25 @@ final class VoiceTests: XCTestCase {
         XCTAssertTrue(out["files_listed"].isNull)
         XCTAssertEqual(Voice.changes(PullFilesPage(answer)!, listed: 2)["files_listed"], "the first 2 only")
     }
+
+    func testTheCostCountsVoiceSecondsAndEachBackendResponseOnce() {
+        var cost = VoiceCost()
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":30}}"#))
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":90}}"#))
+        XCTAssertEqual(cost.seconds, 90)
+        XCTAssertEqual(cost.voiceDollars(), 0.075, accuracy: 1e-9)
+        // The clock runs ahead of the reports between them.
+        XCTAssertEqual(cost.voiceDollars(seconds: 120), 0.1, accuracy: 1e-9)
+
+        let response = j(#"{"id":"resp_1","usage":{"input_tokens":10000,"input_tokens_details":{"cached_tokens":4000},"output_tokens":2000}}"#)
+        cost.backend(response)
+        cost.backend(response)
+        XCTAssertEqual(cost.tokens, 12000)
+        // 6000 × $0.1 + 4000 × $0.01 + 2000 × $0.5, per million.
+        XCTAssertEqual(cost.backendDollars("gpt-6-luna")!, 0.00164, accuracy: 1e-9)
+        XCTAssertNil(cost.backendDollars("someone-elses-model"))
+        XCTAssertEqual(cost.line(model: "gpt-6-luna"), "≈ $0.077 · voice 1:30 $0.075 · backend 12.0k tokens $0.0016")
+        XCTAssertEqual(cost.line(model: "other"), "≈ $0.075 voice (1:30) + 12.0k tokens on other")
+        XCTAssertEqual(VoiceCost().backendDollars("other"), 0)
+    }
 }
