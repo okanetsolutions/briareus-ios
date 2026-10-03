@@ -303,7 +303,7 @@ struct SettingsFormChrome: ViewModifier {
                     .accessibilityLabel(saving ? "Saving" : saveTitle)
                 }
             }
-            .confirmationDialog("Discard unsaved changes?", isPresented: $confirmLeave, titleVisibility: .visible) {
+            .alert("Discard unsaved changes?", isPresented: $confirmLeave) {
                 Button("Discard", role: .destructive) { dismiss() }
                 Button("Keep editing", role: .cancel) {}
             } message: {

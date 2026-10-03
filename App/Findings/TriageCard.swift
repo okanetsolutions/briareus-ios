@@ -110,14 +110,13 @@ struct TriageCard: View {
         .background(Theme.elevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.warning.opacity(0.4), lineWidth: 0.5))
         .disabled(writing != nil)
-        .confirmationDialog(triageConfirmTitle(takesVerdicts: takes, fixes: fixes), isPresented: $confirming, titleVisibility: .visible) {
+        .alert(triageConfirmTitle(takesVerdicts: takes, fixes: fixes), isPresented: $confirming) {
             Button(takes && fixes > 0 ? "Start the fix session" : "Complete") { complete(triage, key: key) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(Findings.completePrompt(mine: takes, fixes: fixes, pr: pr).message)
         }
-        .confirmationDialog("Delete this finding from the review?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible, presenting: deleting) { f in
+        .alert("Delete this finding from the review?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { f in
             Button("Delete from the review", role: .destructive) { delete(f) }
             Button("Cancel", role: .cancel) {}
         } message: { f in

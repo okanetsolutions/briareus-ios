@@ -52,12 +52,12 @@ struct ConversationScreen: View {
             if !active && model.voice.state == .recording { model.voice.stop() }
         }
         .onChange(of: asked != nil || renaming) { _, open in model.paused = open }
-        .confirmationDialog(asked.flatMap(conversationActionQuestion) ?? "",
-                            isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
-                            titleVisibility: .visible, presenting: asked) { action in
+        .alert(asked.flatMap(conversationActionQuestion) ?? "",
+               isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }), presenting: asked) { action in
             Button(confirmLabel(action), role: action == "delete" || action == "cancel" ? .destructive : nil) {
                 model.mutate(action)
             }
+            Button("Cancel", role: .cancel) {}
         }
         .alert("Rename conversation", isPresented: $renaming) {
             TextField("Title", text: $newTitle)

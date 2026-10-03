@@ -207,7 +207,7 @@ struct SSHServerSettingsScreen: View {
             onClone: id != 0 && store.supports("create_ssh_server") ? { if let copy = model.cloneRow() { navigate(.sshServerSettings(row: copy, defaults: nil)) } } : nil,
             deleteTitle: "Delete SSH server",
             onDelete: id != 0 && store.supports("delete_ssh_server") ? { confirmDelete = true } : nil))
-        .confirmationDialog("Delete \(state.row["label"].nonEmpty ?? "this SSH server")?", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .alert("Delete \(state.row["label"].nonEmpty ?? "this SSH server")?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { model.delete { dismiss() } }
             Button("Cancel", role: .cancel) {}
         } message: {

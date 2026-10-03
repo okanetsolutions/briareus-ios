@@ -49,10 +49,10 @@ struct SessionDetailsSheet: View {
             guard pull != nil else { return }
             await poll(every: 30) { await load() }
         }
-        .confirmationDialog(asked.flatMap(conversationActionQuestion) ?? "",
-                            isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
-                            titleVisibility: .visible, presenting: asked) { action in
+        .alert(asked.flatMap(conversationActionQuestion) ?? "",
+               isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }), presenting: asked) { action in
             Button(action == "compact" ? "Compact" : "Clear") { model.mutate(action) }
+            Button("Cancel", role: .cancel) {}
         }
         .alert("Compaction instructions", isPresented: $editingInstructions) {
             TextField("What every compaction must keep", text: $instructions, axis: .vertical)
