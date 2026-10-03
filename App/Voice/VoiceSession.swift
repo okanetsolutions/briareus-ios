@@ -429,9 +429,16 @@ final class VoiceSession: ObservableObject {
         let words = { (s: String?) in
             (s ?? "").lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: " ")
         }
-        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "",
-                args["issue"].int.map(String.init) ?? "", args["number"].int.map(String.init) ?? "", args["errand"].string ?? "",
-                args["fix"].strings.sorted().joined(separator: ","), args["dismiss"].strings.sorted().joined(separator: ","),
-                words(args["text"].string ?? args["prompt"].string)].joined(separator: "|")
+        // Built a part at a time: one expression of them all is too much for the type checker of older Xcodes.
+        var parts: [String] = [tool.rawValue]
+        parts.append(args["session_id"].string ?? "")
+        parts.append(args["branch"].string ?? "")
+        parts.append(args["issue"].int.map(String.init) ?? "")
+        parts.append(args["number"].int.map(String.init) ?? "")
+        parts.append(args["errand"].string ?? "")
+        parts.append(args["fix"].strings.sorted().joined(separator: ","))
+        parts.append(args["dismiss"].strings.sorted().joined(separator: ","))
+        parts.append(words(args["text"].string ?? args["prompt"].string))
+        return parts.joined(separator: "|")
     }
 }
