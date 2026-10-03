@@ -44,7 +44,9 @@ enum Voice {
     checks, and each open pull request names the conversations working on it: use these links to answer whether a \
     conversation's pull request was merged or closed. list_pull_requests lists open pull requests only; one missing \
     from it was merged or closed, and the conversation's pull_request says which. read_conversation tells what an \
-    agent did, said or asks. send_message also answers an agent's question.
+    agent did, said or asks. send_message also answers an agent's question. For what a pull request changes (how \
+    many files, which ones, lines added and removed), use read_pull_request with its number; a conversation's \
+    pull_request gives the number.
 
     ## Issues
     list_issues lists the project's open issues with their labels, epic progress, the pull requests that close them \
@@ -95,6 +97,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     case listConversations = "list_conversations"
     case readConversation = "read_conversation"
     case listPullRequests = "list_pull_requests"
+    case readPullRequest = "read_pull_request"
     case waitingFindings = "waiting_findings"
     case listIssues = "list_issues"
     case readIssue = "read_issue"
@@ -110,6 +113,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .readConversation: return "session"
         case .listPullRequests, .listIssues: return "pulls"
         case .readIssue: return "issue"
+        case .readPullRequest: return "pull_files"
         case .startConversation, .workOnIssue: return "start_session"
         case .sendMessage: return "message"
         case .stopConversation: return "cancel"
@@ -137,6 +141,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
             add("session_id", "string", "The conversation's id, from list_conversations.")
         case .listPullRequests:
             description = "The project's open pull requests with their checks, conflicts, labels and review state, whether each is ready to merge, and the conversations working on it."
+        case .readPullRequest:
+            description = "What one of the project's pull requests changes: how many files, lines added and removed, the files by folder, and each file's path and change."
+            add("number", "integer", "The pull request's number.")
         case .waitingFindings:
             description = "The project's review rounds waiting for the user's decision."
         case .listIssues:
@@ -185,6 +192,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
             guard let number = args["issue"].int, number >= 1 else { return .refuse("issue is missing.") }
             // The board is read first: the conversation's prompt is made from the issue's row there.
             return confirmed ? .call(["repo": .string(repo), "issue": JSON(number)]) : .confirm("Start an agent on issue #\(number).")
+        case .readPullRequest:
+            guard let number = args["number"].int, number >= 1 else { return .refuse("number is missing.") }
+            return .call(["repo": .string(repo), "pr": JSON(number)])
         case .readConversation:
             guard let id = text("session_id") else { return .refuse("session_id is missing.") }
             return .call(["sessionId": .string(id), "since": 0])
@@ -231,6 +241,9 @@ enum VoiceTool: String, CaseIterable, Sendable {
                      ["session_id": .string(s.id), "title": .string(s.displayTitle)]
                  })]
             }), "total": JSON(pulls.count)]
+        case .readPullRequest:
+            guard let page = PullFilesPage(answer) else { return ["error": "The server did not return the pull request's files."] }
+            return Voice.changes(page)
         case .waitingFindings:
             let held = CarText.holdingFindings(Session.parseList(answer) ?? [])
             return ["waiting": .array(held.map { s in
@@ -324,6 +337,30 @@ extension Voice {
     /// `text` cut to `length` characters, with an ellipsis when it was longer.
     static func cut(_ text: String, _ length: Int) -> String {
         text.count > length ? String(text.prefix(length)) + "…" : text
+    }
+    /// What a pull request changes, from the first page of its files: the totals, the files by top folder, and the
+    /// files themselves, as many as are worth reading aloud.
+    static func changes(_ page: PullFilesPage, listed: Int = 40) -> JSON {
+        let pr = page.pr
+        let more = page.nextPage != nil || page.truncated
+        var out: JSON = ["changed_files": JSON(pr["changedFiles"].int ?? page.files.count)]
+        if let added = pr["additions"].int { out["lines_added"] = JSON(added) }
+        if let removed = pr["deletions"].int { out["lines_removed"] = JSON(removed) }
+        if let commits = pr["commits"].int { out["commits"] = JSON(commits) }
+        if let title = pr["title"].nonEmpty { out["title"] = .string(CarText.inline(title)) }
+        var folders: [String: Int] = [:]
+        for file in page.files { folders[file.filename.split(separator: "/").first.map(String.init) ?? file.filename, default: 0] += 1 }
+        out["by_folder"] = .array(folders.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.prefix(8).map {
+            ["folder": .string($0.key), "files": JSON($0.value)]
+        })
+        out["files"] = .array(page.files.prefix(listed).map { file in
+            var f: JSON = ["path": .string(file.filename), "change": .string(file.status ?? "modified")]
+            if let added = file.additions { f["added"] = JSON(added) }
+            if let removed = file.deletions { f["removed"] = JSON(removed) }
+            return f
+        })
+        if more || page.files.count > listed { out["files_listed"] = .string("the first \(min(listed, page.files.count)) only") }
+        return out
     }
     /// The label a reviewer sets once the code is approved.
     static let approvedLabel = "code-approved"

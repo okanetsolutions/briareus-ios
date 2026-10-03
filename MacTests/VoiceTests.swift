@@ -190,4 +190,24 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(Voice.cut("abcdef", 3), "abc…")
         XCTAssertEqual(VoiceTool.readIssue.summary(j("{}"), args: [:])["error"], "The server did not return the issue.")
     }
+
+    func testAPullRequestsChangesCountItsFilesAndGroupThemByFolder() {
+        XCTAssertEqual(VoiceTool.readPullRequest.plan(["number": 9], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
+        XCTAssertEqual(VoiceTool.readPullRequest.plan([:], repo: "o/r"), .refuse("number is missing."))
+        let answer = j(#"""
+        {"pr":{"changedFiles":3,"additions":40,"deletions":5,"commits":2},
+         "files":[{"filename":"App/A.swift","status":"added","additions":30,"deletions":0},
+                  {"filename":"App/B.swift","status":"modified","additions":9,"deletions":5},
+                  {"filename":"README.md","additions":1,"deletions":0}]}
+        """#)
+        let out = VoiceTool.readPullRequest.summary(answer, args: [:])
+        XCTAssertEqual(out["changed_files"], 3)
+        XCTAssertEqual(out["lines_added"], 40)
+        XCTAssertEqual(out["lines_removed"], 5)
+        XCTAssertEqual(out["commits"], 2)
+        XCTAssertEqual(out["by_folder"], [["folder": "App", "files": 2], ["folder": "README.md", "files": 1]])
+        XCTAssertEqual(out["files"][2], ["path": "README.md", "change": "modified", "added": 1, "removed": 0])
+        XCTAssertTrue(out["files_listed"].isNull)
+        XCTAssertEqual(Voice.changes(PullFilesPage(answer)!, listed: 2)["files_listed"], "the first 2 only")
+    }
 }
