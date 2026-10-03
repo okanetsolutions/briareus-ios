@@ -59,10 +59,10 @@ struct PullScreen: View {
         .onAppear { model.appeared() }
         .onDisappear { model.disappeared() }
         .errandPrompts(errands)
-        .confirmationDialog(model.mergeQuestion.map { "Squash and merge #\(number) into \($0.base)?" } ?? "",
+        .confirmationDialog(model.mergeQuestion.map { "Merge #\(number) into \($0.base)?" } ?? "",
                             isPresented: Binding(get: { model.mergeQuestion != nil }, set: { if !$0 { model.mergeQuestion = nil } }),
                             titleVisibility: .visible, presenting: model.mergeQuestion) { _ in
-            Button("Squash and merge") { Task { await model.merge() } }
+            Button("Merge") { Task { await model.merge() } }
         } message: { q in
             Text(q.notes.isEmpty ? "Its commits are squashed into one on \(q.base) on GitHub. This cannot be undone from the app." : q.notes.joined(separator: " "))
         }
@@ -167,7 +167,7 @@ struct PullScreen: View {
                         .disabled(model.deletingRun != nil)
                 }
                 if model.canMerge {
-                    Button { Task { await model.askMerge() } } label: { Label("Squash and merge…", systemImage: "arrow.triangle.merge") }
+                    Button { Task { await model.askMerge() } } label: { Label("Merge…", systemImage: "arrow.triangle.merge") }
                         .disabled(model.merging || errands.busy)
                 }
                 if store.supports("pull_files") {
@@ -251,7 +251,7 @@ struct PullScreen: View {
             if model.canMerge {
                 Button { Task { await model.askMerge() } } label: {
                     HStack {
-                        Label("Squash and merge", systemImage: "arrow.triangle.merge").fontWeight(.semibold)
+                        Label("Merge", systemImage: "arrow.triangle.merge").fontWeight(.semibold)
                         if model.merging { Spacer(); ProgressView() }
                     }
                 }
