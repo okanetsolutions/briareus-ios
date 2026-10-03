@@ -61,8 +61,13 @@ enum Voice {
     code-approved label, its checks passed, and it has no conflicts and is not a draft. Never call one ready on its \
     checks or reviews alone; say what it still lacks instead.
 
+    ## Merging
+    merge_pull_request merges one of the project's pull requests, squashed unless the repository refuses squashes. \
+    Its first call answers a read_back with what stands in its way: failing or running checks, conflicts, a missing \
+    code-approved label, requested changes. Read all of it to the user; they may still choose to merge.
+
     ## Confirmation
-    start_conversation, work_on_issue, send_message and stop_conversation change things. Call them with confirmed=false first: the \
+    start_conversation, work_on_issue, send_message, stop_conversation and merge_pull_request change things. Call them with confirmed=false first: the \
     answer says what to read back. Call again with confirmed=true only after the user clearly agreed to that exact action \
     in their latest turn. Never pass confirmed=true on your own.
 
@@ -98,6 +103,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     case readConversation = "read_conversation"
     case listPullRequests = "list_pull_requests"
     case readPullRequest = "read_pull_request"
+    case mergePullRequest = "merge_pull_request"
     case waitingFindings = "waiting_findings"
     case listIssues = "list_issues"
     case readIssue = "read_issue"
@@ -114,12 +120,13 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .listPullRequests, .listIssues: return "pulls"
         case .readIssue: return "issue"
         case .readPullRequest: return "pull_files"
+        case .mergePullRequest: return "merge_pull"
         case .startConversation, .workOnIssue: return "start_session"
         case .sendMessage: return "message"
         case .stopConversation: return "cancel"
         }
     }
-    var changes: Bool { [.startConversation, .workOnIssue, .sendMessage, .stopConversation].contains(self) }
+    var changes: Bool { [.startConversation, .workOnIssue, .sendMessage, .stopConversation, .mergePullRequest].contains(self) }
     /// Acts on a conversation named by id, which must be the project's: the phone checks before it answers.
     var namesConversation: Bool { [.readConversation, .sendMessage, .stopConversation].contains(self) }
 
@@ -141,6 +148,10 @@ enum VoiceTool: String, CaseIterable, Sendable {
             add("session_id", "string", "The conversation's id, from list_conversations.")
         case .listPullRequests:
             description = "The project's open pull requests with their checks, conflicts, labels and review state, whether each is ready to merge, and the conversations working on it."
+        case .mergePullRequest:
+            description = "Merges one of the project's open pull requests into its base branch. The first call reads it and answers what to read back, with what stands in the way."
+            add("number", "integer", "The pull request's number.")
+            add("confirmed", "boolean", "True only after the user agreed to this exact action.")
         case .readPullRequest:
             description = "What one of the project's pull requests changes: how many files, lines added and removed, the files by folder, and each file's path and change."
             add("number", "integer", "The pull request's number.")
@@ -195,6 +206,11 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .readPullRequest:
             guard let number = args["number"].int, number >= 1 else { return .refuse("number is missing.") }
             return .call(["repo": .string(repo), "pr": JSON(number)])
+        case .mergePullRequest:
+            // The phone reads the pull request before either answer: the read-back says what stands in the way, and the
+            // merge is pinned to the head the user heard about.
+            guard let number = args["number"].int, number >= 1 else { return .refuse("number is missing.") }
+            return confirmed ? .call(["repo": .string(repo), "pr": JSON(number)]) : .confirm("Merge pull request #\(number).")
         case .readConversation:
             guard let id = text("session_id") else { return .refuse("session_id is missing.") }
             return .call(["sessionId": .string(id), "since": 0])
@@ -241,6 +257,8 @@ enum VoiceTool: String, CaseIterable, Sendable {
                      ["session_id": .string(s.id), "title": .string(s.displayTitle)]
                  })]
             }), "total": JSON(pulls.count)]
+        case .mergePullRequest:
+            return ["done": true, "result": .string(CarText.merged(answer, base: args["base"].string ?? "its base"))]
         case .readPullRequest:
             guard let page = PullFilesPage(answer) else { return ["error": "The server did not return the pull request's files."] }
             return Voice.changes(page)
@@ -471,5 +489,42 @@ struct VoiceCost: Equatable, Sendable {
             return "≈ \(Self.dollars(voice)) voice (\(time)) + \(tokenText) on \(model)"
         }
         return "≈ \(Self.dollars(voice + backend)) · voice \(time) \(Self.dollars(voice)) · backend \(tokenText) \(Self.dollars(backend))"
+    }
+}
+
+// MARK: - Merging
+
+/// What merging a pull request takes, as the phone read it before the read-back.
+enum VoiceMerge: Equatable, Sendable {
+    case refuse(String)
+    /// The `merge_pull` arguments, pinned to the head read now; the base it goes into; and what to read back.
+    case ready(arguments: JSON, base: String, readBack: String)
+
+    /// Reads `pull`'s answer, the first page of `pull_files` when there is one, and the board row when it is on the
+    /// board: an open, non-draft pull request merges, with what stands in its way said first.
+    static func check(number: Int, repo: String, pull: JSON, files: JSON?, row: PullSummary?) -> VoiceMerge {
+        let pr = pull["pr"], live = files?["pr"] ?? .null
+        let state = pr["state"].string ?? "open"
+        guard state == "open" else { return .refuse("Pull request #\(number) is already \(state).") }
+        if pr["draft"].is(true) || row?.draft == true { return .refuse("Pull request #\(number) is a draft; it cannot merge until it is marked ready.") }
+        guard let head = live["headSha"].string ?? pr["headSha"].string, let base = pr["baseRef"].string else {
+            return .refuse("Pull request #\(number) could not be read.")
+        }
+        var notes = live.isObject ? mergeWarnings(mergeable: live["mergeable"], state: live["mergeableState"].string) : []
+        let failed = pr["checks"]["failed"].truncatedInt ?? 0, pending = pr["checks"]["pending"].truncatedInt ?? 0
+        if failed > 0 { notes.append("\(failed) check\(failed == 1 ? " is" : "s are") failing.") }
+        if pending > 0 { notes.append("\(pending) check\(pending == 1 ? " is" : "s are") still running.") }
+        if let row, !row.labels.contains(where: { foldEqual($0.name, Voice.approvedLabel) }) {
+            notes.append("It does not carry the \(Voice.approvedLabel) label.")
+        }
+        if case .changesRequested = ReviewStatus(decision: row?.reviewDecision, reviews: pr["reviews"]) {
+            notes.append("A reviewer has requested changes.")
+        }
+        let method = CarText.mergeMethod(allowed: live["mergeMethods"].strings)
+        let title = pr["title"].nonEmpty.map { ", \(CarText.inline($0))," } ?? ""
+        let how = ["merge": "with a merge commit", "rebase": "rebased"][method] ?? "squashed"
+        let readBack = (["Merge pull request #\(number)\(title) into \(base), \(how)."] + notes).joined(separator: " ")
+        return .ready(arguments: ["repo": .string(repo), "pr": JSON(number), "headSha": .string(head), "baseRef": .string(base),
+                                  "method": .string(method)], base: base, readBack: readBack)
     }
 }

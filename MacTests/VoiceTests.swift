@@ -231,4 +231,31 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(cost.line(model: "other"), "≈ $0.075 voice (1:30) + 12.0k tokens on other")
         XCTAssertEqual(VoiceCost().backendDollars("other"), 0)
     }
+
+    func testMergingReadsBackWhatStandsInTheWayAndPinsTheHead() {
+        XCTAssertTrue(VoiceTool.mergePullRequest.changes)
+        XCTAssertEqual(VoiceTool.mergePullRequest.operation, "merge_pull")
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 9], repo: "o/r"), .confirm("Merge pull request #9."))
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 9, "confirmed": true], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
+
+        let pull = j(#"{"pr":{"title":"Add **exports**","state":"open","headSha":"old","baseRef":"main","checks":{"failed":1,"pending":0}}}"#)
+        let files = j(#"{"pr":{"headSha":"new","mergeable":true,"mergeableState":"clean","mergeMethods":["merge","rebase"]},"files":[]}"#)
+        let row = PullSummary(j(#"{"number":9,"title":"Add exports","labels":[]}"#))!
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: pull, files: files, row: row),
+                       .ready(arguments: ["repo": "o/r", "pr": 9, "headSha": "new", "baseRef": "main", "method": "merge"], base: "main",
+                              readBack: "Merge pull request #9, Add exports, into main, with a merge commit. 1 check is failing. It does not carry the code-approved label."))
+
+        let approved = PullSummary(j(#"{"number":9,"title":"Add exports","labels":[{"name":"code-approved"}]}"#))!
+        let clean = j(#"{"pr":{"state":"open","headSha":"h","baseRef":"main","checks":{"passed":3}}}"#)
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: clean, files: nil, row: approved),
+                       .ready(arguments: ["repo": "o/r", "pr": 9, "headSha": "h", "baseRef": "main", "method": "squash"], base: "main",
+                              readBack: "Merge pull request #9 into main, squashed."))
+
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: j(#"{"pr":{"state":"merged"}}"#), files: nil, row: nil),
+                       .refuse("Pull request #9 is already merged."))
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: j(#"{"pr":{"state":"open","draft":true}}"#), files: nil, row: nil),
+                       .refuse("Pull request #9 is a draft; it cannot merge until it is marked ready."))
+        XCTAssertEqual(VoiceTool.mergePullRequest.summary(j(#"{"status":"merged"}"#), args: ["base": "main"]),
+                       ["done": true, "result": "Merged into main"])
+    }
 }
