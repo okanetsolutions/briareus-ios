@@ -1,8 +1,8 @@
 import Foundation
 
-/// One spoken conversation with GPT-Live: the socket, the microphone and speaker, the captions, and the tools its
-/// backend calls. It outlives the screen that started it, so it goes on from any tab and with the phone locked, and
-/// ends when the user ends it, after a silence, or when a call takes the audio.
+/// One spoken conversation with GPT-Live about one project: the socket, the microphone and speaker, the captions, and
+/// the tools its backend calls, each held to that project. It outlives the screen that started it, so it goes on from
+/// any tab and with the phone locked, and ends when the user ends it, after a silence, or when a call takes the audio.
 @MainActor
 final class VoiceSession: ObservableObject {
     static let shared = VoiceSession()
@@ -24,6 +24,8 @@ final class VoiceSession: ObservableObject {
     }
 
     @Published private(set) var phase = Phase.off
+    /// The project the conversation is about; nil before the first one.
+    @Published private(set) var repo: String?
     /// The voice is playing what it said.
     @Published private(set) var speaking = false
     @Published private(set) var muted = false
@@ -51,7 +53,7 @@ final class VoiceSession: ObservableObject {
 
     var isOn: Bool { phase != .off }
 
-    func start() {
+    func start(_ project: Project) {
         guard phase == .off else { return }
         notice = nil
         let settings = VoiceSettings.shared
@@ -61,11 +63,13 @@ final class VoiceSession: ObservableObject {
             key = saved
         } catch { notice = error.localizedDescription; return }
         phase = .connecting
+        repo = project.repo
         lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil
         let socket = LiveSocket(key: key)
         self.socket = socket
         let events = socket.open()
-        socket.send(Voice.start(voice: settings.voice, backend: settings.backendModel))
+        let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
+        socket.send(Voice.start(voice: settings.voice, backend: settings.backendModel, project: named))
         reader = Task { [weak self] in
             do {
                 for try await event in events { self?.handle(event) }
@@ -232,13 +236,14 @@ final class VoiceSession: ObservableObject {
             return answer.serialized()
         }
         guard let tool = step.tool else { return finish(.failed("Unknown tool"), ["error": .string("There is no tool named \(step.name).")]) }
+        guard let repo else { return finish(.failed("No project"), ["error": "The conversation has no project."]) }
         let key = Self.readBackKey(tool, step.args)
-        var plan = tool.plan(step.args)
+        var plan = tool.plan(step.args, repo: repo)
         // A change goes through only on a yes the user said after hearing it read back; the backend's word is not enough.
         if case .call = plan, tool.changes, !(readBacks[key].map { heard > $0 } ?? false) {
             var unconfirmed = step.args
             unconfirmed["confirmed"] = false
-            plan = tool.plan(unconfirmed)
+            plan = tool.plan(unconfirmed, repo: repo)
         }
         switch plan {
         case .refuse(let why):
@@ -252,11 +257,15 @@ final class VoiceSession: ObservableObject {
                 return finish(.failed("Not allowed"), ["error": "This device's token cannot do that on the server."])
             }
             do {
+                // A conversation named by id is acted on only when it is the project's.
+                if tool.namesConversation, let id = arguments["sessionId"].string,
+                   !Voice.owns(try await Store.shared.call("sessions", ["repo": .string(repo)]), session: id) {
+                    let why = "That conversation is not one of this project's."
+                    return finish(.failed(why), ["error": .string(why)])
+                }
                 let answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
                 readBacks[key] = nil
-                if tool.changes, let repo = arguments["repo"].string ?? Session(answer["session"])?.repo {
-                    Task { try? await Store.shared.feed(repo).loadSessions(fresh: true) }
-                }
+                if tool.changes { Task { try? await Store.shared.feed(repo).loadSessions(fresh: true) } }
                 return finish(.done, tool.summary(answer, args: step.args))
             } catch {
                 let said = errorText(error)
@@ -265,12 +274,12 @@ final class VoiceSession: ObservableObject {
         }
     }
 
-    /// The same change asked twice: the tool, its target, and its words without case, spacing or punctuation.
+    /// The same change asked twice: the tool, its conversation or branch, and its words without case, spacing or punctuation.
     static func readBackKey(_ tool: VoiceTool, _ args: JSON) -> String {
         let words = { (s: String?) in
             (s ?? "").lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: " ")
         }
-        return [tool.rawValue, args["session_id"].string ?? "", args["repo"].string ?? "", args["branch"].string ?? "",
+        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "",
                 words(args["text"].string ?? args["prompt"].string)].joined(separator: "|")
     }
 }

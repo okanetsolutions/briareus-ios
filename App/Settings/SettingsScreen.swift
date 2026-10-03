@@ -1,4 +1,4 @@
-// The Settings tab: this device's connection (who it is, what it may do, revoke or forget it), the Voice tab's OpenAI key, then for an Admin token
+// The Settings tab: this device's connection (who it is, what it may do, revoke or forget it), the voice mode's OpenAI key, then for an Admin token
 // the Mac app's settings page as the Mac's settings sidebar lists it: the projects (in the server's order, which Edit
 // rearranges), the providers sessions start on, the database pool, the SSH servers, and the tokens issued. Each row opens
 // its form.
@@ -30,7 +30,7 @@ struct SettingsScreen: View {
                     Label("Voice", systemImage: "waveform")
                 }
             } footer: {
-                Text("The OpenAI API key the Voice tab talks to GPT-Live with.")
+                Text("The OpenAI API key a project's voice conversation talks to GPT-Live with.")
             }
             .listRowBackground(Theme.row)
             let why = settingsUnavailableReason("settings_projects", path: "settings/projects", what: "Project settings", manage: "projects")

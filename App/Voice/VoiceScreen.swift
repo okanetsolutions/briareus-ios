@@ -1,20 +1,29 @@
-// The Voice tab: a spoken conversation with GPT-Live about the projects, their agents and their pull requests. What
-// both sides said scrolls as captions; the actions it ran on the server are listed under them.
+// A project's voice conversation, opened from its screen: GPT-Live about that project's agents, pull requests and
+// findings, and nothing else. What both sides said scrolls as captions; the actions it ran on the server are listed
+// under them.
 import SwiftUI
 
 struct VoiceScreen: View {
+    let repo: String
     @ObservedObject private var voice = VoiceSession.shared
+    @ObservedObject private var projects = ProjectsModel.shared
     @ObservedObject private var settings = VoiceSettings.shared
     @Environment(\.navigate) private var navigate
+
+    private var project: Project { projects.projects.first { $0.repo == repo } ?? Project(repo: repo, label: nil) }
+    /// A conversation is going on about another project; this screen can only end it.
+    private var elsewhere: Bool { voice.isOn && voice.repo != repo }
+    /// What this screen shows: its project's conversation, the last one included, and nothing of another's.
+    private var mine: Bool { voice.repo == repo }
 
     var body: some View {
         VStack(spacing: 0) {
             captions
-            if !voice.steps.isEmpty { steps }
+            if mine && !voice.steps.isEmpty { steps }
             controls
         }
         .background(Theme.background)
-        .navigationTitle("Voice")
+        .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -30,8 +39,8 @@ struct VoiceScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    if voice.lines.isEmpty { intro }
-                    ForEach(voice.lines) { line in
+                    if !mine || voice.lines.isEmpty { intro }
+                    ForEach(mine ? voice.lines : []) { line in
                         Text(line.text)
                             .font(.body)
                             .padding(.horizontal, 14).padding(.vertical, 10)
@@ -51,9 +60,13 @@ struct VoiceScreen: View {
 
     @ViewBuilder private var intro: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Talk to your agents").font(.system(.title2, design: .serif).weight(.semibold))
-            Text("Ask what a conversation is doing, answer an agent's question, start one on a project, or stop one. Changes are read back and wait for your yes.")
+            Text("Talk to \(project.title)'s agents").font(.system(.title2, design: .serif).weight(.semibold))
+            Text("Ask what a conversation is doing, answer an agent's question, start one, or stop one. Everything stays on this project. Changes are read back and wait for your yes.")
                 .foregroundStyle(.secondary)
+            if elsewhere, let other = voice.repo {
+                Text("A voice conversation is going on about \(other). End it to talk about this project.")
+                    .foregroundStyle(Theme.warning)
+            }
             if !settings.hasKey {
                 Button("Add your OpenAI API key") { navigate(.voiceSettings) }.padding(.top, 4)
             }
@@ -92,17 +105,17 @@ struct VoiceScreen: View {
 
     private var controls: some View {
         VStack(spacing: 12) {
-            if let notice = voice.notice { ErrorNotice(message: notice).frame(maxWidth: .infinity, alignment: .leading) }
+            if mine, let notice = voice.notice { ErrorNotice(message: notice).frame(maxWidth: .infinity, alignment: .leading) }
             HStack(spacing: 28) {
                 Button { voice.toggleMute() } label: {
                     Image(systemName: voice.muted ? "mic.slash.fill" : "mic.fill").font(.title2)
                         .frame(width: 56, height: 56).background(Theme.surface, in: Circle())
                         .foregroundStyle(voice.muted ? Theme.danger : .primary)
                 }
-                .buttonStyle(.plain).disabled(voice.phase != .live)
+                .buttonStyle(.plain).disabled(voice.phase != .live || elsewhere)
                 .accessibilityLabel(voice.muted ? "Unmute" : "Mute")
 
-                Button { voice.isOn ? voice.stop() : voice.start() } label: {
+                Button { voice.isOn ? voice.stop() : voice.start(project) } label: {
                     ZStack {
                         Circle().fill(voice.isOn ? Theme.danger : Theme.accent)
                         if voice.phase == .connecting || voice.phase == .closing { ProgressView().tint(.white) }
@@ -125,7 +138,8 @@ struct VoiceScreen: View {
 
     @ViewBuilder private var status: some View {
         switch voice.phase {
-        case .off: Text(settings.hasKey ? "Tap to talk" : "Add an OpenAI API key in Voice settings")
+        case _ where elsewhere: Text("Tap to end the conversation about \(voice.repo ?? "another project")")
+        case .off: Text(settings.hasKey ? "Tap to talk about \(project.title)" : "Add an OpenAI API key in Voice settings")
         case .connecting: Text("Connecting…")
         case .closing: Text("Ending…")
         case .live:
@@ -145,12 +159,11 @@ extension VoiceSession.Step {
     var title: String {
         let session = args["session_id"].string.map { _ in "a conversation" }
         switch tool {
-        case .listProjects: return "Read the projects"
-        case .listConversations: return "Read the conversations" + (args["repo"].string.map { " of \($0)" } ?? "")
+        case .listConversations: return "Read the conversations"
         case .readConversation: return "Read \(session ?? "a conversation")"
-        case .listPullRequests: return "Read the pull requests of \(args["repo"].string ?? "a project")"
+        case .listPullRequests: return "Read the pull requests"
         case .waitingFindings: return "Read the findings waiting"
-        case .startConversation: return (state == .waiting ? "Asked to start an agent on " : "Start an agent on ") + (args["repo"].string ?? "a project")
+        case .startConversation: return (state == .waiting ? "Asked to start an agent: " : "Start an agent: ") + (args["prompt"].string ?? "")
         case .sendMessage: return (state == .waiting ? "Asked to send: " : "Send: ") + (args["text"].string ?? "")
         case .stopConversation: return state == .waiting ? "Asked to stop an agent" : "Stop an agent"
         case nil: return name

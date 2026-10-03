@@ -124,6 +124,11 @@ struct ProjectView: View {
             if editing {
                 Button("Done") { leaveSelect() }.bold()
             } else {
+                // Talking needs a token that may write, as the voice starts, answers and stops conversations.
+                if store.canManage {
+                    Button { navigate(.voice(repo: repo)) } label: { Image(systemName: "waveform") }
+                        .accessibilityLabel("Talk about this project")
+                }
                 if store.supports("pulls") {
                     Button { navigate(.board(repo: repo)) } label: { Image(systemName: "arrow.triangle.pull") }
                         .accessibilityLabel("Pull requests and issues")

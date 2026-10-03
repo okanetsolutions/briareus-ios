@@ -30,7 +30,7 @@ struct BriareusApp: App {
 }
 
 /// The Mac app's sidebar strip, as a phone's tab bar: the projects and their conversations, the review rounds waiting
-/// across them, what they spent, a spoken conversation about them, and Settings.
+/// across them, what they spent, and Settings.
 struct RootTabs: View {
     @EnvironmentObject private var store: Store
     @ObservedObject private var projects = ProjectsModel.shared
@@ -51,8 +51,6 @@ struct RootTabs: View {
                 NavigationRoot { UsageScreen() }
                     .tabItem { Label("Usage", systemImage: "chart.bar") }
             }
-            NavigationRoot { VoiceScreen() }
-                .tabItem { Label("Voice", systemImage: "waveform") }
             NavigationRoot { SettingsScreen() }
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
