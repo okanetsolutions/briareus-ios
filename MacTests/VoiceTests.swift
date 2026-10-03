@@ -1,0 +1,427 @@
+// The voice mode's sessions and tools: what GPT-Live and GPT-Realtime are started with, which calls a tool makes on the
+// project, what it answers, and what a conversation costs on each.
+import XCTest
+@testable import BriareusMacCore
+
+final class VoiceTests: XCTestCase {
+    private func j(_ s: String) -> JSON { JSON.parse(s)! }
+
+    func testGPTLivesSessionHandsTheToolsToItsBackend() {
+        let session = Voice.liveSession(voice: "gleam", backend: "gpt-6-luna", project: "HQ (o/hq)")
+        XCTAssertEqual(session["model"], "gpt-live-1")
+        // WebRTC negotiates the format; only the voice is chosen.
+        XCTAssertEqual(session["audio"], ["output": ["voice": "gleam"]])
+        XCTAssertEqual(session["delegation"]["type"], "responses")
+        XCTAssertEqual(session["delegation"]["responses"]["model"], "gpt-6-luna")
+        let names = session["delegation"]["responses"]["tools"].items.compactMap { $0["name"].string }
+        XCTAssertEqual(names, VoiceTool.allCases.map(\.rawValue))
+        XCTAssertTrue(session["instructions"].string!.contains("HQ (o/hq)"))
+        XCTAssertFalse(session["instructions"].string!.contains("## Confirmation"))
+        XCTAssertTrue(session["delegation"]["responses"]["instructions"].string!.contains("## Confirmation"))
+        XCTAssertEqual(Voice.liveCreate(offer: "v=0", session: session)["transport"], ["type": "webrtc", "sdp": "v=0"])
+        // A voice GPT-Live does not have falls back to Marin.
+        XCTAssertEqual(Voice.liveSession(voice: "cedar", backend: "x", project: "HQ")["audio"]["output"]["voice"], "marin")
+    }
+
+    func testGPTRealtimesSessionCarriesTheToolsItself() {
+        let session = Voice.realtimeSession(voice: "cedar", project: "HQ (o/hq)")
+        XCTAssertEqual(session["type"], "realtime")
+        XCTAssertEqual(session["model"], "gpt-realtime-2.1-mini")
+        // WebRTC negotiates the format; the voice is chosen and the user's speech is transcribed for the captions.
+        XCTAssertEqual(session["audio"], ["input": ["transcription": ["model": "gpt-4o-mini-transcribe"]], "output": ["voice": "cedar"]])
+        XCTAssertEqual(session["tool_choice"], "auto")
+        let names = session["tools"].items.compactMap { $0["name"].string }
+        XCTAssertEqual(names, VoiceTool.allCases.map(\.rawValue))
+        let instructions = session["instructions"].string!
+        XCTAssertTrue(instructions.contains("HQ (o/hq)"))
+        XCTAssertTrue(instructions.contains("## Confirmation"))
+        XCTAssertEqual(Voice.realtimeSession(voice: "gleam", project: "HQ")["audio"]["output"]["voice"], "marin")
+        XCTAssertEqual(VoiceEngine.realtime.endpoint.absoluteString, "https://api.openai.com/v1/realtime/calls")
+        XCTAssertEqual(VoiceEngine.live.endpoint.absoluteString, "https://api.openai.com/v1/live/sessions")
+    }
+
+    func testGPTLivesCostIsItsMinutesAndItsBackendsTokensCountedOnce() {
+        var cost = VoiceCost(engine: .live, backend: "gpt-6-luna")
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":30}}"#))
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":90}}"#))
+        XCTAssertEqual(cost.seconds, 90)
+        XCTAssertEqual(cost.voiceDollars(), 0.075, accuracy: 1e-9)
+        // The clock runs ahead of the reports between them.
+        XCTAssertEqual(cost.voiceDollars(seconds: 120), 0.1, accuracy: 1e-9)
+        let response = j(#"{"id":"resp_1","usage":{"input_tokens":10000,"input_tokens_details":{"cached_tokens":4000},"output_tokens":2000}}"#)
+        cost.backend(response)
+        cost.backend(response)
+        XCTAssertEqual(cost.tokens, 12000)
+        // 6000 × $0.1 + 4000 × $0.01 + 2000 × $0.5, per million.
+        XCTAssertEqual(cost.backendDollars()!, 0.00164, accuracy: 1e-9)
+        XCTAssertEqual(cost.dollars(), 0.07664, accuracy: 1e-9)
+        XCTAssertEqual(cost.line(), "≈ $0.077 · voice 1:30 $0.075 · backend 12.0k tokens $0.0016")
+        var other = VoiceCost(engine: .live, backend: "other")
+        other.voice(j(#"{"usage":{"seconds":90}}"#))
+        other.backend(response)
+        XCTAssertNil(other.backendDollars())
+        XCTAssertEqual(other.line(), "≈ $0.075 voice (1:30) + 12.0k tokens on other")
+    }
+
+    func testGPTRealtimesCostAddsUpEachResponseAndTranscriptionAtTheirPrices() {
+        var cost = VoiceCost(engine: .realtime)
+        // 1M fresh audio in ($10), 1M cached audio ($0.30), 1M text in of which half cached ($0.30 + $0.03),
+        // 1M audio out ($20) and 1M text out ($2.40).
+        cost.add(response: j(#"{"input_tokens":3000000,"output_tokens":2000000,"input_token_details":{"text_tokens":1000000,"audio_tokens":2000000,"#
+            + #""cached_tokens_details":{"text_tokens":500000,"audio_tokens":1000000}},"#
+            + #""output_token_details":{"text_tokens":1000000,"audio_tokens":1000000}}"#))
+        XCTAssertEqual(cost.dollars(), 33.03, accuracy: 0.0001)
+        cost.add(transcription: j(#"{"type":"tokens","input_tokens":1000000,"output_tokens":1000000}"#))
+        XCTAssertEqual(cost.dollars(), 39.28, accuracy: 0.0001)
+        cost.add(transcription: j(#"{"type":"duration","seconds":12}"#))
+        XCTAssertEqual(cost.dollars(elapsed: 600), 39.28, accuracy: 0.0001)
+        XCTAssertEqual(cost.tokens, 7_000_000)
+        XCTAssertEqual(cost.line(elapsed: 65), "≈ $39.28 · 1:05 · 7000.0k tokens")
+        XCTAssertEqual(VoiceCost(engine: .realtime).line(), "≈ $0.0000 · 0:00 · 0 tokens")
+    }
+
+    func testTheSettingsComparisonHasOneRowPerModel() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let records = [VoiceRecord(engine: .live, seconds: 120, dollars: 0.1, date: now),
+                       VoiceRecord(engine: .live, seconds: 60, dollars: 0.05, date: now),
+                       VoiceRecord(engine: .realtime, seconds: 30, dollars: 0.02, date: now)]
+        let rows = VoiceTally.rows(records)
+        XCTAssertEqual(rows.map(\.engine), [.live, .realtime])
+        XCTAssertEqual(rows[0].conversations, 2)
+        XCTAssertEqual(rows[0].seconds, 180)
+        XCTAssertEqual(rows[0].dollars, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(rows[0].perMinute!, 0.05, accuracy: 1e-9)
+        XCTAssertEqual(rows[1].perMinute!, 0.04, accuracy: 1e-9)
+        XCTAssertNil(VoiceTally.rows([])[1].perMinute)
+        XCTAssertEqual(VoiceRecord(records[2].json), records[2])
+        XCTAssertNil(VoiceRecord(["engine": "gone"]))
+        XCTAssertEqual(VoiceCost.time(65), "1:05")
+        XCTAssertEqual(VoiceCost.time(3723), "1:02:03")
+    }
+
+    func testClosingAndDeletingAConversationWaitForAYes() {
+        for tool in [VoiceTool.closeConversation, .deleteConversation] {
+            XCTAssertTrue(tool.changes)
+            XCTAssertTrue(tool.namesConversation)
+            XCTAssertEqual(tool.plan(["session_id": "a", "confirmed": true], repo: "o/r"), .call(["sessionId": "a"]))
+            XCTAssertEqual(tool.plan([:], repo: "o/r"), .refuse("session_id is missing."))
+        }
+        XCTAssertEqual(VoiceTool.closeConversation.operation, "close")
+        XCTAssertEqual(VoiceTool.deleteConversation.operation, "delete")
+        XCTAssertEqual(VoiceTool.closeConversation.plan(["session_id": "a"], repo: "o/r"), .confirm("Close the conversation; it can be reopened later."))
+        XCTAssertEqual(VoiceTool.deleteConversation.plan(["session_id": "a"], repo: "o/r"), .confirm("Delete the conversation and its transcript for good."))
+    }
+
+    func testNoToolNamesAProjectAndEveryCallIsOnTheConversationsOwn() {
+        for tool in VoiceTool.allCases {
+            XCTAssertTrue(tool.definition["parameters"]["properties"]["repo"].isNull, tool.rawValue)
+        }
+        // Whatever the model sends, the repository is the project's.
+        XCTAssertEqual(VoiceTool.listConversations.plan(["repo": "other/repo"], repo: "o/r"), .call(["repo": "o/r"]))
+        XCTAssertEqual(VoiceTool.listPullRequests.plan([:], repo: "o/r"), .call(["repo": "o/r"]))
+        XCTAssertEqual(VoiceTool.waitingFindings.plan([:], repo: "o/r"), .call(["repo": "o/r"]))
+        XCTAssertEqual(VoiceTool.startConversation.plan(["repo": "other/repo", "prompt": "Go", "confirmed": true], repo: "o/r"),
+                       .call(["repo": "o/r", "prompt": "Go"]))
+        XCTAssertEqual(VoiceTool.allCases.filter(\.namesConversation),
+                       [.readConversation, .completeReviewRound, .sendMessage, .stopConversation, .closeConversation, .deleteConversation])
+        let sessions = j(#"{"sessions":[{"id":"a","repo":"o/r","status":"idle"}]}"#)
+        XCTAssertTrue(Voice.owns(sessions, session: "a"))
+        XCTAssertFalse(Voice.owns(sessions, session: "b"))
+    }
+
+    func testEveryToolThatChangesSomethingAsksForConfirmed() {
+        for tool in VoiceTool.allCases {
+            let required = tool.definition["parameters"]["required"].strings
+            XCTAssertEqual(required.contains("confirmed"), tool.changes, tool.rawValue)
+            XCTAssertNotNil(APIRoute.named(tool.operation), tool.rawValue)
+        }
+    }
+
+    func testAChangeWaitsForAYesAndThenMakesItsCall() {
+        let args: JSON = ["session_id": "s1", "text": " ship it ", "confirmed": false]
+        XCTAssertEqual(VoiceTool.sendMessage.plan(args, repo: "o/r"), .confirm("Send: ship it"))
+        var yes = args
+        yes["confirmed"] = true
+        XCTAssertEqual(VoiceTool.sendMessage.plan(yes, repo: "o/r"), .call(["sessionId": "s1", "text": "ship it"]))
+        XCTAssertEqual(VoiceTool.stopConversation.plan(["session_id": "s1"], repo: "o/r"), .confirm("Stop the agent's running turn."))
+        XCTAssertEqual(VoiceTool.startConversation.plan(["prompt": "Fix the login", "branch": "dev"], repo: "o/r"),
+                       .confirm("Start an agent from dev with: Fix the login"))
+        XCTAssertEqual(VoiceTool.startConversation.plan(["prompt": "Fix the login", "branch": "dev", "confirmed": true], repo: "o/r"),
+                       .call(["repo": "o/r", "prompt": "Fix the login", "branch": "dev"]))
+    }
+
+    func testMissingArgumentsAreRefusedWithoutACall() {
+        XCTAssertEqual(VoiceTool.readConversation.plan([:], repo: "o/r"), .refuse("session_id is missing."))
+        XCTAssertEqual(VoiceTool.sendMessage.plan(["session_id": "s1", "text": "  ", "confirmed": true], repo: "o/r"),
+                       .refuse("session_id and text are needed."))
+        XCTAssertEqual(VoiceTool.startConversation.plan(["prompt": " ", "confirmed": true], repo: "o/r"), .refuse("prompt is missing."))
+        XCTAssertEqual(VoiceTool.readConversation.plan(["session_id": "s1"], repo: "o/r"), .call(["sessionId": "s1", "since": 0]))
+    }
+
+    func testConversationsSayTheirStatusAndDropClosedOnesWhenAskedForActive() {
+        let answer = j(#"{"sessions":[{"id":"a","title":"Login","repo":"o/r","status":"running","prStatus":{"number":7}},{"id":"b","title":"Old","repo":"o/r","status":"closed"}]}"#)
+        let all = VoiceTool.listConversations.summary(answer, args: [:])
+        XCTAssertEqual(all["total"], 2)
+        XCTAssertEqual(all["conversations"][0], ["session_id": "a", "title": "Login", "status": "Working", "pull_request": ["number": 7, "state": "open"]])
+        let active = VoiceTool.listConversations.summary(answer, args: ["active_only": true])
+        XCTAssertEqual(active["conversations"].items.map { $0["session_id"] }, ["a"])
+    }
+
+    func testAConversationReadsItsLatestMessagesAndItsOpenQuestion() {
+        let answer = j(#"""
+        {"session":{"id":"a","title":"Login","repo":"o/r","status":"idle"},
+         "events":[{"seq":1,"kind":"user","text":"Fix **login**"},{"seq":2,"kind":"tool","summary":"Edit"},
+                   {"seq":3,"kind":"text","text":"Done. Use [the docs](http://x)?"},
+                   {"seq":4,"kind":"ask","question":"Which branch?","options":[{"label":"main"},{"label":"dev"}]}]}
+        """#)
+        let out = VoiceTool.readConversation.summary(answer, args: [:])
+        XCTAssertEqual(out["question"], "Which branch?")
+        XCTAssertEqual(out["options"], ["main", "dev"])
+        XCTAssertEqual(out["status"], "Asks you a question")
+        XCTAssertEqual(out["latest"], [["from": "user", "text": "Fix login"], ["from": "agent", "text": "Done. Use the docs?"],
+                                       ["from": "agent", "text": "Which branch?"]])
+    }
+
+    func testLatestCutsLongMessages() {
+        let long = String(repeating: "a", count: 50)
+        let events = [Event(j(#"{"seq":1,"kind":"text","text":"\#(long)"}"#))!]
+        XCTAssertEqual(Voice.latest(events, length: 10)[0]["text"], .string(String(repeating: "a", count: 10) + "…"))
+    }
+
+    func testAPullRequestIsReadyToMergeOnlyWithTheApprovedLabelAndPassingChecks() {
+        let answer = j(#"""
+        {"pulls":[
+          {"number":1,"title":"Ready","checks":"success","labels":[{"name":"Code-Approved"}],"reviewDecision":"APPROVED"},
+          {"number":2,"title":"Approved by review only","checks":"success","labels":[],"reviewDecision":"APPROVED"},
+          {"number":3,"title":"Checks running","checks":"pending","labels":[{"name":"code-approved"}]},
+          {"number":4,"title":"Conflicts","checks":"success","mergeable":"conflicting","labels":[{"name":"code-approved"}]},
+          {"number":5,"title":"Draft","checks":"success","draft":true,"labels":[{"name":"code-approved"}]}]}
+        """#)
+        let pulls = VoiceTool.listPullRequests.summary(answer, args: [:])["pull_requests"].items
+        XCTAssertEqual(pulls.map { $0["ready_to_merge"] }, [true, false, false, false, false])
+        XCTAssertEqual(pulls[0]["labels"], ["Code-Approved"])
+        XCTAssertTrue(VoiceTool.listPullRequests.definition["description"].string!.contains("ready to merge"))
+    }
+
+    func testConversationsAndPullRequestsAreLinkedBothWays() {
+        let sessions = j(#"""
+        {"sessions":[
+          {"id":"a","title":"Fix yarn audit","status":"idle","prStatus":{"number":7,"state":"merged","checks":{"passed":4,"failed":0,"pending":0}}},
+          {"id":"b","title":"Backups","status":"running","prStatus":{"number":9,"state":"open","draft":true}},
+          {"id":"c","title":"On a PR","status":"idle","startedOnPr":12}]}
+        """#)
+        let listed = VoiceTool.listConversations.summary(sessions, args: [:])["conversations"].items
+        XCTAssertEqual(listed[0]["pull_request"], ["number": 7, "state": "merged", "checks": "4 passed · 0 failed · 0 running"])
+        XCTAssertEqual(listed[1]["pull_request"], ["number": 9, "state": "open", "draft": true])
+        XCTAssertEqual(listed[2]["pull_request"], ["number": 12])
+
+        XCTAssertTrue(VoiceTool.listPullRequests.readsConversations)
+        let pulls = j(#"{"pulls":[{"number":9,"title":"Backups"},{"number":10,"title":"Alone"}]}"#)
+        let out = VoiceTool.listPullRequests.summary(pulls, args: [:], sessions: Session.parseList(sessions)!)["pull_requests"].items
+        XCTAssertEqual(out[0]["conversations"], [["session_id": "b", "title": "Backups"]])
+        XCTAssertEqual(out[1]["conversations"], [])
+    }
+
+    func testIssuesListTheirLinksAndWorkingOnOneStartsFromItsBoardRow() {
+        let board = j(#"""
+        {"issues":[
+          {"number":5,"title":"Add **exports**","labels":[{"name":"bug"}],"pulls":[{"number":9,"title":"Exports"}],
+           "parent":{"number":2,"title":"Epic"}},
+          {"number":2,"title":"Epic","subIssues":{"total":3,"completed":1}}]}
+        """#)
+        let sessions = Session.parseList(j(#"{"sessions":[{"id":"a","title":"Issue #5: Add exports","status":"running"}]}"#))!
+        XCTAssertTrue(VoiceTool.listIssues.readsConversations)
+        let issues = VoiceTool.listIssues.summary(board, args: [:], sessions: sessions)["issues"].items
+        XCTAssertEqual(issues[0], ["number": 5, "title": "Add exports", "labels": ["bug"], "pull_requests": [9], "epic": 2,
+                                   "conversations": [["session_id": "a", "title": "Issue #5: Add exports", "status": "Working"]]])
+        XCTAssertEqual(issues[1]["sub_issues"], "1 of 3 done")
+
+        XCTAssertTrue(VoiceTool.workOnIssue.changes)
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["issue": 5], repo: "o/r"), .confirm("Start an agent on issue #5."))
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["issue": 5, "confirmed": true], repo: "o/r"), .call(["repo": "o/r", "issue": 5]))
+        XCTAssertEqual(VoiceTool.workOnIssue.plan(["confirmed": true], repo: "o/r"), .refuse("issue is missing."))
+        let start = Voice.issueStart(board, number: 5, repo: "o/r")!
+        XCTAssertEqual(start["activity"], "issue")
+        XCTAssertTrue(start["prompt"].string!.hasPrefix("Issue #5: Add **exports**"))
+        XCTAssertNil(Voice.issueStart(board, number: 7, repo: "o/r"))
+    }
+
+    func testReadingAnIssueGivesItsDescriptionLatestCommentsAndLinks() {
+        XCTAssertEqual(VoiceTool.readIssue.operation, "issue")
+        XCTAssertFalse(VoiceTool.readIssue.changes)
+        XCTAssertTrue(VoiceTool.readIssue.readsConversations)
+        XCTAssertEqual(VoiceTool.readIssue.plan(["issue": 5], repo: "o/r"), .call(["repo": "o/r", "issue": 5]))
+        XCTAssertEqual(VoiceTool.readIssue.plan([:], repo: "o/r"), .refuse("issue is missing."))
+        XCTAssertEqual(APIRoute.named("issue")?.path, "issues/{issue}")
+        XCTAssertEqual(APIRoute.named("issue_timeline")?.path, "issues/{issue}/timeline")
+
+        var answer = j(#"""
+        {"issue":{"number":5,"title":"Add **exports**","state":"open","type":"Feature","author":"ana","assignees":["bo"],
+          "body":"Export the **ledger** as [CSV](https://x.y).\n\nKeep the filters.","labels":[{"name":"bug"}],"comments":7,
+          "parent":{"number":2,"title":"Epic"},
+          "subIssues":{"total":2,"completed":1,"items":[{"number":6,"title":"Done","state":"closed"},{"number":8,"title":"Left","state":"open"}]},
+          "pulls":[{"number":9,"title":"Exports","state":"open","draft":true}]}}
+        """#)
+        let rows = (1...7).map { n in j(#"{"kind":"commented","actor":"ana","body":"Comment \#(n)"}"#) }
+        answer["timeline"] = .array([j(#"{"kind":"labeled","actor":"ana"}"#)] + rows)
+        let sessions = Session.parseList(j(#"{"sessions":[{"id":"a","title":"Issue #5: Add exports","status":"running"}]}"#))!
+        let out = VoiceTool.readIssue.summary(answer, args: ["issue": 5], sessions: sessions)
+        XCTAssertEqual(out["title"], "Add exports")
+        XCTAssertEqual(out["state"], "open")
+        XCTAssertEqual(out["type"], "Feature")
+        XCTAssertEqual(out["description"], "Export the ledger as CSV. Keep the filters.")
+        XCTAssertEqual(out["epic"], ["number": 2, "title": "Epic"])
+        XCTAssertEqual(out["sub_issues"], "1 of 2 done")
+        XCTAssertEqual(out["open_sub_issues"], [["number": 8, "title": "Left"]])
+        XCTAssertEqual(out["pull_requests"], [["number": 9, "title": "Exports", "state": "open", "draft": true]])
+        XCTAssertEqual(out["conversations"], [["session_id": "a", "title": "Issue #5: Add exports", "status": "Working"]])
+        XCTAssertEqual(out["comments"].items.map { $0["text"] }, ["Comment 3", "Comment 4", "Comment 5", "Comment 6", "Comment 7"])
+        XCTAssertEqual(out["comments_total"], 7)
+
+        XCTAssertEqual(Voice.issueState(j(#"{"state":"closed","stateReason":"not_planned"}"#)), "closed as not planned")
+        XCTAssertEqual(Voice.cut("abcdef", 3), "abc…")
+        XCTAssertEqual(VoiceTool.readIssue.summary(j("{}"), args: [:])["error"], "The server did not return the issue.")
+    }
+
+    func testAPullRequestsChangesGiveItsDescriptionAndEachFilesNameWithItsDiff() {
+        XCTAssertEqual(VoiceTool.readPullRequest.plan(["number": 9], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
+        XCTAssertEqual(VoiceTool.readPullRequest.plan([:], repo: "o/r"), .refuse("number is missing."))
+        var answer = j(#"""
+        {"pr":{"changedFiles":3,"additions":40,"deletions":5,"commits":2},
+         "files":[{"filename":"App/A.swift","status":"added","additions":30,"deletions":0,"patch":"@@ -0,0 +1 @@\n+let a = 1"},
+                  {"filename":"App/B.swift","status":"modified","additions":9,"deletions":5,"patch":"@@ -1 +1 @@\n-old\n+new"},
+                  {"filename":"logo.png","status":"added"}]}
+        """#)
+        answer["description"] = "Adds **exports**.\n<!-- hidden -->"
+        let out = VoiceTool.readPullRequest.summary(answer, args: [:])
+        XCTAssertEqual(out["changed_files"], 3)
+        XCTAssertEqual(out["lines_added"], 40)
+        XCTAssertEqual(out["lines_removed"], 5)
+        XCTAssertEqual(out["commits"], 2)
+        XCTAssertEqual(out["description"], "Adds **exports**.")
+        XCTAssertEqual(out["files"], [["file": "App/A.swift", "diff": "@@ -0,0 +1 @@\n+let a = 1"],
+                                      ["file": "App/B.swift", "diff": "@@ -1 +1 @@\n-old\n+new"],
+                                      ["file": "logo.png", "diff": "No diff: a binary file, or one too large for GitHub to show."]])
+        XCTAssertTrue(out["diffs"].isNull)
+        XCTAssertTrue(out["files_listed"].isNull)
+
+        // Each diff is cut, and past the budget a file keeps its name alone.
+        let tight = Voice.changes(PullFilesPage(answer)!, perFile: 5, budget: 8)
+        XCTAssertEqual(tight["files"], [["file": "App/A.swift", "diff": "@@ -0…"], ["file": "App/B.swift", "diff": "@@…"],
+                                        ["file": "logo.png", "diff": "No diff: a binary file, or one too large for GitHub to show."]])
+        let spent = Voice.changes(PullFilesPage(answer)!, perFile: 5, budget: 5)
+        XCTAssertEqual(spent["files"][1], ["file": "App/B.swift"])
+        XCTAssertEqual(spent["diffs"], "Cut short: the later files are listed by name only.")
+    }
+
+    func testMergingReadsBackWhatStandsInTheWayAndPinsTheHead() {
+        XCTAssertTrue(VoiceTool.mergePullRequest.changes)
+        XCTAssertEqual(VoiceTool.mergePullRequest.operation, "merge_pull")
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 9], repo: "o/r"), .confirm("Merge pull request #9."))
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 9, "confirmed": true], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
+
+        let pull = j(#"{"pr":{"title":"Add **exports**","state":"open","headSha":"old","baseRef":"main","checks":{"failed":1,"pending":0}}}"#)
+        let files = j(#"{"pr":{"headSha":"new","mergeable":true,"mergeableState":"clean","mergeMethods":["merge","rebase"]},"files":[]}"#)
+        let row = PullSummary(j(#"{"number":9,"title":"Add exports","labels":[]}"#))!
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: pull, files: files, row: row),
+                       .ready(arguments: ["repo": "o/r", "pr": 9, "headSha": "new", "baseRef": "main", "method": "merge"], base: "main",
+                              readBack: "Merge pull request #9, Add exports, into main, with a merge commit. 1 check is failing. It does not carry the code-approved label."))
+
+        let approved = PullSummary(j(#"{"number":9,"title":"Add exports","labels":[{"name":"code-approved"}]}"#))!
+        let clean = j(#"{"pr":{"state":"open","headSha":"h","baseRef":"main","checks":{"passed":3}}}"#)
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: clean, files: nil, row: approved),
+                       .ready(arguments: ["repo": "o/r", "pr": 9, "headSha": "h", "baseRef": "main", "method": "squash"], base: "main",
+                              readBack: "Merge pull request #9 into main, squashed."))
+
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: j(#"{"pr":{"state":"merged"}}"#), files: nil, row: nil),
+                       .refuse("Pull request #9 is already merged."))
+        XCTAssertEqual(VoiceMerge.check(number: 9, repo: "o/r", pull: j(#"{"pr":{"state":"open","draft":true}}"#), files: nil, row: nil),
+                       .refuse("Pull request #9 is a draft; it cannot merge until it is marked ready."))
+        XCTAssertEqual(VoiceTool.mergePullRequest.summary(j(#"{"status":"merged"}"#), args: ["base": "main"]),
+                       ["done": true, "result": "Merged into main"])
+    }
+
+    func testAStackedPullRequestIsReadyOnlyAtTheBottom() {
+        let answer = j(#"""
+        {"pulls":[
+          {"number":10,"title":"Base","checks":"success","labels":[{"name":"code-approved"}],"stack":{"id":1,"position":1,"total":2}},
+          {"number":11,"title":"On top","checks":"success","labels":[{"name":"code-approved"}],"stack":{"id":1,"position":2,"total":2}},
+          {"number":12,"title":"Alone","checks":"success","labels":[{"name":"code-approved"}]}],
+         "stacks":{"1":[{"number":10,"depth":1},{"number":11,"depth":2}]}}
+        """#)
+        let pulls = VoiceTool.listPullRequests.summary(answer, args: [:])["pull_requests"].items
+        XCTAssertEqual(pulls.map { $0["ready_to_merge"] }, [true, false, true])
+        XCTAssertEqual(pulls[0]["stack"], "Bottom of a stack of 2: it merges first.")
+        XCTAssertEqual(pulls[1]["stack"], "Position 2 of a stack of 2, on top of #10: the pull requests under it merge first.")
+        XCTAssertEqual(pulls[1]["stacked_on"], 10)
+        XCTAssertTrue(pulls[2]["stack"].isNull)
+
+        let row = PullSummary.parseList(answer["pulls"])[1]
+        let stack = StackPosition(row.raw["stack"], stacks: answer["stacks"])
+        let pull = j(#"{"pr":{"state":"open","headSha":"h","baseRef":"stack/base","checks":{"passed":2}}}"#)
+        guard case .ready(_, _, let readBack) = VoiceMerge.check(number: 11, repo: "o/r", pull: pull, files: nil, row: row, stack: stack) else {
+            return XCTFail("a stacked pull request can still be merged on the user's word")
+        }
+        XCTAssertTrue(readBack.hasSuffix("It is not ready: Position 2 of a stack of 2, on top of #10: the pull requests under it merge first."))
+    }
+
+    func testErrandsStartTheBoardsOwnCallsOnAYes() {
+        XCTAssertTrue(VoiceTool.runErrand.changes)
+        XCTAssertEqual(VoiceTool.runErrand.plan(["number": 9, "errand": "review"], repo: "o/r"), .confirm("Code review on pull request #9."))
+        XCTAssertEqual(VoiceTool.runErrand.plan(["number": 9, "errand": "review", "confirmed": true], repo: "o/r"), .call(["repo": "o/r", "prNumber": 9]))
+        XCTAssertEqual(VoiceTool.runErrand.plan(["number": 9, "errand": "implement-feedback", "confirmed": true], repo: "o/r"),
+                       .call(["repo": "o/r", "prNumber": 9, "action": "implement-feedback"]))
+        XCTAssertEqual(VoiceTool.runErrand.plan(["number": 9, "errand": "delete-self-comments", "confirmed": true], repo: "o/r"),
+                       .refuse("errand must be one of review, implement-feedback, fix-checks, solve-conflicts."))
+        XCTAssertEqual(Voice.errand("review")?.operation, "review")
+        XCTAssertEqual(Voice.errand("fix-checks")?.operation, "action")
+        XCTAssertEqual(VoiceTool.runErrand.summary(j(#"{"session":{"id":"s","title":"Review #9","status":"queued"}}"#), args: [:]),
+                       ["done": true, "session_id": "s", "title": "Review #9"])
+    }
+
+    func testFindingsTakeAYesOrANoOneByOne() {
+        XCTAssertTrue(VoiceTool.decideFinding.changes)
+        XCTAssertEqual(VoiceTool.listFindings.plan(["number": 9], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
+        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "dismissed"], repo: "o/r"),
+                       .confirm("Mark the finding on #9 no, dismissed."))
+        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "fix", "confirmed": true], repo: "o/r"),
+                       .call(["repo": "o/r", "pr": 9, "key": "k1", "decision": "fix"]))
+        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "maybe"], repo: "o/r"),
+                       .refuse("decision must be fix, dismissed or optional."))
+        let answer = j(#"""
+        {"findings":[{"key":"k1","title":"Null **check**","severity":"high","file":"App/A.swift","line":12,"body":"It crashes when empty.","decision":"fix"},
+                     {"key":"k2","title":"Naming","severity":"low","decision":"dismissed","fixed":true},
+                     {"key":"k3","title":"Docs"}]}
+        """#)
+        let out = VoiceTool.decideFinding.summary(answer, args: [:])
+        XCTAssertEqual(out["findings"][0], ["key": "k1", "title": "Null check", "severity": "high", "place": "App/A.swift:12",
+                                            "says": "It crashes when empty.", "verdict": "yes, fix it"])
+        XCTAssertEqual(out["findings"][1]["verdict"], "no")
+        XCTAssertEqual(out["findings"][1]["fixed"], true)
+        XCTAssertEqual(out["findings"][2]["verdict"], "not decided")
+        XCTAssertEqual(out["to_fix"], 1)
+        XCTAssertEqual(out["not_fixed"], 2)
+    }
+
+    func testAReviewRoundIsReadAndCompletedWithTheUsersVerdicts() {
+        XCTAssertTrue(VoiceTool.completeReviewRound.changes)
+        XCTAssertTrue(VoiceTool.completeReviewRound.namesConversation)
+        XCTAssertEqual(VoiceTool.completeReviewRound.plan(["session_id": "a", "fix": ["k1"], "dismiss": ["k2", "k3"]], repo: "o/r"),
+                       .confirm("Complete the review round: 1 finding sent to be fixed, 2 dismissed."))
+        XCTAssertEqual(VoiceTool.completeReviewRound.plan(["session_id": "a", "fix": [], "dismiss": []], repo: "o/r"),
+                       .confirm("Complete the review round: nothing to fix, so the pull request is approved."))
+        XCTAssertEqual(VoiceTool.completeReviewRound.plan(["session_id": "a", "fix": ["k1"], "dismiss": [], "note": "Be brief", "confirmed": true], repo: "o/r"),
+                       .call(["sessionId": "a", "fix": ["k1"], "dismiss": [], "note": "Be brief"]))
+
+        let held = j(#"{"findings":[{"key":"k1","title":"A"},{"key":"k2","title":"B"},{"key":"k3","title":"C"}]}"#)
+        let completion = Voice.roundCompletion(held, fix: ["k1"], dismiss: ["k2"], note: "Be brief")
+        XCTAssertEqual(completion["verdicts"], [["key": "k1", "decision": "fix"], ["key": "k2", "decision": "dismissed"],
+                                                ["key": "k3", "decision": "optional"]])
+        XCTAssertEqual(Voice.roundReadBack(j(#"{"mine":false,"findings":[]}"#), fix: ["k1"], dismiss: []),
+                       "Take the review round off the queue: it is on someone else's pull request, so nothing is sent to be fixed.")
+        XCTAssertEqual(Voice.roundReadBack(held, fix: ["k1"], dismiss: []), "Complete the review round: 1 finding sent to be fixed.")
+        XCTAssertEqual(VoiceTool.readReviewRound.plan(["session_id": "a"], repo: "o/r"), .call(["repo": "o/r"]))
+        XCTAssertEqual(VoiceTool.readReviewRound.summary(j(#"{"sessions":[{"id":"a","title":"T","status":"idle"}]}"#), args: ["session_id": "a"])["error"],
+                       "That conversation holds no review round waiting for a decision.")
+    }
+}
