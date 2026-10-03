@@ -7,15 +7,16 @@
 import Foundation
 
 enum Voice {
-    static let endpoint = URL(string: "wss://api.openai.com/v1/live/sessions")!
+    /// Where a session starts: the phone posts its WebRTC offer with the session, and the answer comes back.
+    static let endpoint = URL(string: "https://api.openai.com/v1/live/sessions")!
+    /// The data channel GPT-Live sends and takes its JSON events on.
+    static let channel = "oai-events"
     static let model = "gpt-live-1"
     static let defaultBackend = "gpt-6-luna"
     static let defaultVoice = "marin"
     /// Marin first, the default; then the voices GPT-Live adds.
     static let voices = ["marin", "gleam", "meridian", "willow", "stone", "vesper", "quartz", "ripple", "bossa", "tempo",
                          "beacon", "delta", "cinder"]
-    /// Mono PCM16 both ways, the session's default format.
-    static let sampleRate = 24_000.0
 
     /// How the voice speaks: short, in the speaker's language, about one project, and never claiming what the backend
     /// has not confirmed.
@@ -52,13 +53,13 @@ enum Voice {
     the tool says it is.
     """ }
 
-    /// The first message on the socket: the voice, its audio, and the backend with its tools, all on one project.
-    /// `project` is how it is named aloud: its label and repository.
-    static func start(voice: String, backend: String, project: String) -> JSON {
-        ["type": "session.start", "event_id": "start", "session": [
+    /// What starts a session over WebRTC: the phone's SDP offer, and the voice and the backend with its tools, all on
+    /// one project. `project` is how it is named aloud: its label and repository. WebRTC settles the audio format.
+    static func create(offer sdp: String, voice: String, backend: String, project: String) -> JSON {
+        ["transport": ["type": "webrtc", "sdp": .string(sdp)], "session": [
             "model": .string(model),
             "instructions": .string(instructions(project: project)),
-            "audio": ["format": ["type": "audio/pcm", "rate": 24000], "output": ["voice": .string(voice)]],
+            "audio": ["output": ["voice": .string(voice)]],
             "delegation": ["type": "responses", "responses": [
                 "model": .string(backend),
                 "instructions": .string(backendInstructions(project: project)),

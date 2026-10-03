@@ -1,8 +1,8 @@
 import Foundation
 
-/// One spoken conversation with GPT-Live about one project: the socket, the microphone and speaker, the captions, and
+/// One spoken conversation with GPT-Live about one project: the WebRTC call, the captions, and
 /// the tools its backend calls, each held to that project. It outlives the screen that started it, so it goes on from
-/// any tab and with the phone locked, and ends when the user ends it, after a silence, or when a call takes the audio.
+/// any tab and with the phone locked, and ends when the user ends it or after a silence.
 @MainActor
 final class VoiceSession: ObservableObject {
     static let shared = VoiceSession()
@@ -26,7 +26,7 @@ final class VoiceSession: ObservableObject {
     @Published private(set) var phase = Phase.off
     /// The project the conversation is about; nil before the first one.
     @Published private(set) var repo: String?
-    /// The voice is playing what it said.
+    /// The voice is saying something, as its transcript arrives.
     @Published private(set) var speaking = false
     @Published private(set) var muted = false
     @Published private(set) var lines: [Line] = []
@@ -35,9 +35,9 @@ final class VoiceSession: ObservableObject {
     /// Why the last conversation failed or ended by itself.
     @Published private(set) var notice: String?
 
-    private var socket: LiveSocket?
-    private var audio: VoiceAudio?
+    private var call: LiveCall?
     private var reader: Task<Void, Never>?
+    private var hush: Task<Void, Never>?
     private var watchdog: Task<Void, Never>?
     private var lastActivity = Date()
     /// How many pieces of the user's speech have been heard: a yes must come after the read-back it answers.
@@ -65,13 +65,15 @@ final class VoiceSession: ObservableObject {
         phase = .connecting
         repo = project.repo
         lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil
-        let socket = LiveSocket(key: key)
-        self.socket = socket
-        let events = socket.open()
+        let call = LiveCall()
+        self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
-        socket.send(Voice.start(voice: settings.voice, backend: settings.backendModel, project: named))
+        let voice = settings.voice, backend = settings.backendModel
         reader = Task { [weak self] in
             do {
+                let events = try await call.open(key: key) { offer in
+                    Voice.create(offer: offer, voice: voice, backend: backend, project: named)
+                }
                 for try await event in events { self?.handle(event) }
                 self?.ended(nil)
             } catch {
@@ -85,8 +87,8 @@ final class VoiceSession: ObservableObject {
         guard phase == .connecting || phase == .live else { return }
         if let reason { notice = reason }
         phase = .closing
-        audio?.stop(); audio = nil; speaking = false
-        socket?.send(["type": "session.close", "event_id": .string(nextID())])
+        speaking = false
+        call?.send(["type": "session.close", "event_id": .string(nextID())])
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             if self?.phase == .closing { self?.ended(nil) }
@@ -95,7 +97,7 @@ final class VoiceSession: ObservableObject {
 
     func toggleMute() {
         muted.toggle()
-        audio?.mute(muted)
+        call?.mute(muted)
     }
 
     private func ended(_ failure: String?) {
@@ -104,8 +106,8 @@ final class VoiceSession: ObservableObject {
         reader?.cancel(); reader = nil
         watchdog?.cancel(); watchdog = nil
         calls.values.joined().forEach { $0.cancel() }; calls = [:]
-        audio?.stop(); audio = nil
-        socket?.close(); socket = nil
+        hush?.cancel(); hush = nil
+        call?.close(); call = nil
         speaking = false
         phase = .off
     }
@@ -118,16 +120,18 @@ final class VoiceSession: ObservableObject {
     private func handle(_ event: JSON) {
         switch event["type"].string {
         case "session.started":
-            beginAudio()
-        case "session.output_audio.delta":
-            if let delta = event["delta"].string, let pcm = Data(base64Encoded: delta) { audio?.play(pcm) }
+            guard phase == .connecting else { return }
+            phase = .live
+            started = Date()
             touch()
+            watch()
         case "session.input_transcript.delta":
             heard += 1
             caption(user: true, event["delta"].string)
             touch()
         case "session.output_transcript.delta":
             caption(user: false, event["delta"].string)
+            talking()
             touch()
         case "response.event":
             backend(event["delegation_id"].string ?? "", event["event"])
@@ -140,31 +144,13 @@ final class VoiceSession: ObservableObject {
         }
     }
 
-    private func beginAudio() {
-        guard let socket, audio == nil else { return }
-        let audio = VoiceAudio()
-        audio.heard = { [weak socket] pcm in
-            socket?.send(["type": "session.input_audio.append", "audio": .string(pcm.base64EncodedString())])
-        }
-        audio.playing = { [weak self] on in
-            MainActor.assumeIsolated { self?.speaking = on; self?.touch() }
-        }
-        audio.interrupted = { [weak self] in
-            MainActor.assumeIsolated { self?.stop(reason: "The conversation ended: another app or a call took the audio.") }
-        }
-        self.audio = audio
-        Task {
-            do {
-                try await audio.start()
-                guard self.audio === audio, phase == .connecting else { return }
-                phase = .live
-                started = Date()
-                touch()
-                watch()
-            } catch {
-                notice = error.localizedDescription
-                stop()
-            }
+    /// WebRTC plays the voice itself; it reads as speaking while its words keep coming.
+    private func talking() {
+        speaking = true
+        hush?.cancel()
+        hush = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            if !Task.isCancelled { self?.speaking = false }
         }
     }
 
@@ -209,17 +195,17 @@ final class VoiceSession: ObservableObject {
             touch()
             calls[delegation, default: []].append(Task { (id, await self.run(step)) })
         case "response.completed", "response.done":
-            guard let pending = calls[delegation], !pending.isEmpty, let socket else { return }
+            guard let pending = calls[delegation], !pending.isEmpty, let call else { return }
             calls[delegation] = nil
             Task {
                 var outputs: [(id: String, output: String)] = []
                 for call in pending { outputs.append(await call.value) }
-                guard self.socket === socket else { return }
+                guard self.call === call else { return }
                 for (id, output) in outputs {
-                    socket.send(["type": "response.item.create", "event_id": .string(nextID()),
+                    call.send(["type": "response.item.create", "event_id": .string(nextID()),
                                  "item": ["type": "function_call_output", "call_id": .string(id), "output": .string(output)]])
                 }
-                socket.send(["type": "response.create", "event_id": .string(nextID())])
+                call.send(["type": "response.create", "event_id": .string(nextID())])
             }
         case "response.failed", "response.incomplete":
             calls[delegation] = nil

@@ -6,13 +6,13 @@ import XCTest
 final class VoiceTests: XCTestCase {
     private func j(_ s: String) -> JSON { JSON.parse(s)! }
 
-    func testStartCarriesTheVoiceTheAudioTheProjectAndEveryToolOnTheBackend() {
-        let start = Voice.start(voice: "gleam", backend: "gpt-6-luna", project: "HQ (o/hq)")
-        XCTAssertEqual(start["type"], "session.start")
-        let session = start["session"]
+    func testCreateCarriesTheOfferTheVoiceTheProjectAndEveryToolOnTheBackend() {
+        let create = Voice.create(offer: "v=0", voice: "gleam", backend: "gpt-6-luna", project: "HQ (o/hq)")
+        XCTAssertEqual(create["transport"], ["type": "webrtc", "sdp": "v=0"])
+        let session = create["session"]
         XCTAssertEqual(session["model"], "gpt-live-1")
-        XCTAssertEqual(session["audio"]["format"], ["type": "audio/pcm", "rate": 24000])
-        XCTAssertEqual(session["audio"]["output"]["voice"], "gleam")
+        // WebRTC negotiates the format; only the voice is chosen.
+        XCTAssertEqual(session["audio"], ["output": ["voice": "gleam"]])
         XCTAssertEqual(session["delegation"]["type"], "responses")
         XCTAssertEqual(session["delegation"]["responses"]["model"], "gpt-6-luna")
         let names = session["delegation"]["responses"]["tools"].items.compactMap { $0["name"].string }

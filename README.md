@@ -1,6 +1,6 @@
 # Briareus for iPhone, iPad, Mac and CarPlay
 
-A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the server for running coding agents against your projects. It talks to the server's client API (`/api/v1`), as the Mac and Windows clients do, and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. No third-party dependencies.
+A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus), the server for running coding agents against your projects. It talks to the server's client API (`/api/v1`), as the Mac and Windows clients do, and works with any Briareus server you can reach over HTTPS. Requires iOS 17 or macOS 14 or later. Its one third-party dependency is Google's WebRTC ([stasel/WebRTC](https://github.com/stasel/WebRTC), a binary Swift package), which the iPhone app's voice mode talks to GPT-Live with.
 
 ## Contents
 
@@ -41,7 +41,7 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 
 - Holds a spoken conversation with OpenAI's [GPT-Live](https://developers.openai.com/api/docs/models/gpt-live-1) about one project, opened from that project's screen (the waveform): what its conversations are doing, what an agent asks, which pull requests wait, which findings need a decision. It answers only when spoken to.
 - Everything it does stays on that project: no tool names a repository, and a conversation named by id is checked to be the project's first. It starts a conversation, sends a message or answers an agent's question, and stops a running turn. Each change is read back and runs only on a yes said after it; deleting, closing and merging stay on the screen.
-- Talks to OpenAI directly from the phone with an API key kept in its Keychain (Settings › Voice), over a WebSocket with PCM16 audio at 24 kHz. A Responses model (`gpt-6-luna` by default) picks the actions, which the phone runs on `/api/v1` with its own token.
+- Talks to OpenAI directly from the phone with an API key kept in its Keychain (Settings › Voice), over WebRTC: the microphone and the voice travel on audio tracks, with WebRTC's echo cancellation and jitter buffer, and events on a data channel. A Responses model (`gpt-6-luna` by default) picks the actions, which the phone runs on `/api/v1` with its own token.
 - Goes on with the phone locked, and ends on its own after a silence (3 minutes by default), as GPT-Live bills by the minute.
 
 **Project board**
