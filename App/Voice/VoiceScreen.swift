@@ -1,4 +1,4 @@
-// A project's voice conversation, opened from its screen: GPT-Realtime about that project's agents, pull requests and
+// A project's voice conversation, opened from its screen: GPT-Live or GPT-Realtime about that project's agents, pull requests and
 // findings, and nothing else. What both sides said scrolls as captions; the actions it ran on the server are listed
 // under them.
 import SwiftUI
@@ -132,16 +132,23 @@ struct VoiceScreen: View {
                 Color.clear.frame(width: 56, height: 56)
             }
             status.font(.footnote).foregroundStyle(.secondary)
-            if mine, voice.started != nil { costLine }
+            if mine, let started = voice.started { costLine(since: started) }
         }
         .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 18)
     }
 
-    /// What the conversation has cost, growing with each response and kept once it ends.
-    private var costLine: some View {
-        Text(voice.cost.line).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-            .lineLimit(1).minimumScaleFactor(0.7)
-            .accessibilityLabel("Estimated cost").accessibilityIdentifier("voiceCost")
+    /// The model, and what the conversation has cost, ticking every second while it runs and kept once it ends.
+    private func costLine(since started: Date) -> some View {
+        TimelineView(.periodic(from: started, by: 1)) { context in
+            VStack(spacing: 2) {
+                Text(voice.engine.title).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                Text(voice.cost.line(elapsed: voice.elapsed(at: context.date)))
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Estimated cost").accessibilityIdentifier("voiceCost")
     }
 
     @ViewBuilder private var status: some View {
@@ -176,6 +183,8 @@ extension VoiceSession.Step {
         case .mergePullRequest: return (state == .waiting ? "Asked to merge #" : "Merge #") + (args["number"].int.map(String.init) ?? "")
         case .readPullRequest: return "Read the changes of #" + (args["number"].int.map(String.init) ?? "")
         case .workOnIssue: return (state == .waiting ? "Asked to work on issue #" : "Work on issue #") + (args["issue"].int.map(String.init) ?? "")
+        case .closeConversation: return state == .waiting ? "Asked to close a conversation" : "Close a conversation"
+        case .deleteConversation: return state == .waiting ? "Asked to delete a conversation" : "Delete a conversation"
         case .startConversation: return (state == .waiting ? "Asked to start an agent: " : "Start an agent: ") + (args["prompt"].string ?? "")
         case .sendMessage: return (state == .waiting ? "Asked to send: " : "Send: ") + (args["text"].string ?? "")
         case .stopConversation: return state == .waiting ? "Asked to stop an agent" : "Stop an agent"

@@ -30,7 +30,7 @@ struct SettingsScreen: View {
                     Label("Voice", systemImage: "waveform")
                 }
             } footer: {
-                Text("The OpenAI API key a project's voice conversation talks to GPT-Realtime with.")
+                Text("The OpenAI API key and model a project's voice conversation talks with, and what each model has cost.")
             }
             .listRowBackground(Theme.row)
             let why = settingsUnavailableReason("settings_projects", path: "settings/projects", what: "Project settings", manage: "projects")

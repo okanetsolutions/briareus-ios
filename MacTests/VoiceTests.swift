@@ -1,13 +1,30 @@
-// The voice mode's session and tools: what GPT-Realtime is started with, which calls a tool makes on the project, and what it
-// answers.
+// The voice mode's sessions and tools: what GPT-Live and GPT-Realtime are started with, which calls a tool makes on the
+// project, what it answers, and what a conversation costs on each.
 import XCTest
 @testable import BriareusMacCore
 
 final class VoiceTests: XCTestCase {
     private func j(_ s: String) -> JSON { JSON.parse(s)! }
 
-    func testSessionCarriesTheVoiceTheProjectAndEveryTool() {
-        let session = Voice.session(voice: "cedar", project: "HQ (o/hq)")
+    func testGPTLivesSessionHandsTheToolsToItsBackend() {
+        let session = Voice.liveSession(voice: "gleam", backend: "gpt-6-luna", project: "HQ (o/hq)")
+        XCTAssertEqual(session["model"], "gpt-live-1")
+        // WebRTC negotiates the format; only the voice is chosen.
+        XCTAssertEqual(session["audio"], ["output": ["voice": "gleam"]])
+        XCTAssertEqual(session["delegation"]["type"], "responses")
+        XCTAssertEqual(session["delegation"]["responses"]["model"], "gpt-6-luna")
+        let names = session["delegation"]["responses"]["tools"].items.compactMap { $0["name"].string }
+        XCTAssertEqual(names, VoiceTool.allCases.map(\.rawValue))
+        XCTAssertTrue(session["instructions"].string!.contains("HQ (o/hq)"))
+        XCTAssertFalse(session["instructions"].string!.contains("## Confirmation"))
+        XCTAssertTrue(session["delegation"]["responses"]["instructions"].string!.contains("## Confirmation"))
+        XCTAssertEqual(Voice.liveCreate(offer: "v=0", session: session)["transport"], ["type": "webrtc", "sdp": "v=0"])
+        // A voice GPT-Live does not have falls back to Marin.
+        XCTAssertEqual(Voice.liveSession(voice: "cedar", backend: "x", project: "HQ")["audio"]["output"]["voice"], "marin")
+    }
+
+    func testGPTRealtimesSessionCarriesTheToolsItself() {
+        let session = Voice.realtimeSession(voice: "cedar", project: "HQ (o/hq)")
         XCTAssertEqual(session["type"], "realtime")
         XCTAssertEqual(session["model"], "gpt-realtime-2.1-mini")
         // WebRTC negotiates the format; the voice is chosen and the user's speech is transcribed for the captions.
@@ -18,25 +35,81 @@ final class VoiceTests: XCTestCase {
         let instructions = session["instructions"].string!
         XCTAssertTrue(instructions.contains("HQ (o/hq)"))
         XCTAssertTrue(instructions.contains("## Confirmation"))
-        // A voice the Realtime API does not have falls back to Marin.
-        XCTAssertEqual(Voice.session(voice: "gleam", project: "HQ")["audio"]["output"]["voice"], "marin")
+        XCTAssertEqual(Voice.realtimeSession(voice: "gleam", project: "HQ")["audio"]["output"]["voice"], "marin")
+        XCTAssertEqual(VoiceEngine.realtime.endpoint.absoluteString, "https://api.openai.com/v1/realtime/calls")
+        XCTAssertEqual(VoiceEngine.live.endpoint.absoluteString, "https://api.openai.com/v1/live/sessions")
     }
 
-    func testCostAddsUpEachResponseAndTranscriptionAtTheirPrices() {
-        var cost = VoiceCost()
+    func testGPTLivesCostIsItsMinutesAndItsBackendsTokensCountedOnce() {
+        var cost = VoiceCost(engine: .live, backend: "gpt-6-luna")
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":30}}"#))
+        cost.voice(j(#"{"type":"session.usage.updated","usage":{"seconds":90}}"#))
+        XCTAssertEqual(cost.seconds, 90)
+        XCTAssertEqual(cost.voiceDollars(), 0.075, accuracy: 1e-9)
+        // The clock runs ahead of the reports between them.
+        XCTAssertEqual(cost.voiceDollars(seconds: 120), 0.1, accuracy: 1e-9)
+        let response = j(#"{"id":"resp_1","usage":{"input_tokens":10000,"input_tokens_details":{"cached_tokens":4000},"output_tokens":2000}}"#)
+        cost.backend(response)
+        cost.backend(response)
+        XCTAssertEqual(cost.tokens, 12000)
+        // 6000 × $0.1 + 4000 × $0.01 + 2000 × $0.5, per million.
+        XCTAssertEqual(cost.backendDollars()!, 0.00164, accuracy: 1e-9)
+        XCTAssertEqual(cost.dollars(), 0.07664, accuracy: 1e-9)
+        XCTAssertEqual(cost.line(), "≈ $0.077 · voice 1:30 $0.075 · backend 12.0k tokens $0.0016")
+        var other = VoiceCost(engine: .live, backend: "other")
+        other.voice(j(#"{"usage":{"seconds":90}}"#))
+        other.backend(response)
+        XCTAssertNil(other.backendDollars())
+        XCTAssertEqual(other.line(), "≈ $0.075 voice (1:30) + 12.0k tokens on other")
+    }
+
+    func testGPTRealtimesCostAddsUpEachResponseAndTranscriptionAtTheirPrices() {
+        var cost = VoiceCost(engine: .realtime)
         // 1M fresh audio in ($10), 1M cached audio ($0.30), 1M text in of which half cached ($0.30 + $0.03),
         // 1M audio out ($20) and 1M text out ($2.40).
         cost.add(response: j(#"{"input_tokens":3000000,"output_tokens":2000000,"input_token_details":{"text_tokens":1000000,"audio_tokens":2000000,"#
             + #""cached_tokens_details":{"text_tokens":500000,"audio_tokens":1000000}},"#
             + #""output_token_details":{"text_tokens":1000000,"audio_tokens":1000000}}"#))
-        XCTAssertEqual(cost.dollars, 33.03, accuracy: 0.0001)
+        XCTAssertEqual(cost.dollars(), 33.03, accuracy: 0.0001)
         cost.add(transcription: j(#"{"type":"tokens","input_tokens":1000000,"output_tokens":1000000}"#))
-        XCTAssertEqual(cost.dollars, 39.28, accuracy: 0.0001)
+        XCTAssertEqual(cost.dollars(), 39.28, accuracy: 0.0001)
         cost.add(transcription: j(#"{"type":"duration","seconds":12}"#))
-        XCTAssertEqual(cost.dollars, 39.28, accuracy: 0.0001)
+        XCTAssertEqual(cost.dollars(elapsed: 600), 39.28, accuracy: 0.0001)
         XCTAssertEqual(cost.tokens, 7_000_000)
-        XCTAssertEqual(cost.line, "≈ $39.28 · 7000.0k tokens")
-        XCTAssertEqual(VoiceCost().line, "≈ $0.0000 · 0 tokens")
+        XCTAssertEqual(cost.line(elapsed: 65), "≈ $39.28 · 1:05 · 7000.0k tokens")
+        XCTAssertEqual(VoiceCost(engine: .realtime).line(), "≈ $0.0000 · 0:00 · 0 tokens")
+    }
+
+    func testTheSettingsComparisonHasOneRowPerModel() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        let records = [VoiceRecord(engine: .live, seconds: 120, dollars: 0.1, date: now),
+                       VoiceRecord(engine: .live, seconds: 60, dollars: 0.05, date: now),
+                       VoiceRecord(engine: .realtime, seconds: 30, dollars: 0.02, date: now)]
+        let rows = VoiceTally.rows(records)
+        XCTAssertEqual(rows.map(\.engine), [.live, .realtime])
+        XCTAssertEqual(rows[0].conversations, 2)
+        XCTAssertEqual(rows[0].seconds, 180)
+        XCTAssertEqual(rows[0].dollars, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(rows[0].perMinute!, 0.05, accuracy: 1e-9)
+        XCTAssertEqual(rows[1].perMinute!, 0.04, accuracy: 1e-9)
+        XCTAssertNil(VoiceTally.rows([])[1].perMinute)
+        XCTAssertEqual(VoiceRecord(records[2].json), records[2])
+        XCTAssertNil(VoiceRecord(["engine": "gone"]))
+        XCTAssertEqual(VoiceCost.time(65), "1:05")
+        XCTAssertEqual(VoiceCost.time(3723), "1:02:03")
+    }
+
+    func testClosingAndDeletingAConversationWaitForAYes() {
+        for tool in [VoiceTool.closeConversation, .deleteConversation] {
+            XCTAssertTrue(tool.changes)
+            XCTAssertTrue(tool.namesConversation)
+            XCTAssertEqual(tool.plan(["session_id": "a", "confirmed": true], repo: "o/r"), .call(["sessionId": "a"]))
+            XCTAssertEqual(tool.plan([:], repo: "o/r"), .refuse("session_id is missing."))
+        }
+        XCTAssertEqual(VoiceTool.closeConversation.operation, "close")
+        XCTAssertEqual(VoiceTool.deleteConversation.operation, "delete")
+        XCTAssertEqual(VoiceTool.closeConversation.plan(["session_id": "a"], repo: "o/r"), .confirm("Close the conversation; it can be reopened later."))
+        XCTAssertEqual(VoiceTool.deleteConversation.plan(["session_id": "a"], repo: "o/r"), .confirm("Delete the conversation and its transcript for good."))
     }
 
     func testNoToolNamesAProjectAndEveryCallIsOnTheConversationsOwn() {
@@ -49,7 +122,7 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(VoiceTool.waitingFindings.plan([:], repo: "o/r"), .call(["repo": "o/r"]))
         XCTAssertEqual(VoiceTool.startConversation.plan(["repo": "other/repo", "prompt": "Go", "confirmed": true], repo: "o/r"),
                        .call(["repo": "o/r", "prompt": "Go"]))
-        XCTAssertEqual(VoiceTool.allCases.filter(\.namesConversation), [.readConversation, .sendMessage, .stopConversation])
+        XCTAssertEqual(VoiceTool.allCases.filter(\.namesConversation), [.readConversation, .sendMessage, .stopConversation, .closeConversation, .deleteConversation])
         let sessions = j(#"{"sessions":[{"id":"a","repo":"o/r","status":"idle"}]}"#)
         XCTAssertTrue(Voice.owns(sessions, session: "a"))
         XCTAssertFalse(Voice.owns(sessions, session: "b"))
