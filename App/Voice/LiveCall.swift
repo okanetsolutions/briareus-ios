@@ -1,7 +1,7 @@
 import AVFoundation
 import WebRTC
 
-/// A WebRTC call to GPT-Live: the microphone goes out and the voice comes back on audio tracks, which WebRTC plays with
+/// A WebRTC call to GPT-Realtime: the microphone goes out and the voice comes back on audio tracks, which WebRTC plays with
 /// its own echo cancellation and jitter buffer; JSON events travel on a data channel. The OpenAI key is sent from
 /// this device, where it is kept in the Keychain, only to start the session.
 final class LiveCall: NSObject, @unchecked Sendable {
@@ -12,8 +12,8 @@ final class LiveCall: NSObject, @unchecked Sendable {
             case .microphone: return "Allow Briareus to use the microphone in Settings on your iPhone."
             case .refused: return "OpenAI refused the API key. Check it in Settings › Voice."
             case .offer: return "The call could not be prepared on this iPhone."
-            case .answer(let why): return "GPT-Live did not start the conversation: \(why)"
-            case .dropped: return "The connection with GPT-Live was lost."
+            case .answer(let why): return "GPT-Realtime did not start the conversation: \(why)"
+            case .dropped: return "The connection with GPT-Realtime was lost."
             }
         }
     }
@@ -44,9 +44,9 @@ final class LiveCall: NSObject, @unchecked Sendable {
     private var events: AsyncThrowingStream<JSON, Error>.Continuation?
     private var gathered: CheckedContinuation<Void, Never>?
 
-    /// Starts the call: asks for the microphone, offers the call to GPT-Live with `body(offer)` as the session, and
+    /// Starts the call: asks for the microphone, offers the call to GPT-Realtime with `session` beside the offer, and
     /// answers the events of the data channel until the call ends.
-    func open(key: String, body: @escaping (String) -> JSON) async throws -> AsyncThrowingStream<JSON, Error> {
+    func open(key: String, session: JSON) async throws -> AsyncThrowingStream<JSON, Error> {
         guard await AVAudioApplication.requestRecordPermission() else { throw Failure.microphone }
         let (stream, continuation) = AsyncThrowingStream<JSON, Error>.makeStream()
         lock.withLock { events = continuation }
@@ -71,17 +71,23 @@ final class LiveCall: NSObject, @unchecked Sendable {
         await gathering()
         guard let sdp = peer.localDescription?.sdp else { throw Failure.offer }
 
+        // The offer and the session go as two form fields; the answer is the SDP itself.
+        let boundary = "briareus-\(UUID().uuidString)"
+        var body = Data()
+        for (name, value, type) in [("sdp", sdp, "application/sdp"), ("session", session.serialized(), "application/json")] {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\nContent-Type: \(type)\r\n\r\n\(value)\r\n".utf8))
+        }
+        body.append(Data("--\(boundary)--\r\n".utf8))
         var request = URLRequest(url: Voice.endpoint, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = body(sdp).data
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 { throw Failure.refused }
-        let answer = JSON.parse(data) ?? .null
-        guard (200..<300).contains(status), let remote = answer["transport"]["sdp"].string else {
-            throw Failure.answer(answer["error"]["message"].string ?? "HTTP \(status)")
+        guard (200..<300).contains(status), let remote = String(data: data, encoding: .utf8), remote.hasPrefix("v=") else {
+            throw Failure.answer(JSON.parse(data)?["error"]["message"].string ?? "HTTP \(status)")
         }
         try await peer.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: remote))
         return stream
