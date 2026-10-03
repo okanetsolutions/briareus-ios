@@ -380,9 +380,11 @@ final class VoiceTests: XCTestCase {
     }
 
     func testFindingsTakeAYesOrANoOneByOne() {
-        XCTAssertFalse(VoiceTool.decideFinding.changes)
+        XCTAssertTrue(VoiceTool.decideFinding.changes)
         XCTAssertEqual(VoiceTool.listFindings.plan(["number": 9], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
-        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "fix"], repo: "o/r"),
+        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "dismissed"], repo: "o/r"),
+                       .confirm("Mark the finding on #9 no, dismissed."))
+        XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "fix", "confirmed": true], repo: "o/r"),
                        .call(["repo": "o/r", "pr": 9, "key": "k1", "decision": "fix"]))
         XCTAssertEqual(VoiceTool.decideFinding.plan(["number": 9, "key": "k1", "decision": "maybe"], repo: "o/r"),
                        .refuse("decision must be fix, dismissed or optional."))
@@ -415,6 +417,9 @@ final class VoiceTests: XCTestCase {
         let completion = Voice.roundCompletion(held, fix: ["k1"], dismiss: ["k2"], note: "Be brief")
         XCTAssertEqual(completion["verdicts"], [["key": "k1", "decision": "fix"], ["key": "k2", "decision": "dismissed"],
                                                 ["key": "k3", "decision": "optional"]])
+        XCTAssertEqual(Voice.roundReadBack(j(#"{"mine":false,"findings":[]}"#), fix: ["k1"], dismiss: []),
+                       "Take the review round off the queue: it is on someone else's pull request, so nothing is sent to be fixed.")
+        XCTAssertEqual(Voice.roundReadBack(held, fix: ["k1"], dismiss: []), "Complete the review round: 1 finding sent to be fixed.")
         XCTAssertEqual(VoiceTool.readReviewRound.plan(["session_id": "a"], repo: "o/r"), .call(["repo": "o/r"]))
         XCTAssertEqual(VoiceTool.readReviewRound.summary(j(#"{"sessions":[{"id":"a","title":"T","status":"idle"}]}"#), args: ["session_id": "a"])["error"],
                        "That conversation holds no review round waiting for a decision.")

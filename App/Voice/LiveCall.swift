@@ -106,7 +106,9 @@ final class LiveCall: NSObject, @unchecked Sendable {
     private func gathering() async {
         guard peer?.iceGatheringState != .complete else { return }
         await withCheckedContinuation { continuation in
-            lock.withLock { gathered = continuation }
+            // Checked again once the continuation is stored: gathering may have finished in between, with nothing to resume.
+            let done = lock.withLock { gathered = continuation; return peer?.iceGatheringState == .complete }
+            if done { doneGathering(); return }
             DispatchQueue.global().asyncAfter(deadline: .now() + 4) { [weak self] in self?.doneGathering() }
         }
     }

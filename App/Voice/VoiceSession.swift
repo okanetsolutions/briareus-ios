@@ -158,7 +158,8 @@ final class VoiceSession: ObservableObject {
             notice = event["error"]["message"].string ?? "\(engine.title) reported an error."
         // GPT-Live
         case "session.input_transcript.delta":
-            heard += 1
+            // A new turn of the user's, not every fragment: late fragments of the request a read-back answers are not a yes.
+            if lines.last?.user != true { heard += 1 }
             caption(user: true, event["delta"].string)
             touch()
         case "session.output_transcript.delta":
@@ -294,6 +295,12 @@ final class VoiceSession: ObservableObject {
             var unconfirmed = step.args
             unconfirmed["confirmed"] = false
             plan = tool.plan(unconfirmed, repo: repo)
+        }
+        // A round's read-back is made from the round itself: one on someone else's pull request takes no verdicts.
+        if tool == .completeReviewRound, case .confirm = plan, let id = step.args["session_id"].string,
+           let sessions = try? await Store.shared.call("sessions", ["repo": .string(repo)]) {
+            let held = (Session.parseList(sessions) ?? []).first { $0.id == id }?.heldTriage
+            plan = .confirm(Voice.roundReadBack(held, fix: step.args["fix"].strings, dismiss: step.args["dismiss"].strings))
         }
         if tool == .mergePullRequest {
             if case .refuse(let why) = plan { return finish(.failed(why), ["error": .string(why)]) }
@@ -436,6 +443,8 @@ final class VoiceSession: ObservableObject {
         parts.append(args["issue"].int.map(String.init) ?? "")
         parts.append(args["number"].int.map(String.init) ?? "")
         parts.append(args["errand"].string ?? "")
+        parts.append(args["key"].string ?? "")
+        parts.append(args["decision"].string ?? "")
         parts.append(args["fix"].strings.sorted().joined(separator: ","))
         parts.append(args["dismiss"].strings.sorted().joined(separator: ","))
         parts.append(words(args["text"].string ?? args["prompt"].string))

@@ -127,7 +127,7 @@ enum Voice {
 
     ## Confirmation
     start_conversation, work_on_issue, send_message, stop_conversation, close_conversation, delete_conversation, \
-    run_errand, complete_review_round and merge_pull_request change things. Call them with confirmed=false first: the answer says what to read back. Call \
+    run_errand, decide_finding, complete_review_round and merge_pull_request change things. Call them with confirmed=false first: the answer says what to read back. Call \
     again with confirmed=true only after the user clearly agreed to that exact action in their latest turn. Never pass \
     confirmed=true on your own.
 
@@ -384,7 +384,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     }
     var changes: Bool {
         [.startConversation, .workOnIssue, .sendMessage, .stopConversation, .closeConversation, .deleteConversation,
-         .mergePullRequest, .completeReviewRound, .runErrand].contains(self)
+         .mergePullRequest, .completeReviewRound, .runErrand, .decideFinding].contains(self)
     }
     /// Acts on a conversation named by id, which must be the project's: the phone checks before it answers.
     var namesConversation: Bool {
@@ -440,6 +440,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
             add("key", "string", "The finding's key, from list_findings.")
             properties["decision"] = ["type": "string", "enum": ["fix", "dismissed", "optional"], "description": "fix for yes, dismissed for no, optional to leave it to the implementer."]
             required.append("decision")
+            add("confirmed", "boolean", "True only after the user agreed to this exact action.")
         case .runErrand:
             description = "Starts an errand on one of the project's pull requests, as the board's buttons do: review (run the code review and publish it), implement-feedback (fix the findings marked fix and have the fixes reviewed), fix-checks (fix failing CI checks) or solve-conflicts (merge the base in and resolve the conflicts)."
             add("number", "integer", "The pull request's number.")
@@ -512,13 +513,13 @@ enum VoiceTool: String, CaseIterable, Sendable {
             // The phone reads the round and makes the verdicts from these keys before the call.
             var call: JSON = ["sessionId": .string(id), "fix": JSON(fix), "dismiss": JSON(dismiss)]
             if let note = text("note") { call["note"] = .string(note) }
-            let said = fix.isEmpty ? "nothing to fix, so the pull request is approved" : "\(fix.count) finding\(fix.count == 1 ? "" : "s") sent to be fixed"
-            let dropped = dismiss.isEmpty ? "" : ", \(dismiss.count) dismissed"
-            return confirmed ? .call(call) : .confirm("Complete the review round: \(said)\(dropped).")
+            return confirmed ? .call(call) : .confirm(Voice.roundReadBack(nil, fix: fix, dismiss: dismiss))
         case .decideFinding:
             guard let number = args["number"].int, number >= 1, let key = text("key") else { return .refuse("number and key are needed.") }
             guard let decision = text("decision"), findingDecisionIds.contains(decision) else { return .refuse("decision must be fix, dismissed or optional.") }
-            return .call(["repo": .string(repo), "pr": JSON(number), "key": .string(key), "decision": .string(decision)])
+            let call: JSON = ["repo": .string(repo), "pr": JSON(number), "key": .string(key), "decision": .string(decision)]
+            let said = ["fix": "yes, to be fixed", "dismissed": "no, dismissed", "optional": "optional"][decision] ?? decision
+            return confirmed ? .call(call) : .confirm("Mark the finding on #\(number) \(said).")
         case .runErrand:
             guard let number = args["number"].int, number >= 1 else { return .refuse("number is missing.") }
             guard let errand = text("errand"), let action = Voice.errand(errand) else {
@@ -746,6 +747,16 @@ extension Voice {
         for key in dismiss { picked[key] = "dismissed" }
         for key in fix { picked[key] = "fix" }
         return triageCompletion(held, picked: picked, note: note ?? "")
+    }
+    /// What completing a round reads back, from the round when it was read: one on someone else's pull request takes
+    /// no verdicts and only leaves the queue.
+    static func roundReadBack(_ held: JSON?, fix: [String], dismiss: [String]) -> String {
+        if let held, !triageTakesVerdicts(held) {
+            return "Take the review round off the queue: it is on someone else's pull request, so nothing is sent to be fixed."
+        }
+        let said = fix.isEmpty ? "nothing to fix, so the pull request is approved" : "\(fix.count) finding\(fix.count == 1 ? "" : "s") sent to be fixed"
+        let dropped = dismiss.isEmpty ? "" : ", \(dismiss.count) dismissed"
+        return "Complete the review round: \(said)\(dropped)."
     }
     /// A finding as the model reads it: its key, severity, place and words, and the verdict given it in plain terms.
     static func finding(_ f: JSON, verdict: String) -> JSON {
