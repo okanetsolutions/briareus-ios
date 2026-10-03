@@ -37,6 +37,22 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(VoiceCost().text, "$0.000")
     }
 
+    func testAMergeIsReadBackWithWhatStandsInItsWayAndOnlyMadeConfirmed() {
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 7], repo: "o/r"), .confirm("Squash-merge pull request #7."))
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan(["number": 7, "confirmed": true, "repo": "x/y"], repo: "o/r"),
+                       .call(["repo": "o/r", "pr": 7, "method": "squash"]))
+        XCTAssertEqual(VoiceTool.mergePullRequest.plan([:], repo: "o/r"), .refuse("number is missing."))
+        let pr = j(#"{"state":"open","title":"Fix login","headSha":"abc","baseRef":"main","checks":{"failed":2,"pending":1}}"#)
+        XCTAssertNil(Voice.mergeRefusal(pr, number: 7))
+        XCTAssertEqual(Voice.mergeReadBack(pr, number: 7, files: j(#"{"pr":{"mergeable":false,"mergeableState":"dirty"}}"#)),
+                       "Squash-merge pull request #7 (Fix login) into main. This branch has conflicts that must be resolved before it can merge. 2 checks are failing. 1 check is still running.")
+        XCTAssertEqual(Voice.mergeReadBack(j(#"{"state":"open","headSha":"a","baseRef":"dev"}"#), number: 3, files: .null),
+                       "Squash-merge pull request #3 into dev.")
+        XCTAssertEqual(Voice.mergeRefusal(j(#"{"state":"merged"}"#), number: 7), "Pull request #7 is not open: it is merged.")
+        XCTAssertEqual(Voice.mergeRefusal(j(#"{"state":"open","draft":true,"headSha":"a","baseRef":"m"}"#), number: 7),
+                       "Pull request #7 is a draft; mark it ready on GitHub first.")
+    }
+
     func testNoToolNamesAProjectAndEveryCallIsOnTheConversationsOwn() {
         for tool in VoiceTool.allCases {
             XCTAssertTrue(tool.definition["parameters"]["properties"]["repo"].isNull, tool.rawValue)

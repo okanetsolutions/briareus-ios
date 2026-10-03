@@ -26,7 +26,7 @@ enum Voice {
     user speaks, in one or two short sentences. Speak only when the user has said something; do not volunteer updates. \
     Use the tools for anything about the project's conversations, agents, pull requests, issues or findings, and say only \
     what they confirm. If the user asks about another project, say this conversation can only work on \(project). Before \
-    you start a conversation, send a message or stop an agent, read back what will happen in a few words and wait for the \
+    you start a conversation, send a message, stop an agent or merge a pull request, read back what will happen in a few words and wait for the \
     user's yes.
 
     \(toolInstructions(project: project))
@@ -61,10 +61,11 @@ enum Voice {
     ## Ready to merge
     A pull request is ready to be merged only when list_pull_requests marks it ready_to_merge: it carries the \
     code-approved label, its checks passed, and it has no conflicts and is not a draft. Never call one ready on its \
-    checks or reviews alone; say what it still lacks instead.
+    checks or reviews alone; say what it still lacks instead. The user may merge one anyway with merge_pull_request: \
+    its read-back says what stands in the way, and every word of it must be said before asking for the yes.
 
     ## Confirmation
-    start_conversation, work_on_issue, send_message and stop_conversation change things. Call them with confirmed=false first: the \
+    start_conversation, work_on_issue, send_message, stop_conversation and merge_pull_request change things. Call them with confirmed=false first: the \
     answer says what to read back. Call again with confirmed=true only after the user clearly agreed to that exact action \
     in their latest turn. Never pass confirmed=true on your own.
 
@@ -132,6 +133,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
     case workOnIssue = "work_on_issue"
     case sendMessage = "send_message"
     case stopConversation = "stop_conversation"
+    case mergePullRequest = "merge_pull_request"
 
     /// The client API call each tool makes.
     var operation: String {
@@ -144,9 +146,10 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .startConversation, .workOnIssue: return "start_session"
         case .sendMessage: return "message"
         case .stopConversation: return "cancel"
+        case .mergePullRequest: return "merge_pull"
         }
     }
-    var changes: Bool { [.startConversation, .workOnIssue, .sendMessage, .stopConversation].contains(self) }
+    var changes: Bool { [.startConversation, .workOnIssue, .sendMessage, .stopConversation, .mergePullRequest].contains(self) }
     /// Acts on a conversation named by id, which must be the project's: the phone checks before it answers.
     var namesConversation: Bool { [.readConversation, .sendMessage, .stopConversation].contains(self) }
 
@@ -196,6 +199,10 @@ enum VoiceTool: String, CaseIterable, Sendable {
             description = "Stops the agent's running turn. The conversation stays open."
             add("session_id", "string", "The conversation's id, from list_conversations.")
             add("confirmed", "boolean", "True only after the user agreed to this exact action.")
+        case .mergePullRequest:
+            description = "Squash-merges one of the project's open pull requests into its base branch. Without confirmed, answers what stands in the way of the merge to read back."
+            add("number", "integer", "The pull request's number.")
+            add("confirmed", "boolean", "True only after the user agreed to this exact action.")
         }
         return ["type": "function", "name": .string(rawValue), "description": .string(description),
                 "parameters": ["type": "object", "properties": .object(properties), "required": JSON(required),
@@ -237,6 +244,12 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .stopConversation:
             guard let id = text("session_id") else { return .refuse("session_id is missing.") }
             return confirmed ? .call(["sessionId": .string(id)]) : .confirm("Stop the agent's running turn.")
+        case .mergePullRequest:
+            guard let number = args["number"].int, number >= 1 else { return .refuse("number is missing.") }
+            // The phone reads the pull request before either: its head and base for the merge, what stands in the way
+            // for the read-back.
+            return confirmed ? .call(["repo": .string(repo), "pr": JSON(number), "method": "squash"])
+                : .confirm("Squash-merge pull request #\(number).")
         }
     }
 
@@ -326,9 +339,39 @@ enum VoiceTool: String, CaseIterable, Sendable {
             return ["done": true, "session_id": .string(session.id), "title": .string(session.displayTitle)]
         case .sendMessage:
             return ["done": true, "delivery": .string(CarText.sent(Session(answer["session"])))]
-        case .stopConversation:
+        case .stopConversation, .mergePullRequest:
             return ["done": true]
         }
+    }
+}
+
+extension Voice {
+    /// Why `pr` (the client API's pull request) cannot be merged at all, or nil.
+    static func mergeRefusal(_ pr: JSON, number: Int) -> String? {
+        if pr["state"].string != "open" { return "Pull request #\(number) is not open: it is \(pr["state"].string ?? "gone")." }
+        if pr["draft"].is(true) { return "Pull request #\(number) is a draft; mark it ready on GitHub first." }
+        if pr["headSha"].string == nil || pr["baseRef"].string == nil { return "Pull request #\(number) could not be read." }
+        return nil
+    }
+
+    /// The merge read back: what it merges into, then what stands in the way of it, as the screen's question says it.
+    /// `files` is the `pull_files` page when it could be read, with GitHub's word on conflicts and merge methods.
+    static func mergeReadBack(_ pr: JSON, number: Int, files: JSON) -> String {
+        var notes: [String] = []
+        let p = files["pr"]
+        if p.isObject { notes += mergeWarnings(mergeable: p["mergeable"], state: p["mergeableState"].string) }
+        if let methods = p["mergeMethods"].array, !methods.isEmpty, !methods.contains("squash") {
+            notes.append("This repository does not allow squash merges; GitHub will refuse this one.")
+        }
+        let failed = pr["checks"]["failed"].int ?? 0, pending = pr["checks"]["pending"].int ?? 0
+        if failed > 0 { notes.append("\(failed) check\(failed == 1 ? " is" : "s are") failing.") }
+        if pending > 0 { notes.append("\(pending) check\(pending == 1 ? " is" : "s are") still running.") }
+        if case .changesRequested = ReviewStatus(decision: pr["reviewDecision"].string, reviews: pr["reviews"]) {
+            notes.append("A reviewer has requested changes.")
+        }
+        let title = pr["title"].string.map { " (\($0))" } ?? ""
+        return (["Squash-merge pull request #\(number)\(title) into \(pr["baseRef"].string ?? "its base")."] + notes)
+            .joined(separator: " ")
     }
 }
 

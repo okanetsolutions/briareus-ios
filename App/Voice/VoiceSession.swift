@@ -49,6 +49,8 @@ final class VoiceSession: ObservableObject {
     private var seenCalls: Set<String> = []
     /// The changes read back to the user, with how much had been heard at the time.
     private var readBacks: [String: Int] = [:]
+    /// The head each merge read back was read at: a push after it makes GitHub refuse the merge rather than take it.
+    private var mergeHeads: [String: String] = [:]
     private var sequence = 0
 
     private init() {}
@@ -66,7 +68,7 @@ final class VoiceSession: ObservableObject {
         } catch { notice = error.localizedDescription; return }
         phase = .connecting
         repo = project.repo
-        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil; cost = VoiceCost()
+        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; mergeHeads = [:]; muted = false; started = nil; cost = VoiceCost()
         let call = LiveCall()
         self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
@@ -233,6 +235,28 @@ final class VoiceSession: ObservableObject {
             unconfirmed["confirmed"] = false
             plan = tool.plan(unconfirmed, repo: repo)
         }
+        // A merge is said and made on the pull request as it is now: open, not a draft, with what stands in its way.
+        if tool == .mergePullRequest, let number = step.args["number"].int, number >= 1 {
+            guard Store.shared.supports("pull"), Store.shared.supports(tool.operation) else {
+                return finish(.failed("Not allowed"), ["error": "This device's token cannot do that on the server."])
+            }
+            let pr: JSON
+            do { pr = try await Store.shared.call("pull", ["repo": .string(repo), "pr": JSON(number)])["pr"] }
+            catch { let said = errorText(error); return finish(.failed(said), ["error": .string(said)]) }
+            if let why = Voice.mergeRefusal(pr, number: number) { readBacks[key] = nil; return finish(.failed(why), ["error": .string(why)]) }
+            switch plan {
+            case .confirm:
+                let files = Store.shared.supports("pull_files")
+                    ? (try? await Store.shared.call("pull_files", ["repo": .string(repo), "pr": JSON(number)])) ?? .null : .null
+                mergeHeads[key] = pr["headSha"].string
+                plan = .confirm(Voice.mergeReadBack(pr, number: number, files: files))
+            case .call(var arguments):
+                arguments["headSha"] = .string(mergeHeads[key] ?? pr["headSha"].string ?? "")
+                arguments["baseRef"] = .string(pr["baseRef"].string ?? "")
+                plan = .call(arguments)
+            case .refuse: break
+            }
+        }
         switch plan {
         case .refuse(let why):
             return finish(.failed(why), ["error": .string(why)])
@@ -275,7 +299,7 @@ final class VoiceSession: ObservableObject {
                 let sessions = tool.readsConversations
                     ? (try? await Store.shared.call("sessions", ["repo": .string(repo)])).flatMap(Session.parseList) ?? []
                     : []
-                readBacks[key] = nil
+                readBacks[key] = nil; mergeHeads[key] = nil
                 if tool.changes { Task { try? await Store.shared.feed(repo).loadSessions(fresh: true) } }
                 return finish(.done, tool.summary(answer, args: step.args, sessions: sessions))
             } catch {
@@ -290,7 +314,7 @@ final class VoiceSession: ObservableObject {
         let words = { (s: String?) in
             (s ?? "").lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.joined(separator: " ")
         }
-        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "", args["issue"].int.map(String.init) ?? "",
+        return [tool.rawValue, args["session_id"].string ?? "", args["branch"].string ?? "", args["issue"].int.map(String.init) ?? "", args["number"].int.map(String.init) ?? "",
                 words(args["text"].string ?? args["prompt"].string)].joined(separator: "|")
     }
 }
