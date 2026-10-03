@@ -55,9 +55,8 @@ struct SettingsScreen: View {
             guard managesServer else { return }
             await poll(every: 60) { await reading { try await lists.refresh() } }
         }
-        .confirmationDialog(confirm == .revoke ? "Revoke this device token?" : "Forget this connection?",
-                            isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }),
-                            titleVisibility: .visible, presenting: confirm) { action in
+        .alert(confirm == .revoke ? "Revoke this device token?" : "Forget this connection?",
+               isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { action in
             Button(action == .revoke ? "Revoke and disconnect" : "Forget", role: .destructive) { run(action) }
             Button("Cancel", role: .cancel) {}
         } message: { action in

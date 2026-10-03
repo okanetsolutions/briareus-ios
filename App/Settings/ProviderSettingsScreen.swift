@@ -345,7 +345,7 @@ struct ProviderSettingsScreen: View {
             onClone: id != 0 && store.supports("create_provider") ? { if let copy = model.cloneRow() { navigate(.providerSettings(row: copy, defaults: nil)) } } : nil,
             deleteTitle: "Delete provider",
             onDelete: id != 0 && store.supports("delete_provider") ? { confirmDelete = true } : nil))
-        .confirmationDialog("Delete \(state.row["label"].nonEmpty ?? "this provider")?", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .alert("Delete \(state.row["label"].nonEmpty ?? "this provider")?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { model.delete { dismiss() } }
             Button("Cancel", role: .cancel) {}
         } message: {

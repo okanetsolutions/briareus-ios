@@ -91,15 +91,16 @@ struct IssueScreen: View {
             guard store.supports("sessions") else { return }
             await poll(every: ProjectFeed.sessionsEvery) { await reading { try await feed.loadSessions() } }
         }
-        .confirmationDialog("Start a paid session on issue #\(issue.number)?" as String, isPresented: $confirmingStart, titleVisibility: .visible) {
+        .alert("Start a paid session on issue #\(issue.number)?" as String, isPresented: $confirmingStart) {
             Button("Start session") { Task { await start() } }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text(runActive ? "A session is already working on this issue." : "It runs a paid agent on this project’s configured model.")
         }
-        .confirmationDialog(closeReason.map { "Close issue #\(issue.number) as \($0.words)?" } ?? "",
-                            isPresented: Binding(get: { closeReason != nil }, set: { if !$0 { closeReason = nil } }),
-                            titleVisibility: .visible, presenting: closeReason) { reason in
+        .alert(closeReason.map { "Close issue #\(issue.number) as \($0.words)?" } ?? "",
+               isPresented: Binding(get: { closeReason != nil }, set: { if !$0 { closeReason = nil } }), presenting: closeReason) { reason in
             Button("Close issue", role: .destructive) { Task { await close(reason) } }
+            Button("Cancel", role: .cancel) {}
         } message: { _ in
             if let why = closeNote(issue) { Text(why) }
         }

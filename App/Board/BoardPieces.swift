@@ -126,10 +126,10 @@ private struct ErrandPrompts: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(runner.confirming.map { "Start \($0.action.label) on #\($0.number)?" } ?? "",
-                                isPresented: Binding(get: { runner.confirming != nil }, set: { if !$0 { runner.confirming = nil } }),
-                                titleVisibility: .visible, presenting: runner.confirming) { p in
+            .alert(runner.confirming.map { "Start \($0.action.label) on #\($0.number)?" } ?? "",
+                   isPresented: Binding(get: { runner.confirming != nil }, set: { if !$0 { runner.confirming = nil } }), presenting: runner.confirming) { p in
                 Button("Start paid session", role: p.action.id == "delete-self-comments" ? .destructive : nil) { start(p) }
+                Button("Cancel", role: .cancel) {}
             } message: { p in
                 Text(paidNote(p))
             }

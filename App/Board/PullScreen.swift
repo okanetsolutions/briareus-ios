@@ -59,30 +59,31 @@ struct PullScreen: View {
         .onAppear { model.appeared() }
         .onDisappear { model.disappeared() }
         .errandPrompts(errands)
-        .confirmationDialog(model.mergeQuestion.map { "Squash and merge #\(number) into \($0.base)?" } ?? "",
-                            isPresented: Binding(get: { model.mergeQuestion != nil }, set: { if !$0 { model.mergeQuestion = nil } }),
-                            titleVisibility: .visible, presenting: model.mergeQuestion) { _ in
+        .alert(model.mergeQuestion.map { "Squash and merge #\(number) into \($0.base)?" } ?? "",
+               isPresented: Binding(get: { model.mergeQuestion != nil }, set: { if !$0 { model.mergeQuestion = nil } }), presenting: model.mergeQuestion) { _ in
             Button("Squash and merge") { Task { await model.merge() } }
+            Button("Cancel", role: .cancel) {}
         } message: { q in
             Text(q.notes.isEmpty ? "Its commits are squashed into one on \(q.base) on GitHub. This cannot be undone from the app." : q.notes.joined(separator: " "))
         }
-        .confirmationDialog(solveTitle, isPresented: Binding(get: { confirmingSolve != nil }, set: { if !$0 { confirmingSolve = nil } }),
-                            titleVisibility: .visible, presenting: confirmingSolve) { p in
+        .alert(solveTitle, isPresented: Binding(get: { confirmingSolve != nil }, set: { if !$0 { confirmingSolve = nil } }), presenting: confirmingSolve) { p in
             Button("Solve findings") {
                 Task { if let s = await errands.run(p) { navigate(.conversation(id: s.id, session: s.raw)) } }
             }
+            Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text(verbatim: "The agent addresses the findings on PR #\(number), pushes the fixes to its branch and has them reviewed again. Uses the provider and model configured for this project.")
         }
-        .confirmationDialog("Permanently delete this conversation and its transcript?",
-                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                            titleVisibility: .visible, presenting: deleting) { s in
+        .alert("Permanently delete this conversation and its transcript?",
+               isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { s in
             Button("Delete", role: .destructive) { Task { await model.delete(s.id) } }
+            Button("Cancel", role: .cancel) {}
         } message: { s in Text("\u{201C}\(s.displayTitle)\u{201D}") }
-        .confirmationDialog("Delete this run?", isPresented: $deletingServed, titleVisibility: .visible) {
+        .alert("Delete this run?", isPresented: $deletingServed) {
             Button("Delete", role: .destructive) {
                 if let id = model.runTarget { Task { await model.delete(id) } }
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Its workspace stops serving the pull request, and its conversation and transcript are deleted permanently.")
         }
