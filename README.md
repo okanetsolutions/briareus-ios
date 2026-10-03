@@ -42,7 +42,7 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 - Shows open pull requests: labels, whether they conflict with their base, the state of their checks, author, assignees, reviewers, linked issues and stack position, narrowed by author, reviewer or label.
 - Opens a pull request on its description, file changes with diffs, reviews, the issues it closes, findings, the conversations already run on it and its ▶ Run preview in an embedded browser.
 - Records fix, optional or dismiss decisions on findings, and merges when the server offers it, saying first what stands in the way.
-- Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, PR body and delete my comments. The one the pull request's state asks for is marked as suggested, and named on its row in the list.
+- Starts the board's errands on a pull request: run, code review, solve conflicts, fix failing checks, implement feedback, feedback in your own words, PR body and delete my comments. The one the pull request's state asks for is marked as suggested, named on its row in the list and offered as a button above Squash and merge.
 - Lists the repository's open issues, sub-issues nested under their epic, with the pull requests answering each, starts a session on an issue and closes one as completed or not planned.
 
 **Usage and Settings**
