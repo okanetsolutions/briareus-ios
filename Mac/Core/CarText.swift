@@ -101,7 +101,7 @@ enum CarText {
         allowed.isEmpty || allowed.contains("squash") ? "squash" : ["merge", "rebase"].first(where: allowed.contains) ?? "squash"
     }
     static func mergeTitle(_ method: String) -> String {
-        ["squash": "Squash and merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"][method] ?? method.capitalized
+        ["squash": "Merge", "merge": "Create a merge commit", "rebase": "Rebase and merge"][method] ?? method.capitalized
     }
     /// What `merge_pull` answered: merged, queued, or still being finished by GitHub.
     static func merged(_ answer: JSON, base: String) -> String {
