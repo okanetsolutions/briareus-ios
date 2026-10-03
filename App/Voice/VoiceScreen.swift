@@ -183,6 +183,15 @@ extension VoiceSession.Step {
         case .mergePullRequest: return (state == .waiting ? "Asked to merge #" : "Merge #") + (args["number"].int.map(String.init) ?? "")
         case .readPullRequest: return "Read the changes of #" + (args["number"].int.map(String.init) ?? "")
         case .workOnIssue: return (state == .waiting ? "Asked to work on issue #" : "Work on issue #") + (args["issue"].int.map(String.init) ?? "")
+        case .readReviewRound: return "Read a review round"
+        case .completeReviewRound: return state == .waiting ? "Asked to complete a review round" : "Complete a review round"
+        case .listFindings: return "Read the findings of #" + (args["number"].int.map(String.init) ?? "")
+        case .decideFinding:
+            let said = ["fix": "Yes to", "dismissed": "No to", "optional": "Optional:"][args["decision"].string ?? ""] ?? "Decide"
+            return "\(said) a finding on #" + (args["number"].int.map(String.init) ?? "")
+        case .runErrand:
+            let label = Voice.errand(args["errand"].string ?? "")?.label ?? "An errand"
+            return (state == .waiting ? "Asked: " : "") + "\(label) on #" + (args["number"].int.map(String.init) ?? "")
         case .closeConversation: return state == .waiting ? "Asked to close a conversation" : "Close a conversation"
         case .deleteConversation: return state == .waiting ? "Asked to delete a conversation" : "Delete a conversation"
         case .startConversation: return (state == .waiting ? "Asked to start an agent: " : "Start an agent: ") + (args["prompt"].string ?? "")
