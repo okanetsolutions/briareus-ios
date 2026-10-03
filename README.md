@@ -22,7 +22,7 @@ A native SwiftUI client for [Briareus](https://github.com/nadinyamaui/briareus),
 
 ## What it does
 
-The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out for a phone: **Projects** (the projects, their conversations and boards), **Findings** (the review rounds waiting across every project, with their count on the tab), **Usage** and **Settings**. It runs on the Mac app's core (`Mac/Core`), so both apps read the server the same way. The screen stays on while the app is open.
+The iPhone and iPad app opens on five tabs, the Mac app's sidebar strip laid out for a phone: **Projects** (the projects, their conversations and boards), **Findings** (the review rounds waiting across every project, with their count on the tab), **Usage**, **Voice** and **Settings**. It runs on the Mac app's core (`Mac/Core`), so both apps read the server the same way. The screen stays on while the app is open.
 
 **Conversations**
 
@@ -36,6 +36,13 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 - Records voice notes and has the server transcribe them into the message box, in whichever language was spoken. On a server that cannot transcribe, the microphone says what the server is missing.
 - On an iPad, keeps the projects and conversations in a column on the left and the chosen conversation on the right. A window too narrow for both falls back to the phone's single column.
 - On a Mac, runs as a Mac app of its own (`Mac/`), the twin of [Briareus for Windows](https://github.com/okanetsolutions/briareus-windows): the same screens, layout and features, on the client API (`/api/v1`). See [The Mac app](#the-mac-app).
+
+**Voice**
+
+- Holds a spoken conversation with OpenAI's [GPT-Live](https://developers.openai.com/api/docs/models/gpt-live-1) about the projects: what a conversation is doing, what its agent asks, which pull requests wait, which findings need a decision. It answers only when spoken to.
+- Starts a conversation on a project, sends a message or answers an agent's question, and stops a running turn. Each change is read back and runs only on a yes said after it; deleting, closing and merging stay on the screen.
+- Talks to OpenAI directly from the phone with an API key kept in its Keychain (Settings › Voice), over a WebSocket with PCM16 audio at 24 kHz. A Responses model (`gpt-6-luna` by default) picks the actions, which the phone runs on `/api/v1` with its own token.
+- Goes on with the phone locked, and ends on its own after a silence (3 minutes by default), as GPT-Live bills by the minute.
 
 **Project board**
 

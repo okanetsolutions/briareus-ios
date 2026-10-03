@@ -2,9 +2,14 @@ import Foundation
 import Security
 
 enum Keychain {
-    private static func query(_ origin: String) -> [String: Any] {
+    /// The device token, one per server origin.
+    static let device = "com.okanetsolutions.briareus.device"
+    /// The OpenAI API key the voice mode connects with, under the account "openai".
+    static let voice = "com.okanetsolutions.briareus.voice"
+
+    private static func query(_ origin: String, _ service: String) -> [String: Any] {
         var query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: "com.okanetsolutions.briareus.device",
+         kSecAttrService as String: service,
          kSecAttrAccount as String: origin,
          kSecAttrSynchronizable as String: false]
         // A Mac keeps the token in the keychain the phone uses, where device-only protection holds, not in the login keychain.
@@ -22,8 +27,8 @@ enum Keychain {
         kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         #endif
     }
-    static func read(_ origin: String) throws -> String? {
-        var q = query(origin)
+    static func read(_ origin: String, service: String = device) throws -> String? {
+        var q = query(origin, service)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
@@ -32,11 +37,11 @@ enum Keychain {
         guard status == errSecSuccess, let data = result as? Data,
               let token = String(data: data, encoding: .utf8) else { throw failure(status) }
         // A token saved before the app ran in a car is moved to the protection the car needs.
-        SecItemUpdate(query(origin) as CFDictionary, [kSecAttrAccessible as String: accessible] as CFDictionary)
+        SecItemUpdate(query(origin, service) as CFDictionary, [kSecAttrAccessible as String: accessible] as CFDictionary)
         return token
     }
-    static func save(_ token: String, origin: String) throws {
-        let q = query(origin)
+    static func save(_ token: String, origin: String, service: String = device) throws {
+        let q = query(origin, service)
         let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8),
             kSecAttrAccessible as String: accessible]
         let status = SecItemUpdate(q as CFDictionary, attributes as CFDictionary)
@@ -45,8 +50,8 @@ enum Keychain {
             guard added == errSecSuccess else { throw failure(added) }
         } else if status != errSecSuccess { throw failure(status) }
     }
-    static func remove(_ origin: String) throws {
-        let status = SecItemDelete(query(origin) as CFDictionary)
+    static func remove(_ origin: String, service: String = device) throws {
+        let status = SecItemDelete(query(origin, service) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw failure(status) }
     }
     private static func failure(_ status: OSStatus) -> NSError {
