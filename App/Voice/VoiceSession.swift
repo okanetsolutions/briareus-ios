@@ -277,6 +277,11 @@ final class VoiceSession: ObservableObject {
                     arguments = start
                 }
                 var answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
+                // A pull request's description is read apart from its files.
+                if tool == .readPullRequest, Store.shared.supports("pull_description"),
+                   let body = (try? await Store.shared.call("pull_description", arguments))?["pr"]["body"].string {
+                    answer["description"] = .string(body)
+                }
                 // An issue's comments are on its timeline, oldest first: its pages are read up to a few, for the latest.
                 if tool == .readIssue, Store.shared.supports("issue_timeline") {
                     var rows: [JSON] = [], read = arguments

@@ -191,24 +191,35 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(VoiceTool.readIssue.summary(j("{}"), args: [:])["error"], "The server did not return the issue.")
     }
 
-    func testAPullRequestsChangesCountItsFilesAndGroupThemByFolder() {
+    func testAPullRequestsChangesGiveItsDescriptionAndEachFilesNameWithItsDiff() {
         XCTAssertEqual(VoiceTool.readPullRequest.plan(["number": 9], repo: "o/r"), .call(["repo": "o/r", "pr": 9]))
         XCTAssertEqual(VoiceTool.readPullRequest.plan([:], repo: "o/r"), .refuse("number is missing."))
-        let answer = j(#"""
+        var answer = j(#"""
         {"pr":{"changedFiles":3,"additions":40,"deletions":5,"commits":2},
-         "files":[{"filename":"App/A.swift","status":"added","additions":30,"deletions":0},
-                  {"filename":"App/B.swift","status":"modified","additions":9,"deletions":5},
-                  {"filename":"README.md","additions":1,"deletions":0}]}
+         "files":[{"filename":"App/A.swift","status":"added","additions":30,"deletions":0,"patch":"@@ -0,0 +1 @@\n+let a = 1"},
+                  {"filename":"App/B.swift","status":"modified","additions":9,"deletions":5,"patch":"@@ -1 +1 @@\n-old\n+new"},
+                  {"filename":"logo.png","status":"added"}]}
         """#)
+        answer["description"] = "Adds **exports**.\n<!-- hidden -->"
         let out = VoiceTool.readPullRequest.summary(answer, args: [:])
         XCTAssertEqual(out["changed_files"], 3)
         XCTAssertEqual(out["lines_added"], 40)
         XCTAssertEqual(out["lines_removed"], 5)
         XCTAssertEqual(out["commits"], 2)
-        XCTAssertEqual(out["by_folder"], [["folder": "App", "files": 2], ["folder": "README.md", "files": 1]])
-        XCTAssertEqual(out["files"][2], ["path": "README.md", "change": "modified", "added": 1, "removed": 0])
+        XCTAssertEqual(out["description"], "Adds **exports**.")
+        XCTAssertEqual(out["files"], [["file": "App/A.swift", "diff": "@@ -0,0 +1 @@\n+let a = 1"],
+                                      ["file": "App/B.swift", "diff": "@@ -1 +1 @@\n-old\n+new"],
+                                      ["file": "logo.png", "diff": "No diff: a binary file, or one too large for GitHub to show."]])
+        XCTAssertTrue(out["diffs"].isNull)
         XCTAssertTrue(out["files_listed"].isNull)
-        XCTAssertEqual(Voice.changes(PullFilesPage(answer)!, listed: 2)["files_listed"], "the first 2 only")
+
+        // Each diff is cut, and past the budget a file keeps its name alone.
+        let tight = Voice.changes(PullFilesPage(answer)!, perFile: 5, budget: 8)
+        XCTAssertEqual(tight["files"], [["file": "App/A.swift", "diff": "@@ -0…"], ["file": "App/B.swift", "diff": "@@…"],
+                                        ["file": "logo.png", "diff": "No diff: a binary file, or one too large for GitHub to show."]])
+        let spent = Voice.changes(PullFilesPage(answer)!, perFile: 5, budget: 5)
+        XCTAssertEqual(spent["files"][1], ["file": "App/B.swift"])
+        XCTAssertEqual(spent["diffs"], "Cut short: the later files are listed by name only.")
     }
 
     func testTheCostCountsVoiceSecondsAndEachBackendResponseOnce() {
