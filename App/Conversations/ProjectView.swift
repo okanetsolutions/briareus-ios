@@ -206,7 +206,6 @@ struct ProjectView: View {
         } else if store.supports("close") {
             Button("Close", systemImage: "archivebox") { asked = RowAction(session: s, action: "close") }
         }
-        Button("Copy Session ID", systemImage: "doc.on.doc") { Pasteboard.copy(s.id) }
         if store.supports("delete") {
             Button("Delete", systemImage: "trash", role: .destructive) { asked = RowAction(session: s, action: "delete") }
         }

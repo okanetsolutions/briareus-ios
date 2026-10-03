@@ -203,14 +203,13 @@ final class ConversationModel: ObservableObject {
         case "delete": title = "Permanently delete this conversation and its transcript?"
         case "cancel": title = "Stop the running agent?"
         case "close": title = "Close this conversation?"
-        case "review_loop": title = "Turn on the review loop? Each push gets a paid review round, and may start one now."
         default: title = "Reopen this conversation?"
         }
         dialogOpen = true
         let ok = Dialogs.confirm(title, nil, continueLabel: "Confirm", destructive: action == "delete" || action == "cancel")
         dialogOpen = false
         guard ok else { return }
-        mutate(action, action == "review_loop" ? ["on": true] : [:])
+        mutate(action)
     }
 
     func send() {
@@ -228,7 +227,7 @@ final class ConversationModel: ObservableObject {
     }
 
     func toggleLoop() {
-        if session.reviewLoopOn { mutate("review_loop", ["on": false]) } else { confirmAndMutate("review_loop") }
+        mutate("review_loop", ["on": .bool(!session.reviewLoopOn)])
     }
 
     func answer(_ label: String) {
