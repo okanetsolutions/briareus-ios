@@ -32,6 +32,8 @@ final class VoiceSession: ObservableObject {
     @Published private(set) var lines: [Line] = []
     @Published private(set) var steps: [Step] = []
     @Published private(set) var started: Date?
+    /// What the conversation has cost so far, from the usage OpenAI reports.
+    @Published private(set) var cost = VoiceCost()
     /// Why the last conversation failed or ended by itself.
     @Published private(set) var notice: String?
 
@@ -64,7 +66,7 @@ final class VoiceSession: ObservableObject {
         } catch { notice = error.localizedDescription; return }
         phase = .connecting
         repo = project.repo
-        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil
+        lines = []; steps = []; heard = 0; calls = [:]; seenCalls = []; readBacks = [:]; muted = false; started = nil; cost = VoiceCost()
         let call = LiveCall()
         self.call = call
         let named = project.title == project.repo ? project.repo : "\(project.title) (\(project.repo))"
@@ -125,12 +127,16 @@ final class VoiceSession: ObservableObject {
             touch()
         case "conversation.item.input_audio_transcription.completed":
             caption(user: true, event["transcript"].string)
+            cost.add(transcription: event["usage"])
             touch()
         case "response.output_audio_transcript.delta":
             caption(user: false, event["delta"].string)
             talking()
             touch()
-        case "response.output_item.done", "response.done":
+        case "response.output_item.done":
+            tools(event)
+        case "response.done":
+            cost.add(response: event["response"]["usage"])
             tools(event)
         case "error":
             notice = event["error"]["message"].string ?? "GPT-Realtime reported an error."

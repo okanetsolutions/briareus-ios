@@ -132,6 +132,10 @@ struct VoiceScreen: View {
                 Color.clear.frame(width: 56, height: 56)
             }
             status.font(.footnote).foregroundStyle(.secondary)
+            if mine && (voice.isOn || voice.cost.dollars > 0) {
+                Text("Cost so far: \(voice.cost.text)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("voiceCost")
+            }
         }
         .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 18)
     }

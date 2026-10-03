@@ -86,6 +86,36 @@ enum Voice {
     }
 }
 
+// MARK: - Cost
+
+/// What a conversation has cost so far, in dollars, from the token usage OpenAI reports: each response's on
+/// `response.done`, and each transcription of the user's speech on its completed event. Prices per million tokens, as
+/// OpenAI lists them for gpt-realtime-2.1-mini and gpt-4o-mini-transcribe.
+struct VoiceCost: Equatable, Sendable {
+    private(set) var dollars = 0.0
+
+    /// A response's usage: input split into text, audio and image, each with a cached part; output into text and audio.
+    mutating func add(response usage: JSON) {
+        let input = usage["input_token_details"], cached = input["cached_tokens_details"], output = usage["output_token_details"]
+        func n(_ j: JSON) -> Double { Double(j.int ?? 0) }
+        let fresh = (text: n(input["text_tokens"]) - n(cached["text_tokens"]),
+                     audio: n(input["audio_tokens"]) - n(cached["audio_tokens"]),
+                     image: n(input["image_tokens"]) - n(cached["image_tokens"]))
+        dollars += (max(fresh.text, 0) * 0.60 + n(cached["text_tokens"]) * 0.06
+                    + max(fresh.audio, 0) * 10 + n(cached["audio_tokens"]) * 0.30
+                    + max(fresh.image, 0) * 0.80 + n(cached["image_tokens"]) * 0.08
+                    + n(output["text_tokens"]) * 2.40 + n(output["audio_tokens"]) * 20) / 1_000_000
+    }
+
+    /// A transcription's usage, when it is billed by tokens.
+    mutating func add(transcription usage: JSON) {
+        guard usage["type"].string == "tokens" else { return }
+        dollars += (Double(usage["input_tokens"].int ?? 0) * 1.25 + Double(usage["output_tokens"].int ?? 0) * 5) / 1_000_000
+    }
+
+    var text: String { dollars < 0.01 && dollars > 0 ? String(format: "$%.4f", dollars) : String(format: "$%.3f", dollars) }
+}
+
 // MARK: - Tools
 
 /// What the model may call. Each runs one call of the client API on the conversation's project; the ones that change
