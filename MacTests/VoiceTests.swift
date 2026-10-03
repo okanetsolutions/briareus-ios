@@ -95,4 +95,19 @@ final class VoiceTests: XCTestCase {
         let events = [Event(j(#"{"seq":1,"kind":"text","text":"\#(long)"}"#))!]
         XCTAssertEqual(Voice.latest(events, length: 10)[0]["text"], .string(String(repeating: "a", count: 10) + "…"))
     }
+
+    func testAPullRequestIsReadyToMergeOnlyWithTheApprovedLabelAndPassingChecks() {
+        let answer = j(#"""
+        {"pulls":[
+          {"number":1,"title":"Ready","checks":"success","labels":[{"name":"Code-Approved"}],"reviewDecision":"APPROVED"},
+          {"number":2,"title":"Approved by review only","checks":"success","labels":[],"reviewDecision":"APPROVED"},
+          {"number":3,"title":"Checks running","checks":"pending","labels":[{"name":"code-approved"}]},
+          {"number":4,"title":"Conflicts","checks":"success","mergeable":"conflicting","labels":[{"name":"code-approved"}]},
+          {"number":5,"title":"Draft","checks":"success","draft":true,"labels":[{"name":"code-approved"}]}]}
+        """#)
+        let pulls = VoiceTool.listPullRequests.summary(answer, args: [:])["pull_requests"].items
+        XCTAssertEqual(pulls.map { $0["ready_to_merge"] }, [true, false, false, false, false])
+        XCTAssertEqual(pulls[0]["labels"], ["Code-Approved"])
+        XCTAssertTrue(VoiceTool.listPullRequests.definition["description"].string!.contains("ready to merge"))
+    }
 }

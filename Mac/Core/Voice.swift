@@ -43,6 +43,11 @@ enum Voice {
     against titles loosely. read_conversation tells what an agent did, said or asks. send_message also answers an \
     agent's question.
 
+    ## Ready to merge
+    A pull request is ready to be merged only when list_pull_requests marks it ready_to_merge: it carries the \
+    code-approved label, its checks passed, and it has no conflicts and is not a draft. Never call one ready on its \
+    checks or reviews alone; say what it still lacks instead.
+
     ## Confirmation
     start_conversation, send_message and stop_conversation change things. Call them with confirmed=false first: the \
     answer says what to read back. Call again with confirmed=true only after the user clearly agreed to that exact action \
@@ -116,7 +121,7 @@ enum VoiceTool: String, CaseIterable, Sendable {
             description = "A conversation's status and its latest messages: what the user asked, what the agent said, and an open question."
             add("session_id", "string", "The conversation's id, from list_conversations.")
         case .listPullRequests:
-            description = "The project's open pull requests with their checks, conflicts and review state."
+            description = "The project's open pull requests with their checks, conflicts, labels and review state, and whether each is ready to merge."
         case .waitingFindings:
             description = "The project's review rounds waiting for the user's decision."
         case .startConversation:
@@ -184,7 +189,8 @@ enum VoiceTool: String, CaseIterable, Sendable {
         case .listPullRequests:
             let pulls = PullSummary.parseList(answer["pulls"])
             return ["pull_requests": .array(pulls.prefix(15).map { pr in
-                ["number": JSON(pr.number), "title": .string(CarText.inline(pr.title)), "state": .string(CarText.pullLine(pr))]
+                ["number": JSON(pr.number), "title": .string(CarText.inline(pr.title)), "state": .string(CarText.pullLine(pr)),
+                 "labels": JSON(pr.labels.map(\.name)), "ready_to_merge": .bool(Voice.readyToMerge(pr))]
             }), "total": JSON(pulls.count)]
         case .waitingFindings:
             let held = CarText.holdingFindings(Session.parseList(answer) ?? [])
@@ -214,6 +220,12 @@ enum VoicePlan: Equatable, Sendable {
 }
 
 extension Voice {
+    /// The label a reviewer sets once the code is approved.
+    static let approvedLabel = "code-approved"
+    /// Ready to merge: approved by its label, checks passed, no conflicts, not a draft.
+    static func readyToMerge(_ pr: PullSummary) -> Bool {
+        pr.labels.contains { foldEqual($0.name, approvedLabel) } && pr.checks == "success" && !pr.hasConflicts && !pr.draft
+    }
     /// Whether a conversation is one of the project's, by what `sessions` answered for it.
     static func owns(_ sessions: JSON, session id: String) -> Bool {
         (Session.parseList(sessions) ?? []).contains { $0.id == id }
