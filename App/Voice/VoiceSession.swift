@@ -250,9 +250,12 @@ final class VoiceSession: ObservableObject {
                     return finish(.failed(why), ["error": .string(why)])
                 }
                 let answer = try await Store.shared.call(tool.operation, arguments, timeout: 60)
+                let sessions = tool.readsConversations
+                    ? (try? await Store.shared.call("sessions", ["repo": .string(repo)])).flatMap(Session.parseList) ?? []
+                    : []
                 readBacks[key] = nil
                 if tool.changes { Task { try? await Store.shared.feed(repo).loadSessions(fresh: true) } }
-                return finish(.done, tool.summary(answer, args: step.args))
+                return finish(.done, tool.summary(answer, args: step.args, sessions: sessions))
             } catch {
                 let said = errorText(error)
                 return finish(.failed(said), ["error": .string(said)])

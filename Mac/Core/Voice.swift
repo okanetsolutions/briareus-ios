@@ -40,7 +40,10 @@ enum Voice {
 
     ## Tools
     Find conversations with list_conversations before acting on one; never invent an id. Match what the user names \
-    against titles loosely. read_conversation tells what an agent did, said or asks. send_message also answers an \
+    against titles loosely. Each conversation carries its pull_request with its state (open, merged or closed) and \
+    checks, and each open pull request names the conversations working on it: use these links to answer whether a \
+    conversation's pull request was merged or closed. list_pull_requests lists open pull requests only; one missing \
+    from it was merged or closed, and the conversation's pull_request says which. read_conversation tells what an agent did, said or asks. send_message also answers an \
     agent's question.
 
     ## Ready to merge
@@ -115,13 +118,13 @@ enum VoiceTool: String, CaseIterable, Sendable {
         let description: String
         switch self {
         case .listConversations:
-            description = "The project's conversations, newest first, with their status, whether the agent asks a question, and their pull request."
+            description = "The project's conversations, newest first, with their status, whether the agent asks a question, and their pull request with its state (open, merged or closed) and checks."
             add("active_only", "boolean", "Only the conversations an agent is working on or that wait for the user.", required: false)
         case .readConversation:
             description = "A conversation's status and its latest messages: what the user asked, what the agent said, and an open question."
             add("session_id", "string", "The conversation's id, from list_conversations.")
         case .listPullRequests:
-            description = "The project's open pull requests with their checks, conflicts, labels and review state, and whether each is ready to merge."
+            description = "The project's open pull requests with their checks, conflicts, labels and review state, whether each is ready to merge, and the conversations working on it."
         case .waitingFindings:
             description = "The project's review rounds waiting for the user's decision."
         case .startConversation:
@@ -172,8 +175,12 @@ enum VoiceTool: String, CaseIterable, Sendable {
         }
     }
 
-    /// The answer of the call, cut to what the backend needs to say it. `args` are the tool's own arguments.
-    func summary(_ answer: JSON, args: JSON) -> JSON {
+    /// Reads the project's conversations too, to link each pull request to the conversations working on it.
+    var readsConversations: Bool { self == .listPullRequests }
+
+    /// The answer of the call, cut to what the backend needs to say it. `args` are the tool's own arguments, and
+    /// `sessions` the project's conversations when `readsConversations`.
+    func summary(_ answer: JSON, args: JSON, sessions: [Session] = []) -> JSON {
         switch self {
         case .listConversations:
             var sessions = Session.parseList(answer) ?? []
@@ -190,7 +197,10 @@ enum VoiceTool: String, CaseIterable, Sendable {
             let pulls = PullSummary.parseList(answer["pulls"])
             return ["pull_requests": .array(pulls.prefix(15).map { pr in
                 ["number": JSON(pr.number), "title": .string(CarText.inline(pr.title)), "state": .string(CarText.pullLine(pr)),
-                 "labels": JSON(pr.labels.map(\.name)), "ready_to_merge": .bool(Voice.readyToMerge(pr))]
+                 "labels": JSON(pr.labels.map(\.name)), "ready_to_merge": .bool(Voice.readyToMerge(pr)),
+                 "conversations": .array(sessions.filter { $0.pullNumber == pr.number }.map { s in
+                     ["session_id": .string(s.id), "title": .string(s.displayTitle)]
+                 })]
             }), "total": JSON(pulls.count)]
         case .waitingFindings:
             let held = CarText.holdingFindings(Session.parseList(answer) ?? [])
@@ -236,12 +246,25 @@ extension Voice {
         let asking = CarText.openQuestion(events)
         var out: JSON = ["session_id": .string(s.id), "title": .string(s.displayTitle),
                          "status": .string(CarText.status(s, asking: asking != nil))]
-        if let pr = s.pullNumber { out["pull_request"] = JSON(pr) }
+        if let pr = pullRequest(s) { out["pull_request"] = pr }
         if let asking {
             out["question"] = .string(CarText.question(asking))
             let options = CarText.options(asking)
             if !options.isEmpty { out["options"] = JSON(options) }
         }
+        return out
+    }
+    /// A conversation's pull request as the server last synced it: its number, state and checks. A conversation started
+    /// on a pull request the server has not synced yet has its number alone.
+    static func pullRequest(_ s: Session) -> JSON? {
+        guard let number = s.pullNumber else { return nil }
+        let pr = s.raw["prStatus"]
+        guard pr["number"].truncatedInt == number else { return ["number": JSON(number)] }
+        var out: JSON = ["number": JSON(number), "state": .string(s.pullState)]
+        if let title = pr["title"].nonEmpty { out["title"] = .string(CarText.inline(title)) }
+        if pr["draft"].is(true) { out["draft"] = true }
+        let checks = pr["checks"]
+        if checks.isObject { out["checks"] = .string(CarText.checks(checks)) }
         return out
     }
     /// The last few things said in a conversation, oldest first, each cut short.

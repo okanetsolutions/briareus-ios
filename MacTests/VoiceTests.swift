@@ -70,7 +70,7 @@ final class VoiceTests: XCTestCase {
         let answer = j(#"{"sessions":[{"id":"a","title":"Login","repo":"o/r","status":"running","prStatus":{"number":7}},{"id":"b","title":"Old","repo":"o/r","status":"closed"}]}"#)
         let all = VoiceTool.listConversations.summary(answer, args: [:])
         XCTAssertEqual(all["total"], 2)
-        XCTAssertEqual(all["conversations"][0], ["session_id": "a", "title": "Login", "status": "Working", "pull_request": 7])
+        XCTAssertEqual(all["conversations"][0], ["session_id": "a", "title": "Login", "status": "Working", "pull_request": ["number": 7, "state": "open"]])
         let active = VoiceTool.listConversations.summary(answer, args: ["active_only": true])
         XCTAssertEqual(active["conversations"].items.map { $0["session_id"] }, ["a"])
     }
@@ -109,5 +109,24 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(pulls.map { $0["ready_to_merge"] }, [true, false, false, false, false])
         XCTAssertEqual(pulls[0]["labels"], ["Code-Approved"])
         XCTAssertTrue(VoiceTool.listPullRequests.definition["description"].string!.contains("ready to merge"))
+    }
+
+    func testConversationsAndPullRequestsAreLinkedBothWays() {
+        let sessions = j(#"""
+        {"sessions":[
+          {"id":"a","title":"Fix yarn audit","status":"idle","prStatus":{"number":7,"state":"merged","checks":{"passed":4,"failed":0,"pending":0}}},
+          {"id":"b","title":"Backups","status":"running","prStatus":{"number":9,"state":"open","draft":true}},
+          {"id":"c","title":"On a PR","status":"idle","startedOnPr":12}]}
+        """#)
+        let listed = VoiceTool.listConversations.summary(sessions, args: [:])["conversations"].items
+        XCTAssertEqual(listed[0]["pull_request"], ["number": 7, "state": "merged", "checks": "4 passed · 0 failed · 0 running"])
+        XCTAssertEqual(listed[1]["pull_request"], ["number": 9, "state": "open", "draft": true])
+        XCTAssertEqual(listed[2]["pull_request"], ["number": 12])
+
+        XCTAssertTrue(VoiceTool.listPullRequests.readsConversations)
+        let pulls = j(#"{"pulls":[{"number":9,"title":"Backups"},{"number":10,"title":"Alone"}]}"#)
+        let out = VoiceTool.listPullRequests.summary(pulls, args: [:], sessions: Session.parseList(sessions)!)["pull_requests"].items
+        XCTAssertEqual(out[0]["conversations"], [["session_id": "b", "title": "Backups"]])
+        XCTAssertEqual(out[1]["conversations"], [])
     }
 }
