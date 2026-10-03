@@ -31,11 +31,20 @@ final class VoiceAudio: @unchecked Sendable {
     private var muted = false
     private var observers: [NSObjectProtocol] = []
 
+    /// A Bluetooth headset's microphone: named apart from iOS 26's SDK on, which CI's older Xcode does not have.
+    private static var headset: AVAudioSession.CategoryOptions {
+        #if compiler(>=6.2)
+        .allowBluetoothHFP
+        #else
+        .allowBluetooth
+        #endif
+    }
+
     func start() async throws {
         guard await AVAudioApplication.requestRecordPermission() else { throw Failure.microphone }
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, Self.headset])
             try session.setActive(true)
             try engine.inputNode.setVoiceProcessingEnabled(true)
             engine.attach(player)
