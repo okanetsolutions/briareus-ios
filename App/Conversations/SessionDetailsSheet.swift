@@ -49,10 +49,10 @@ struct SessionDetailsSheet: View {
             guard pull != nil else { return }
             await poll(every: 30) { await load() }
         }
-        .confirmationDialog(asked.flatMap(conversationActionQuestion) ?? "",
-                            isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
-                            titleVisibility: .visible, presenting: asked) { action in
+        .alert(asked.flatMap(conversationActionQuestion) ?? "",
+               isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }), presenting: asked) { action in
             Button(action == "compact" ? "Compact" : "Clear") { model.mutate(action) }
+            Button("Cancel", role: .cancel) {}
         }
         .alert("Compaction instructions", isPresented: $editingInstructions) {
             TextField("What every compaction must keep", text: $instructions, axis: .vertical)
@@ -79,16 +79,6 @@ struct SessionDetailsSheet: View {
             if store.supports("review_loop") && (s.canReviewLoop || s.reviewLoopOn) {
                 let loop = s.raw["reviewLoop"]
                 LabeledContent("Review loop", value: !s.reviewLoopOn ? "Off" : loop["rounds"].truncatedInt.map { "On \u{00B7} round \($0)" } ?? "On")
-            }
-            LabeledContent("Session ID") {
-                Button { Pasteboard.copy(s.id) } label: {
-                    HStack(spacing: 4) {
-                        Text(s.id).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
-                        Image(systemName: "doc.on.doc").font(.caption)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Copy session ID")
             }
         }
         .listRowBackground(Theme.row)

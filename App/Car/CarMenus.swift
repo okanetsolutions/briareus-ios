@@ -329,10 +329,8 @@ extension CarAssistant {
         }
         if store.supports("review_loop") && session.canReviewLoop {
             agent.append(item("Review loop", session.reviewLoopOn ? "On" : "Off", symbol: "repeat") { [weak self] in
-                if session.reviewLoopOn { self?.change("review_loop", ["on": false], done: "The review loop is off."); return }
-                self?.ask(["Turn on the review loop? Each push gets a paid review round, and may start one now.", "Turn on the review loop?"], yes: "Turn on") {
-                    self?.change("review_loop", ["on": true], done: "The review loop is on.")
-                }
+                let on = !session.reviewLoopOn
+                self?.change("review_loop", ["on": .bool(on)], done: on ? "The review loop is on." : "The review loop is off.")
             })
         }
         if let held = session.heldTriage, store.supports("complete_findings") {

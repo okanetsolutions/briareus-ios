@@ -208,7 +208,7 @@ struct DBServerSettingsScreen: View {
             onClone: id != 0 && store.supports("create_db_server") ? { if let copy = model.cloneRow() { navigate(.dbServerSettings(row: copy, defaults: nil)) } } : nil,
             deleteTitle: "Remove from the pool",
             onDelete: id != 0 && store.supports("delete_db_server") ? { confirmDelete = true } : nil))
-        .confirmationDialog("Remove \(state.row["label"].nonEmpty ?? "this server") from the pool?", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .alert("Remove \(state.row["label"].nonEmpty ?? "this server") from the pool?", isPresented: $confirmDelete) {
             Button("Remove", role: .destructive) { model.delete { dismiss() } }
             Button("Cancel", role: .cancel) {}
         } message: {

@@ -96,17 +96,17 @@ struct ProjectView: View {
             .sheet(isPresented: $composing) {
                 NewConversationSheet(repo: repo) { started in navigate(.conversation(id: started.id, session: started.raw)) }
             }
-            .confirmationDialog(asked.flatMap { conversationActionQuestion($0.action) } ?? "",
-                                isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }),
-                                titleVisibility: .visible, presenting: asked) { a in
+            .alert(asked.flatMap { conversationActionQuestion($0.action) } ?? "",
+                   isPresented: Binding(get: { asked != nil }, set: { if !$0 { asked = nil } }), presenting: asked) { a in
                 Button(a.action == "delete" ? "Delete" : a.action == "close" ? "Close" : "Confirm", role: a.action == "delete" ? .destructive : nil) {
                     perform(a.action, on: a.session)
                 }
+                Button("Cancel", role: .cancel) {}
             }
-            .confirmationDialog(bulkAsked.map { question($0).title } ?? "",
-                                isPresented: Binding(get: { bulkAsked != nil }, set: { if !$0 { bulkAsked = nil } }),
-                                titleVisibility: .visible, presenting: bulkAsked) { delete in
+            .alert(bulkAsked.map { question($0).title } ?? "",
+                   isPresented: Binding(get: { bulkAsked != nil }, set: { if !$0 { bulkAsked = nil } }), presenting: bulkAsked) { delete in
                 Button(delete ? "Delete" : "Close", role: delete ? .destructive : nil) { runBulk(delete: delete) }
+                Button("Cancel", role: .cancel) {}
             } message: { delete in Text(question(delete).message) }
             .alert("Rename conversation", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Title", text: $newTitle)
@@ -211,7 +211,6 @@ struct ProjectView: View {
         } else if store.supports("close") {
             Button("Close", systemImage: "archivebox") { asked = RowAction(session: s, action: "close") }
         }
-        Button("Copy Session ID", systemImage: "doc.on.doc") { Pasteboard.copy(s.id) }
         if store.supports("delete") {
             Button("Delete", systemImage: "trash", role: .destructive) { asked = RowAction(session: s, action: "delete") }
         }

@@ -86,7 +86,6 @@ func conversationActionQuestion(_ action: String) -> String? {
     case "cancel": return "Stop the running agent?"
     case "close": return "Close this conversation?"
     case "reopen": return "Reopen this conversation?"
-    case "review_loop": return "Turn on the review loop? Each push gets a paid review round, and may start one now."
     case "compact": return "Compact this conversation? It summarizes the conversation to free context, which uses the provider and may incur usage."
     case "clear": return "Clear the transcript? It hides the transcript so far from this chat. Nothing is deleted and the agent\u{2019}s context is unchanged."
     default: return nil

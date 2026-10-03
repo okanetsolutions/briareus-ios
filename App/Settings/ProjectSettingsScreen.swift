@@ -234,7 +234,7 @@ struct ProjectSettingsScreen: View {
             onClone: id != 0 && store.supports("create_project") ? { if let copy = model.cloneRow() { navigate(.projectSettings(row: copy, defaults: nil)) } } : nil,
             deleteTitle: "Delete project",
             onDelete: id != 0 && store.supports("delete_project") ? { confirmDelete = true } : nil))
-        .confirmationDialog("Delete \(state.row["repo"].nonEmpty ?? "this project")?", isPresented: $confirmDelete, titleVisibility: .visible) {
+        .alert("Delete \(state.row["repo"].nonEmpty ?? "this project")?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { model.delete { dismiss() } }
             Button("Cancel", role: .cancel) {}
         } message: {
