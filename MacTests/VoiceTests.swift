@@ -26,7 +26,7 @@ final class VoiceTests: XCTestCase {
         var cost = VoiceCost()
         // 1M fresh audio in ($10), 1M cached audio ($0.30), 1M text in of which half cached ($0.30 + $0.03),
         // 1M audio out ($20) and 1M text out ($2.40).
-        cost.add(response: j(#"{"input_token_details":{"text_tokens":1000000,"audio_tokens":2000000,"#
+        cost.add(response: j(#"{"input_tokens":3000000,"output_tokens":2000000,"input_token_details":{"text_tokens":1000000,"audio_tokens":2000000,"#
             + #""cached_tokens_details":{"text_tokens":500000,"audio_tokens":1000000}},"#
             + #""output_token_details":{"text_tokens":1000000,"audio_tokens":1000000}}"#))
         XCTAssertEqual(cost.dollars, 33.03, accuracy: 0.0001)
@@ -34,7 +34,9 @@ final class VoiceTests: XCTestCase {
         XCTAssertEqual(cost.dollars, 39.28, accuracy: 0.0001)
         cost.add(transcription: j(#"{"type":"duration","seconds":12}"#))
         XCTAssertEqual(cost.dollars, 39.28, accuracy: 0.0001)
-        XCTAssertEqual(VoiceCost().text, "$0.000")
+        XCTAssertEqual(cost.tokens, 7_000_000)
+        XCTAssertEqual(cost.line, "≈ $39.28 · 7000.0k tokens")
+        XCTAssertEqual(VoiceCost().line, "≈ $0.0000 · 0 tokens")
     }
 
     func testAMergeIsReadBackWithWhatStandsInItsWayAndOnlyMadeConfirmed() {

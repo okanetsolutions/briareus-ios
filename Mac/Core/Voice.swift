@@ -92,11 +92,14 @@ enum Voice {
 /// What a conversation has cost so far, in dollars, from the token usage OpenAI reports: each response's on
 /// `response.done`, and each transcription of the user's speech on its completed event. Prices per million tokens, as
 /// OpenAI lists them for gpt-realtime-2.1-mini and gpt-4o-mini-transcribe.
+/// An estimate: OpenAI's own bill is the reference.
 struct VoiceCost: Equatable, Sendable {
     private(set) var dollars = 0.0
+    private(set) var tokens = 0
 
     /// A response's usage: input split into text, audio and image, each with a cached part; output into text and audio.
     mutating func add(response usage: JSON) {
+        tokens += (usage["input_tokens"].int ?? 0) + (usage["output_tokens"].int ?? 0)
         let input = usage["input_token_details"], cached = input["cached_tokens_details"], output = usage["output_token_details"]
         func n(_ j: JSON) -> Double { Double(j.int ?? 0) }
         let fresh = (text: n(input["text_tokens"]) - n(cached["text_tokens"]),
@@ -111,10 +114,19 @@ struct VoiceCost: Equatable, Sendable {
     /// A transcription's usage, when it is billed by tokens.
     mutating func add(transcription usage: JSON) {
         guard usage["type"].string == "tokens" else { return }
+        tokens += (usage["input_tokens"].int ?? 0) + (usage["output_tokens"].int ?? 0)
         dollars += (Double(usage["input_tokens"].int ?? 0) * 1.25 + Double(usage["output_tokens"].int ?? 0) * 5) / 1_000_000
     }
 
-    var text: String { dollars < 0.01 && dollars > 0 ? String(format: "$%.4f", dollars) : String(format: "$%.3f", dollars) }
+    /// "$0.0123", with more places while it is under a cent.
+    static func dollars(_ amount: Double) -> String {
+        String(format: amount < 0.01 ? "$%.4f" : amount < 1 ? "$%.3f" : "$%.2f", amount)
+    }
+    /// What the screen shows under the controls.
+    var line: String {
+        let tokenText = tokens >= 1000 ? String(format: "%.1fk tokens", Double(tokens) / 1000) : "\(tokens) tokens"
+        return "≈ \(Self.dollars(dollars)) · \(tokenText)"
+    }
 }
 
 // MARK: - Tools

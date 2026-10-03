@@ -132,12 +132,16 @@ struct VoiceScreen: View {
                 Color.clear.frame(width: 56, height: 56)
             }
             status.font(.footnote).foregroundStyle(.secondary)
-            if mine && (voice.isOn || voice.cost.dollars > 0) {
-                Text("Cost so far: \(voice.cost.text)").font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
-                    .accessibilityIdentifier("voiceCost")
-            }
+            if mine, voice.started != nil { costLine }
         }
         .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 18)
+    }
+
+    /// What the conversation has cost, growing with each response and kept once it ends.
+    private var costLine: some View {
+        Text(voice.cost.line).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            .accessibilityLabel("Estimated cost").accessibilityIdentifier("voiceCost")
     }
 
     @ViewBuilder private var status: some View {

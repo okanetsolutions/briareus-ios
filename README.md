@@ -43,6 +43,7 @@ The iPhone and iPad app opens on four tabs, the Mac app's sidebar strip laid out
 - Everything it does stays on that project: no tool names a repository, and a conversation named by id is checked to be the project's first. It reads what a pull request changes (how many files, which ones, lines added and removed), the project's open issues, any one of them in full with its description and latest comments, and starts an agent on one, as the board's own button does; starts a conversation, sends a message or answers an agent's question, and stops a running turn. Each change is read back and runs only on a yes said after it; it squash-merges a pull request too, after reading back what stands in the way (failing or running checks, conflicts, changes requested). Deleting and closing stay on the screen.
 - Talks to OpenAI directly from the phone with an API key kept in its Keychain (Settings › Voice), over WebRTC: the microphone and the voice travel on audio tracks, with WebRTC's echo cancellation and jitter buffer, and events on a data channel. The realtime model picks the actions itself, which the phone runs on `/api/v1` with its own token.
 - Goes on with the phone locked, and ends on its own after a silence (3 minutes by default), as GPT-Realtime bills the audio it hears and says.
+- Shows what the conversation has cost under its controls: each response's and each transcription's tokens, as OpenAI reports them, at gpt-realtime-2.1-mini's and gpt-4o-mini-transcribe's published prices. An estimate; OpenAI's bill is the reference.
 
 **Project board**
 
